@@ -1,0 +1,11 @@
+
+# 机器人参数
+TANK_RADIUS = 0.2  # 机器人半径（米）
+TANK_SPEED = 2.0  # 米/秒
+TANK_ROTATION_SPEED = 180  # 度/秒
+
+ROBOT1_INIT_POS = (6.0, 4.0)
+ROBOT2_INIT_POS = (6.0, 4.0)
+
+RED_COLOR = (238, 140, 170)
+BLUE_COLOR = (100, 149, 237)

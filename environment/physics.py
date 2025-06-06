@@ -1,5 +1,5 @@
 import pymunk
-import utils.global_config as global_config
+import utils.env_config as env_config
 
 class PhysicsEngine:
     def __init__(self):
@@ -14,13 +14,13 @@ class PhysicsEngine:
         # 创建围墙的物理形状
         walls = [
             # 上墙
-            [(0, 0), (global_config.FIELD_WIDTH, 0), thickness],
+            [(0, 0), (env_config.FIELD_WIDTH, 0), thickness],
             # 下墙
-            [(0, global_config.FIELD_HEIGHT), (global_config.FIELD_WIDTH, global_config.FIELD_HEIGHT), thickness],
+            [(0, env_config.FIELD_HEIGHT), (env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT), thickness],
             # 左墙
-            [(0, 0), (0, global_config.FIELD_HEIGHT), thickness],
+            [(0, 0), (0, env_config.FIELD_HEIGHT), thickness],
             # 右墙
-            [(global_config.FIELD_WIDTH, 0), (global_config.FIELD_WIDTH, global_config.FIELD_HEIGHT), thickness]
+            [(env_config.FIELD_WIDTH, 0), (env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT), thickness]
         ]
         
         for wall in walls:

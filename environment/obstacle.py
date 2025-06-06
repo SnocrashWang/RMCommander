@@ -1,6 +1,8 @@
 import pymunk
+import pygame
 import math
-import utils.global_config as global_config
+
+import utils.env_config as env_config
 
 class Obstacle:
     def __init__(self, physics_engine, obstacle_config):
@@ -23,7 +25,7 @@ class Obstacle:
         shape = pymunk.Segment(body, self.p1, self.p2, self.thickness)
         shape.elasticity = 0.8
         shape.friction = 0.5
-        shape.color = global_config.OBSTACLE_COLOR
+        shape.color = env_config.OBSTACLE_COLOR
 
         physics_engine.add_object(body, shape)
         self.shape = shape

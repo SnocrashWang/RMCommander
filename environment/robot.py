@@ -1,16 +1,17 @@
 import pygame
 import pymunk
-import utils.global_config as global_config
+import utils.robot_config as robot_config
+from utils.game_config import GameTeam
 from utils.utils import meters_to_pixels
 from utils.grid_map import a_star
 
 class Robot:
-    def __init__(self, physics_engine, position, team, radius=global_config.TANK_RADIUS, env=None):
+    def __init__(self, physics_engine, position, team, radius=robot_config.TANK_RADIUS, env=None):
         self.radius = radius
         self.team = team
-        self.color = global_config.robot1_COLOR if team == 1 else global_config.robot2_COLOR
-        self.speed = global_config.TANK_SPEED
-        self.rotation_speed = global_config.TANK_ROTATION_SPEED
+        self.color = robot_config.RED_COLOR if team == GameTeam.RED else robot_config.BLUE_COLOR
+        self.speed = robot_config.TANK_SPEED
+        self.rotation_speed = robot_config.TANK_ROTATION_SPEED
         self.angle = 0  # 角度（度）
         self.in_center_zone = False
         self.target_pos = None  # 新增：目标点

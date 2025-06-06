@@ -1,6 +1,8 @@
 import heapq
 import math
 
+import utils.robot_config as robot_config
+
 class GridMap:
     def __init__(self, width, height, cell_size):
         self.width = width
@@ -32,15 +34,13 @@ class GridMap:
         return True  # 越界视为阻挡
 
     def mark_obstacles(self, obstacles):
-        # 假设obstacles为Obstacle对象列表，且每个有p1, p2, thickness属性
         for obs in obstacles:
             start = obs.p1
             end = obs.p2
-            thickness = getattr(obs, "thickness", 0.1)  # 默认厚度
-            self._mark_line_blocked(start, end, thickness)
+            thickness = getattr(obs, "thickness", 0.1)
+            self._mark_line_blocked(start, end, thickness, robot_config.TANK_RADIUS)
 
-    def _mark_line_blocked(self, start, end, thickness):
-        # 粗略地将线段附近的格子标记为阻挡
+    def _mark_line_blocked(self, start, end, thickness, robot_radius):
         x1, y1 = start
         x2, y2 = end
         steps = int(max(abs(x2 - x1), abs(y2 - y1)) / self.cell_size) + 1
@@ -48,10 +48,10 @@ class GridMap:
             x = x1 + (x2 - x1) * i / steps
             y = y1 + (y2 - y1) * i / steps
             col, row = self.world_to_grid((x, y))
-            # 以thickness为半径，周围格子也标记
-            radius = int(math.ceil(thickness / self.cell_size))
-            for dx in range(-radius, radius + 1):
-                for dy in range(-radius, radius + 1):
+            # 影响半径 = 墙体半厚度 + robot半径
+            block_radius = int(math.ceil((thickness / 2 + robot_config.TANK_RADIUS) / self.cell_size))
+            for dx in range(-block_radius, block_radius + 1):
+                for dy in range(-block_radius, block_radius + 1):
                     self.set_blocked(col + dx, row + dy)
 
 def a_star(grid_map, start, goal):

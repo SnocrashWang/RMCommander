@@ -101,7 +101,8 @@ class Environment:
             "robot1_pos": self.robot1.get_position(),
             "robot2_pos": self.robot2.get_position(),
             "robot1_angle": self.robot1.angle,
-            "robot2_angle": self.robot2.angle
+            "robot2_angle": self.robot2.angle,
+            "grid_map": self.grid_map,
         }
     
     def is_game_over(self):

@@ -6,11 +6,11 @@ from utils.utils import meters_to_pixels, create_rect_from_center
 class Renderer:
     def __init__(self, screen_width, screen_height):
         self.screen = pygame.display.set_mode((screen_width, screen_height))
-        pygame.display.set_caption("机器人对抗仿真环境")
+        pygame.display.set_caption("RMUL")
         self.font = pygame.font.SysFont(None, 24)
         self.large_font = pygame.font.SysFont(None, 36)
         
-    def render(self, env_state, obstacles):
+    def render(self, env_state, obstacles, show_grid=False):
         """渲染整个环境"""
         # 绘制背景
         self.screen.fill(global_config.BACKGROUND)
@@ -42,7 +42,11 @@ class Renderer:
         self._draw_progress_bars(env_state["progress"])
         
         # 绘制状态信息
-        self._draw_info(env_state["state"])
+        self._draw_info(env_state["state"], show_grid)
+        
+        # 绘制可移动栅格
+        if show_grid:
+            self._draw_movable_grid(env_state["grid_map"])
     
     def _draw_center_zone(self):
         """绘制中心区域"""
@@ -130,22 +134,26 @@ class Renderer:
         self.screen.blit(text1, (20, 15))
         self.screen.blit(text2, (screen_width - bar_width - 10 + 20, 15))
     
-    def _draw_info(self, game_state):
-        """绘制游戏信息"""
-        # 显示控制说明
+    def _draw_info(self, game_state, show_grid=False):
+        """Draw game info and controls (English)"""
         controls = [
             "Controls:",
-            "Tank 1: WASD to move, Q/E to rotate",
-            "Tank 2: Arrow keys to move, </> to rotate",
-            "R: Reset game",
-            "ESC: Quit"
+            "Left Mouse Button: Set target for Robot1",
+            "R: Reset Game",
+            "ESC: Quit",
+            "G: Toggle movable grid display"
         ]
         
         for i, text in enumerate(controls):
             text_surface = self.font.render(text, True, global_config.TEXT_COLOR)
             self.screen.blit(text_surface, (10, global_config.SCALE * global_config.FIELD_HEIGHT - 150 + i * 30))
         
-        # 显示游戏状态
+        # Show grid status
+        grid_status = "ON" if show_grid else "OFF"
+        grid_text = self.font.render(f"Movable Grid: {grid_status}", True, global_config.TEXT_COLOR)
+        self.screen.blit(grid_text, (10, global_config.SCALE * global_config.FIELD_HEIGHT - 150 + len(controls) * 30))
+        
+        # Show game state
         if game_state == GameState.TEAM1_WIN:
             win_text = self.large_font.render("Team 1 Wins!", True, global_config.robot1_COLOR)
             text_rect = win_text.get_rect(center=(global_config.SCALE * global_config.FIELD_WIDTH // 2, 
@@ -156,3 +164,14 @@ class Renderer:
             text_rect = win_text.get_rect(center=(global_config.SCALE * global_config.FIELD_WIDTH // 2, 
                                                  global_config.SCALE * global_config.FIELD_HEIGHT // 2))
             self.screen.blit(win_text, text_rect)
+    
+    def _draw_movable_grid(self, grid_map):
+        """绘制可移动栅格（未被障碍物阻挡的格子）"""
+        for row in range(grid_map.rows):
+            for col in range(grid_map.cols):
+                if not grid_map.is_blocked(col, row):
+                    x = int(col * grid_map.cell_size * global_config.SCALE)
+                    y = int(row * grid_map.cell_size * global_config.SCALE)
+                    size = int(grid_map.cell_size * global_config.SCALE)
+                    rect = pygame.Rect(x, y, size, size)
+                    pygame.draw.rect(self.screen, (200, 255, 200), rect, 1)  # 绿色细线

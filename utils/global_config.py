@@ -1,6 +1,6 @@
 # 仿真配置
 SCALE = 100  # 1米 = 100像素
-FPS = 60
+FPS = 120
 
 # 场地尺寸（米）
 FIELD_WIDTH = 12.0
@@ -8,7 +8,7 @@ FIELD_HEIGHT = 8.0
 
 # 机器人参数
 TANK_RADIUS = 0.25  # 机器人半径（米）
-TANK_SPEED = 2.0  # 米/秒
+TANK_SPEED = 0.5  # 米/秒
 TANK_ROTATION_SPEED = 180  # 度/秒
 
 # 中心区域

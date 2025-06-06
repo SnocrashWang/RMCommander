@@ -23,6 +23,8 @@ class Robot:
         moment = pymunk.moment_for_circle(mass, 0, radius, (0, 0))
         self.body = pymunk.Body(mass, moment)
         self.body.position = position
+        self.body.velocity = (0, 0)
+        self.body.angular_velocity = 0
         self.shape = pymunk.Circle(self.body, radius)
         self.shape.elasticity = 0.5
         self.shape.friction = 0.9
@@ -72,3 +74,7 @@ class Robot:
     def get_position(self):
         """获取机器人位置（世界坐标）"""
         return self.body.position.x, self.body.position.y
+
+    def destroy(self, physics_engine):
+        """从物理引擎中移除机器人相关的物体和形状"""
+        physics_engine.remove_object(self.body, self.shape)

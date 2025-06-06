@@ -1,0 +1,29 @@
+import pymunk
+import math
+import utils.global_config as global_config
+
+class Obstacle:
+    def __init__(self, physics_engine, obstacle_config):
+        # obstacle_config 需要包含: x1, y1, x2, y2, thickness
+        x1 = obstacle_config["x1"]
+        y1 = obstacle_config["y1"]
+        x2 = obstacle_config["x2"]
+        y2 = obstacle_config["y2"]
+        self.p1 = (x1, y1)
+        self.p2 = (x2, y2)
+        self.thickness = obstacle_config["thickness"]
+
+        # 计算中心、长度、角度
+        self.center = ((x1 + x2) / 2, (y1 + y2) / 2)
+        self.length = math.hypot(x2 - x1, y2 - y1)
+        self.angle = math.atan2(y2 - y1, x2 - x1)  # 弧度
+
+        # 创建物理体
+        body = pymunk.Body(body_type=pymunk.Body.STATIC)
+        shape = pymunk.Segment(body, self.p1, self.p2, self.thickness)
+        shape.elasticity = 0.8
+        shape.friction = 0.5
+        shape.color = global_config.OBSTACLE_COLOR
+
+        physics_engine.add_object(body, shape)
+        self.shape = shape

@@ -2,7 +2,7 @@ import pygame
 
 # 仿真配置
 SCALE = 100  # 1米 = 100像素
-FPS = 120
+FPS = 60
 
 # 场地尺寸（米）
 FIELD_WIDTH = 12.0
@@ -43,6 +43,6 @@ PROGRESS_BAR_RED = (255, 100, 100)  # 红队进度条颜色
 PROGRESS_BAR_BLUE = (100, 100, 255)  # 蓝队进度条颜色
 
 # 可移动栅格配置
-GRID_CELL_SIZE = 0.2  # 栅格大小（米）
-GRID_COLOR = (220, 220, 220)  # 栅格线颜色
+GRID_CELL_SIZE = 0.1  # 栅格大小（米）
+GRID_COLOR = (20, 20, 20)  # 栅格线颜色
 GRID_ALPHA = 128  # 栅格透明度（0-255）

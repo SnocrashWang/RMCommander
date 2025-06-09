@@ -61,11 +61,11 @@ class Environment:
             env_config.FIELD_HEIGHT,
             env_config.GRID_CELL_SIZE
         )
-        self.grid_map.update_obstacles(self.obstacles)
+        self.grid_map.mark_obstacles(self.obstacles)
 
     def reset(self):
         """重置环境"""
-        # 清除所有机器人
+        # 销毁现有机器人
         for robot in self.robots:
             robot.destroy(self.physics_engine)
         self.robots.clear()
@@ -75,7 +75,7 @@ class Environment:
         self._create_robots()
 
     def step(self, dt):
-        """更新环境状态"""
+        """推进环境仿真"""
         # 更新物理引擎
         self.physics_engine.step(dt)
 

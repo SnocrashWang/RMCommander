@@ -12,7 +12,13 @@ class Renderer:
         self.screen = pygame.display.set_mode((screen_width, screen_height))
         pygame.display.set_caption("Robot Battle Environment")
         self.font = pygame.font.Font(None, 36)
-        self.large_font = pygame.font.SysFont(None, 36)
+        self.small_font = pygame.font.Font(None, 24)
+        self.large_font = pygame.font.SysFont(None, 48)
+        
+        # 创建栅格缓存
+        self.grid_surface = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+        self.grid_surface.set_alpha(env_config.GRID_ALPHA)
+        self.last_grid_state = None  # 用于跟踪栅格状态是否改变
 
     def render(self, env_state, obstacles, show_grid=False):
         """渲染环境"""
@@ -46,7 +52,7 @@ class Renderer:
 
         # 绘制可移动栅格（如果启用）
         if show_grid:
-            self._draw_grid()
+            self._draw_grid(env_state["grid_map"])
 
     def _draw_center_zone(self):
         """绘制中心区域"""
@@ -112,8 +118,8 @@ class Renderer:
         end_y = y + barrel_length * math.sin(angle_rad)
         pygame.draw.line(self.screen, (30, 30, 30), (x, y), (end_x, end_y), int(2))
 
-        # 绘制机器人标识
-        team_text = self.font.render(f"{robot.team}", True, (30, 30, 30))
+        # 绘制机器人标识（使用小字体）
+        team_text = self.small_font.render(f"{robot.team}", True, (30, 30, 30))
         self.screen.blit(team_text, (x - 50, y - 50))
 
         # 绘制血量条
@@ -145,8 +151,8 @@ class Renderer:
         end_y = meters_to_pixels(end_pos[1], env_config.SCALE)
         
         # 绘制虚线
-        dash_length = 10
-        gap_length = 5
+        dash_length = 5
+        gap_length = 10
         dx = end_x - start_x
         dy = end_y - start_y
         distance = math.hypot(dx, dy)
@@ -174,12 +180,12 @@ class Renderer:
         screen_width = env_config.SCALE * env_config.FIELD_WIDTH
         bar_width = screen_width // 2 - 20
 
-        # 队伍1进度条
+        # 红队进度条
         pygame.draw.rect(self.screen, env_config.PROGRESS_BAR_BG, (10, 10, bar_width, bar_height))
         progress_width = int(bar_width * (progress[GameTeam.RED] / 100))
         pygame.draw.rect(self.screen, env_config.PROGRESS_BAR_RED, (10, 10, progress_width, bar_height))
 
-        # 队伍2进度条
+        # 蓝队进度条
         pygame.draw.rect(self.screen, env_config.PROGRESS_BAR_BG, (screen_width - bar_width - 10, 10, bar_width, bar_height))
         progress_width = int(bar_width * (progress[GameTeam.BLUE] / 100))
         pygame.draw.rect(self.screen, env_config.PROGRESS_BAR_BLUE, 
@@ -228,24 +234,32 @@ class Renderer:
                                                  env_config.SCALE * env_config.FIELD_HEIGHT // 2))
             self.screen.blit(win_text, text_rect)
 
-    def _draw_grid(self):
+    def _draw_grid(self, grid_map):
         """绘制可移动栅格"""
-        # 创建半透明表面
-        grid_surface = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
-        
-        # 计算栅格线
-        cell_size_pixels = env_config.GRID_CELL_SIZE * env_config.SCALE
-        
-        # 绘制垂直线
-        for x in range(0, self.screen_width, int(cell_size_pixels)):
-            pygame.draw.line(grid_surface, env_config.GRID_COLOR, (x, 0), (x, self.screen_height))
+        # 检查栅格状态是否改变
+        current_state = (grid_map.rows, grid_map.cols, grid_map.cell_size)
+        if self.last_grid_state == current_state:
+            # 如果状态没变，直接使用缓存的surface
+            self.screen.blit(self.grid_surface, (0, 0))
+            return
             
-        # 绘制水平线
-        for y in range(0, self.screen_height, int(cell_size_pixels)):
-            pygame.draw.line(grid_surface, env_config.GRID_COLOR, (0, y), (self.screen_width, y))
-            
-        # 设置透明度
-        grid_surface.set_alpha(env_config.GRID_ALPHA)
+        # 更新缓存状态
+        self.last_grid_state = current_state
+        
+        # 清空surface
+        self.grid_surface.fill((0, 0, 0, 0))
+        
+        # 计算栅格大小（像素）
+        cell_size_px = int(grid_map.cell_size * env_config.SCALE)
+        
+        # 绘制所有可移动栅格
+        for row in range(grid_map.rows):
+            for col in range(grid_map.cols):
+                if not grid_map.is_blocked(col, row):
+                    x = int(col * grid_map.cell_size * env_config.SCALE)
+                    y = int(row * grid_map.cell_size * env_config.SCALE)
+                    pygame.draw.rect(self.grid_surface, env_config.GRID_COLOR, 
+                                   (x, y, cell_size_px, cell_size_px), 1)
         
         # 将栅格绘制到主屏幕
-        self.screen.blit(grid_surface, (0, 0))
+        self.screen.blit(self.grid_surface, (0, 0))

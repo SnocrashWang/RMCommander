@@ -3,6 +3,7 @@ import pymunk
 import math
 import time
 from utils import robot_config
+from utils import env_config
 from utils.game_config import GameTeam
 from utils.utils import meters_to_pixels
 from utils.grid_map import a_star
@@ -35,8 +36,8 @@ class Robot:
         self.body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, radius))
         self.body.position = position
         self.shape = pymunk.Circle(self.body, radius)
-        self.shape.elasticity = 0.5
-        self.shape.friction = 0.5
+        self.shape.elasticity = 0.5 # 弹性系数
+        self.shape.friction = 0.5 # 摩擦系数
         self.shape.collision_type = 1  # 设置碰撞类型
 
         # 添加到物理引擎

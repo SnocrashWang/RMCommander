@@ -1,13 +1,13 @@
 # 机器人参数
-TANK_RADIUS = 0.2  # 机器人半径（米）
+TANK_RADIUS = 0.25  # 机器人半径（米）
 TANK_SPEED = 2.0  # 米/秒
 TANK_ROTATION_SPEED = 180  # 度/秒
 
 # 血量设置
 DEFAULT_HP = 200  # 默认血量上限
 
-ROBOT1_INIT_POS = (6.0, 4.0)
+ROBOT1_INIT_POS = (1.0, 1.0)
 ROBOT2_INIT_POS = (6.0, 4.0)
 
-RED_COLOR = (238, 140, 170)
-BLUE_COLOR = (100, 149, 237)
+RED_COLOR = (255, 120, 120)
+BLUE_COLOR = (120, 120, 255)

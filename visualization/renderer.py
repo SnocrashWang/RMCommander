@@ -7,56 +7,51 @@ from utils.utils import meters_to_pixels, create_rect_from_center
 
 class Renderer:
     def __init__(self, screen_width, screen_height):
+        self.screen_width = screen_width
+        self.screen_height = screen_height
         self.screen = pygame.display.set_mode((screen_width, screen_height))
-        pygame.display.set_caption("RMUL")
-        self.font = pygame.font.SysFont(None, 24)
+        pygame.display.set_caption("Robot Battle Environment")
+        self.font = pygame.font.Font(None, 36)
         self.large_font = pygame.font.SysFont(None, 36)
 
     def render(self, env_state, obstacles, show_grid=False):
-        """渲染整个环境"""
-        # 绘制背景
-        self.screen.fill(env_config.BACKGROUND)
+        """渲染环境"""
+        # 清空屏幕
+        self.screen.fill(env_config.BACKGROUND_COLOR)
 
-        # 绘制中心增益区域
+        # 绘制中心区域
         self._draw_center_zone()
 
-        # 绘制围墙
+        # 绘制墙壁
         self._draw_walls()
 
         # 绘制障碍物
         self._draw_obstacles(obstacles)
 
-        # 绘制所有机器人（适配机器人列表）
-        for robot_info in env_state["robots"]:
-            self._draw_tank(
-                robot_info["pos"],
-                robot_info["angle"],
-                robot_config.RED_COLOR if robot_info["team"] == GameTeam.RED else robot_config.BLUE_COLOR,
-                robot_info["team"]
-            )
+        # 绘制所有机器人
+        for robot in env_state["robots"]:
+            self._draw_tank(robot)
+
+        # 绘制攻击线（如果有）
+        if len(env_state["robots"]) > 1:
+            attack_line = env_state["robots"][0].get_attack_line(env_state["robots"][1])
+            if attack_line:
+                self._draw_attack_line(*attack_line)
 
         # 绘制进度条
-        self._draw_progress_bars(env_state["progress"])
+        self._draw_progress_bars(env_state["center_zone_progress"])
 
         # 绘制状态信息
         self._draw_info(env_state["state"], show_grid)
 
-        # 绘制可移动栅格
+        # 绘制可移动栅格（如果启用）
         if show_grid:
-            self._draw_movable_grid(env_state["grid_map"])
+            self._draw_grid()
 
     def _draw_center_zone(self):
         """绘制中心区域"""
-        center_x = env_config.FIELD_WIDTH / 2
-        center_y = env_config.FIELD_HEIGHT / 2
-        size = env_config.CENTER_ZONE_SIZE
-
-        rect = create_rect_from_center(
-            center_x, center_y, 
-            size, size, 
-            env_config.SCALE
-        )
-        pygame.draw.rect(self.screen, env_config.CENTER_ZONE_COLOR, rect)
+        center_zone_rect = env_config.CENTER_ZONE_RECT
+        pygame.draw.rect(self.screen, env_config.CENTER_ZONE_COLOR, center_zone_rect)  # 更浅的绿色
 
     def _draw_walls(self):
         """绘制围墙"""
@@ -95,24 +90,83 @@ class Renderer:
 
             pygame.draw.polygon(self.screen, env_config.OBSTACLE_COLOR, [to_px(v1), to_px(v2), to_px(v3), to_px(v4)])
 
-    def _draw_tank(self, position, angle, color, team):
+    def _draw_tank(self, robot):
         """绘制机器人"""
+        position = robot.get_position()
         x = meters_to_pixels(position[0], env_config.SCALE)
         y = meters_to_pixels(position[1], env_config.SCALE)
         radius = meters_to_pixels(robot_config.TANK_RADIUS, env_config.SCALE)
 
         # 绘制机器人主体
-        pygame.draw.circle(self.screen, color, (x, y), radius)
+        pygame.draw.circle(self.screen, robot.color, (x, y), radius)
 
-        # 绘制机器人炮管
-        angle_rad = pygame.math.Vector2(1, 0).rotate(angle).angle_to(pygame.math.Vector2(1, 0))
-        end_x = x + (radius + 15) * pygame.math.Vector2(1, 0).rotate(angle).x
-        end_y = y + (radius + 15) * pygame.math.Vector2(1, 0).rotate(angle).y
-        pygame.draw.line(self.screen, (30, 30, 30), (x, y), (end_x, end_y), 5)
+        # 绘制炮塔（小方形）
+        turret_size = radius * 0.6
+        turret_rect = pygame.Rect(x - turret_size/2, y - turret_size/2, turret_size, turret_size)
+        pygame.draw.rect(self.screen, (30, 30, 30), turret_rect)
+
+        # 绘制炮管
+        angle_rad = math.radians(robot.angle)
+        barrel_length = radius * 0.8
+        end_x = x + barrel_length * math.cos(angle_rad)
+        end_y = y + barrel_length * math.sin(angle_rad)
+        pygame.draw.line(self.screen, (30, 30, 30), (x, y), (end_x, end_y), int(2))
 
         # 绘制机器人标识
-        team_text = self.font.render(f"T{team}", True, (30, 30, 30))
-        self.screen.blit(team_text, (x - 10, y - 10))
+        team_text = self.font.render(f"{robot.team}", True, (30, 30, 30))
+        self.screen.blit(team_text, (x - 50, y - 50))
+
+        # 绘制血量条
+        hp_bar_width = radius * 2
+        hp_bar_height = radius * 0.2
+        hp_bar_x = x - hp_bar_width / 2
+        hp_bar_y = y - radius - hp_bar_height - 5
+
+        # 血量条背景
+        pygame.draw.rect(self.screen, (60, 60, 60), 
+                        (hp_bar_x, hp_bar_y, hp_bar_width, hp_bar_height))
+        
+        # 当前血量
+        hp_percentage = robot.get_hp_percentage()
+        current_hp_width = int(hp_bar_width * hp_percentage)
+        hp_color = (0, 255, 0) if hp_percentage > 0.5 else (255, 165, 0) if hp_percentage > 0.25 else (255, 0, 0)
+        pygame.draw.rect(self.screen, hp_color,
+                        (hp_bar_x, hp_bar_y, current_hp_width, hp_bar_height))
+
+    def _draw_attack_line(self, start_pos, end_pos):
+        """绘制攻击线
+        Args:
+            start_pos: 起点坐标 (x, y)
+            end_pos: 终点坐标 (x, y)
+        """
+        start_x = meters_to_pixels(start_pos[0], env_config.SCALE)
+        start_y = meters_to_pixels(start_pos[1], env_config.SCALE)
+        end_x = meters_to_pixels(end_pos[0], env_config.SCALE)
+        end_y = meters_to_pixels(end_pos[1], env_config.SCALE)
+        
+        # 绘制虚线
+        dash_length = 10
+        gap_length = 5
+        dx = end_x - start_x
+        dy = end_y - start_y
+        distance = math.hypot(dx, dy)
+        if distance > 0:
+            dx, dy = dx / distance, dy / distance
+            current_pos = (start_x, start_y)
+            while distance > 0:
+                # 绘制一段虚线
+                next_pos = (
+                    current_pos[0] + dx * min(dash_length, distance),
+                    current_pos[1] + dy * min(dash_length, distance)
+                )
+                pygame.draw.line(self.screen, (0, 255, 0), current_pos, next_pos, 2)
+                
+                # 移动到下一段虚线的起点
+                current_pos = (
+                    next_pos[0] + dx * min(gap_length, distance - dash_length),
+                    next_pos[1] + dy * min(gap_length, distance - dash_length)
+                )
+                distance -= (dash_length + gap_length)
 
     def _draw_progress_bars(self, progress):
         """绘制进度条"""
@@ -122,19 +176,19 @@ class Renderer:
 
         # 队伍1进度条
         pygame.draw.rect(self.screen, env_config.PROGRESS_BAR_BG, (10, 10, bar_width, bar_height))
-        progress_width = int(bar_width * (progress[1] / 100))
-        pygame.draw.rect(self.screen, env_config.PROGRESS_BAR1, (10, 10, progress_width, bar_height))
+        progress_width = int(bar_width * (progress[GameTeam.RED] / 100))
+        pygame.draw.rect(self.screen, env_config.PROGRESS_BAR_RED, (10, 10, progress_width, bar_height))
 
         # 队伍2进度条
         pygame.draw.rect(self.screen, env_config.PROGRESS_BAR_BG, (screen_width - bar_width - 10, 10, bar_width, bar_height))
-        progress_width = int(bar_width * (progress[2] / 100))
-        pygame.draw.rect(self.screen, env_config.PROGRESS_BAR2, 
+        progress_width = int(bar_width * (progress[GameTeam.BLUE] / 100))
+        pygame.draw.rect(self.screen, env_config.PROGRESS_BAR_BLUE, 
                         (screen_width - bar_width - 10 + (bar_width - progress_width), 10, 
                          progress_width, bar_height))
 
         # 进度文本
-        text1 = self.font.render(f"Team 1: {int(progress[1])}%", True, env_config.TEXT_COLOR)
-        text2 = self.font.render(f"Team 2: {int(progress[2])}%", True, env_config.TEXT_COLOR)
+        text1 = self.font.render(f"Team 1: {int(progress[GameTeam.RED])}%", True, env_config.TEXT_COLOR)
+        text2 = self.font.render(f"Team 2: {int(progress[GameTeam.BLUE])}%", True, env_config.TEXT_COLOR)
         self.screen.blit(text1, (20, 15))
         self.screen.blit(text2, (screen_width - bar_width - 10 + 20, 15))
 
@@ -144,8 +198,8 @@ class Renderer:
             "Controls:",
             "Left Mouse Button: Set target for Robot1",
             "R: Reset Game",
-            "ESC: Quit",
             "G: Toggle movable grid display"
+            "ESC: Quit",
         ]
 
         for i, text in enumerate(controls):
@@ -174,13 +228,24 @@ class Renderer:
                                                  env_config.SCALE * env_config.FIELD_HEIGHT // 2))
             self.screen.blit(win_text, text_rect)
 
-    def _draw_movable_grid(self, grid_map):
-        """绘制可移动栅格（未被障碍物阻挡的格子）"""
-        for row in range(grid_map.rows):
-            for col in range(grid_map.cols):
-                if not grid_map.is_blocked(col, row):
-                    x = int(col * grid_map.cell_size * env_config.SCALE)
-                    y = int(row * grid_map.cell_size * env_config.SCALE)
-                    size = int(grid_map.cell_size * env_config.SCALE)
-                    rect = pygame.Rect(x, y, size, size)
-                    pygame.draw.rect(self.screen, (200, 255, 200), rect, 1)  # 绿色细线
+    def _draw_grid(self):
+        """绘制可移动栅格"""
+        # 创建半透明表面
+        grid_surface = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        
+        # 计算栅格线
+        cell_size_pixels = env_config.GRID_CELL_SIZE * env_config.SCALE
+        
+        # 绘制垂直线
+        for x in range(0, self.screen_width, int(cell_size_pixels)):
+            pygame.draw.line(grid_surface, env_config.GRID_COLOR, (x, 0), (x, self.screen_height))
+            
+        # 绘制水平线
+        for y in range(0, self.screen_height, int(cell_size_pixels)):
+            pygame.draw.line(grid_surface, env_config.GRID_COLOR, (0, y), (self.screen_width, y))
+            
+        # 设置透明度
+        grid_surface.set_alpha(env_config.GRID_ALPHA)
+        
+        # 将栅格绘制到主屏幕
+        self.screen.blit(grid_surface, (0, 0))

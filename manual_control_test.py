@@ -21,7 +21,7 @@ def main():
     # 创建时钟对象
     clock = pygame.time.Clock()
 
-    show_grid = False  # 新增：控制是否显示可移动栅格
+    show_grid = False  # 控制是否显示可移动栅格
 
     running = True
     while running:
@@ -49,8 +49,14 @@ def main():
                     print("Environment reset")
                 elif event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_g:
-                    show_grid = not show_grid  # 切换显示栅格
+                elif event.key == pygame.K_g:  # 切换显示栅格
+                    show_grid = not show_grid
+                elif event.key == pygame.K_a:  # A键攻击
+                    if env.robots and len(env.robots) > 1:
+                        # 第一个机器人攻击第二个机器人
+                        killed = env.robots[0].attack(env.robots[1])
+                        if killed:
+                            print("Target destroyed!")
 
         # 更新环境
         env.step(dt)
@@ -58,7 +64,7 @@ def main():
         # 获取环境状态
         env_state = env.get_game_state()
 
-        # 渲染环境，传递 show_grid
+        # 渲染环境
         renderer.render(env_state, env.obstacles, show_grid=show_grid)
 
         # 更新显示

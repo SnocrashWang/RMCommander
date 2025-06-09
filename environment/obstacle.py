@@ -26,5 +26,5 @@ class Obstacle:
         shape.friction = 0.5
         shape.color = env_config.OBSTACLE_COLOR
 
-        physics_engine.add_object(body, shape)
+        physics_engine.add(body, shape)
         self.shape = shape

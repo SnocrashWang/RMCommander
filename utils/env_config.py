@@ -1,3 +1,5 @@
+import pygame
+
 # 仿真配置
 SCALE = 100  # 1米 = 100像素
 FPS = 120
@@ -8,6 +10,14 @@ FIELD_HEIGHT = 8.0
 
 # 中心区域
 CENTER_ZONE_SIZE = 2.0  # 米
+
+# 计算中心区域矩形（像素坐标）
+CENTER_ZONE_RECT = pygame.Rect(
+    (FIELD_WIDTH - CENTER_ZONE_SIZE) * SCALE / 2,  # x
+    (FIELD_HEIGHT - CENTER_ZONE_SIZE) * SCALE / 2,  # y
+    CENTER_ZONE_SIZE * SCALE,  # width
+    CENTER_ZONE_SIZE * SCALE   # height
+)
 
 # 障碍物
 OBSTACLES = [
@@ -23,11 +33,16 @@ OBSTACLES = [
 ]
 
 # 颜色
-BACKGROUND = (40, 44, 52)
-WALL_COLOR = (86, 156, 214)
-OBSTACLE_COLOR = (198, 120, 221)
-CENTER_ZONE_COLOR = (152, 195, 121, 100)  # RGBA
-TEXT_COLOR = (220, 220, 220)
-PROGRESS_BAR_BG = (60, 60, 60)
-PROGRESS_BAR1 = (237, 118, 118)
-PROGRESS_BAR2 = (108, 155, 239)
+BACKGROUND_COLOR = (240, 240, 240)  # 浅灰色背景
+WALL_COLOR = (100, 100, 100)  # 深灰色墙壁
+CENTER_ZONE_COLOR = (200, 255, 200)  # 浅绿色中心区域
+OBSTACLE_COLOR = (150, 150, 150)  # 灰色障碍物
+TEXT_COLOR = (50, 50, 50)  # 深灰色文字
+PROGRESS_BAR_BG = (200, 200, 200)  # 进度条背景色
+PROGRESS_BAR_RED = (255, 100, 100)  # 红队进度条颜色
+PROGRESS_BAR_BLUE = (100, 100, 255)  # 蓝队进度条颜色
+
+# 可移动栅格配置
+GRID_CELL_SIZE = 0.2  # 栅格大小（米）
+GRID_COLOR = (220, 220, 220)  # 栅格线颜色
+GRID_ALPHA = 128  # 栅格透明度（0-255）

@@ -1,6 +1,6 @@
 import pygame
 import pymunk
-import utils.robot_config as robot_config
+from utils import robot_config
 from utils.game_config import GameTeam
 from utils.utils import meters_to_pixels
 from utils.grid_map import a_star
@@ -71,7 +71,7 @@ class Robot:
         if isinstance(center_zone_rect, tuple):
             center_zone_rect = pygame.Rect(*center_zone_rect)
         self.in_center_zone = center_zone_rect.collidepoint(pixel_x, pixel_y)
-    
+
     def get_position(self):
         """获取机器人位置（世界坐标）"""
         return self.body.position.x, self.body.position.y

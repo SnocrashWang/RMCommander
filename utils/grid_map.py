@@ -1,7 +1,7 @@
 import heapq
 import math
 
-import utils.robot_config as robot_config
+from . import robot_config
 
 class GridMap:
     def __init__(self, width, height, cell_size):
@@ -38,9 +38,9 @@ class GridMap:
             start = obs.p1
             end = obs.p2
             thickness = getattr(obs, "thickness", 0.1)
-            self._mark_line_blocked(start, end, thickness, robot_config.TANK_RADIUS)
+            self._mark_line_blocked(start, end, thickness)
 
-    def _mark_line_blocked(self, start, end, thickness, robot_radius):
+    def _mark_line_blocked(self, start, end, thickness):
         x1, y1 = start
         x2, y2 = end
         steps = int(max(abs(x2 - x1), abs(y2 - y1)) / self.cell_size) + 1

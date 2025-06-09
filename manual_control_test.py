@@ -9,15 +9,15 @@ from utils import env_config
 def main():
     # 初始化pygame
     pygame.init()
-    
+
     # 计算屏幕尺寸
     screen_width = int(env_config.FIELD_WIDTH * env_config.SCALE)
     screen_height = int(env_config.FIELD_HEIGHT * env_config.SCALE)
-    
+
     # 创建环境和渲染器
     env = Environment()
     renderer = Renderer(screen_width, screen_height)
-    
+
     # 创建时钟对象
     clock = pygame.time.Clock()
 
@@ -28,7 +28,7 @@ def main():
         frame_start = time.perf_counter()
 
         dt = 1 / env_config.FPS
-        
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -51,16 +51,16 @@ def main():
                     running = False
                 elif event.key == pygame.K_g:
                     show_grid = not show_grid  # 切换显示栅格
-        
+
         # 更新环境
         env.step(dt)
-        
+
         # 获取环境状态
         env_state = env.get_game_state()
-        
+
         # 渲染环境，传递 show_grid
         renderer.render(env_state, env.obstacles, show_grid=show_grid)
-        
+
         # 更新显示
         pygame.display.flip()
 
@@ -69,7 +69,7 @@ def main():
         wait_time = max(0, dt - time_cost)
         if wait_time > 0:
             time.sleep(wait_time)
-    
+
     pygame.quit()
     sys.exit()
 

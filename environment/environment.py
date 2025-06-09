@@ -1,12 +1,13 @@
+from utils.game_config import GameTeam
+from utils import env_config
+from utils import robot_config
+from utils.utils import meters_to_pixels
+from utils.grid_map import GridMap
+
 from .physics import PhysicsEngine
 from .robot import Robot
 from .obstacle import Obstacle
 from .game import GameStateManager
-from utils.game_config import GameTeam
-import utils.env_config as env_config
-import utils.robot_config as robot_config
-from utils.utils import meters_to_pixels
-from utils.grid_map import GridMap
 
 class Environment:
     def __init__(self):
@@ -14,31 +15,31 @@ class Environment:
         self.state_manager = GameStateManager()
         self.robots = []  # 用列表存储所有机器人
         self.obstacles = []
-        
+
         # 中心区域矩形（像素坐标）
         self.center_zone_rect = self._create_center_zone_rect()
-        
+
         self.grid_map = GridMap(
             env_config.FIELD_WIDTH,
             env_config.FIELD_HEIGHT,
             cell_size=0.1  # 可调整
         )
-        
+
         self.setup_environment()
-    
+
     def _create_center_zone_rect(self):
         """创建中心区域矩形"""
         center_x = env_config.FIELD_WIDTH / 2
         center_y = env_config.FIELD_HEIGHT / 2
         size = env_config.CENTER_ZONE_SIZE
-        
+
         return (
             meters_to_pixels(center_x - size/2, env_config.SCALE),
             meters_to_pixels(center_y - size/2, env_config.SCALE),
             meters_to_pixels(size, env_config.SCALE),
             meters_to_pixels(size, env_config.SCALE)
         )
-    
+
     def setup_environment(self):
         """设置环境"""
         self.robots.clear()
@@ -103,7 +104,7 @@ class Environment:
             "remaining_time": self.state_manager.get_remaining_time()
         }
         return state
-    
+
     def is_game_over(self):
         """检查游戏是否结束"""
         return self.state_manager.is_game_over()

@@ -1,8 +1,7 @@
 import pymunk
-import pygame
 import math
 
-import utils.env_config as env_config
+from utils import env_config
 
 class Obstacle:
     def __init__(self, physics_engine, obstacle_config):

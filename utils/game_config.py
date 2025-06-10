@@ -7,12 +7,8 @@ class GameState(Enum):
     BLUE_TEAM_WIN = 3
 
 class GameTeam(Enum):
-    RED = 0
-    BLUE = 1
-
-# class ControlType(Enum):
-#     robot1 = 1
-#     robot2 = 2
+    RED = "RED"
+    BLUE = "BLUE"
 
 GAME_TIME_LIMIT = 300  # 游戏时间限制（秒）
 OCCUPATION_TARGET = 30  # 占领目标进度

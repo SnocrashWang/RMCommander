@@ -7,24 +7,45 @@ from utils import env_config
 from utils.game_config import GameTeam
 from utils.utils import meters_to_pixels
 from utils.grid_map import a_star
+from typing import Tuple, Optional
+from utils.robot_config import ROBOT_COLORS
+from utils.grid_map import GridMap
 
 class Robot:
-    def __init__(self, physics_engine, position, team, radius=robot_config.TANK_RADIUS, env=None):
-        self.radius = radius
+    def __init__(
+        self,
+        physics_engine: pymunk.Space,
+        init_pos: Tuple[float, float],
+        team: GameTeam,
+        hp: int = 200,
+        speed: float = 2.0,
+        rotation_speed: float = 180.0,
+        radius: float = 0.25
+    ):
+        self.physics_engine = physics_engine
         self.team = team
-        self.color = robot_config.RED_COLOR if team == GameTeam.RED else robot_config.BLUE_COLOR
-        self.speed = robot_config.TANK_SPEED
-        self.rotation_speed = robot_config.TANK_ROTATION_SPEED
+        self.hp = hp
+        self.max_hp = hp
+        self.speed = speed
+        self.rotation_speed = rotation_speed
+        self.radius = radius
+        self.color = ROBOT_COLORS[team]
+
+        # 创建物理实体
+        self.body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, radius))
+        self.body.position = init_pos
+
+        self.shape = pymunk.Circle(self.body, radius)
+        self.shape.elasticity = 0.8
+        self.shape.friction = 0.7
+
+        self.physics_engine.add(self.body, self.shape)
+
         self.angle = 0  # 角度（度）
         self.in_center_zone = False
         self.target_pos = None
         self.path_points = []
         self.current_path_idx = 0
-        self.env = env  # 传入环境对象以访问grid_map
-        
-        # 血量设置
-        self.max_hp = robot_config.DEFAULT_HP
-        self.current_hp = self.max_hp
         self.is_alive = True  # 机器人是否存活
 
         # 攻击相关
@@ -32,16 +53,8 @@ class Robot:
         self.attack_start_time = 0  # 攻击开始时间
         self.attack_duration = 0.2  # 攻击持续时间（秒）
 
-        # 创建物理体
-        self.body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, radius))
-        self.body.position = position
-        self.shape = pymunk.Circle(self.body, radius)
-        self.shape.elasticity = 0.5 # 弹性系数
-        self.shape.friction = 0.5 # 摩擦系数
-        self.shape.collision_type = 1  # 设置碰撞类型
-
-        # 添加到物理引擎
-        physics_engine.add(self.body, self.shape)
+        # GridMap相关
+        self.grid_map = None
 
     def destroy(self, physics_engine):
         """销毁物理体"""
@@ -52,20 +65,21 @@ class Robot:
         return self.body.position.x, self.body.position.y
 
     def set_target(self, target_pos):
-        """设置目标位置"""
+        """设置目标位置并计算路径"""
         self.target_pos = target_pos
-        if self.env is None or not hasattr(self.env, "grid_map"):
+        print(self.target_pos)
+        if self.grid_map is None:
             self.path_points = [target_pos]
             self.current_path_idx = 0
             return
-            
+
         # 使用A*算法规划路径
-        start_grid = self.env.grid_map.world_to_grid(self.get_position())
-        goal_grid = self.env.grid_map.world_to_grid(target_pos)
-        path_grids = a_star(self.env.grid_map, start_grid, goal_grid)
+        start_grid = self.grid_map.world_to_grid(self.get_position())
+        goal_grid = self.grid_map.world_to_grid(target_pos)
+        path_grids = a_star(self.grid_map, start_grid, goal_grid)
         
         # 将栅格坐标转换回世界坐标
-        self.path_points = [self.env.grid_map.grid_to_world(gp) for gp in path_grids]
+        self.path_points = [self.grid_map.grid_to_world(gp[0], gp[1]) for gp in path_grids[1:]]
         self.current_path_idx = 0
 
     def update(self, center_zone_rect, scale):
@@ -79,6 +93,7 @@ class Robot:
         if self.is_attacking and time.time() - self.attack_start_time >= self.attack_duration:
             self.is_attacking = False
 
+        # 沿路径移动
         if self.path_points and self.current_path_idx < len(self.path_points):
             next_point = self.path_points[self.current_path_idx]
             current_pos = pygame.math.Vector2(self.body.position)
@@ -154,16 +169,20 @@ class Robot:
         if not self.is_alive:
             return False
             
-        self.current_hp = max(0, self.current_hp - damage)
-        if self.current_hp <= 0:
+        self.hp = max(0, self.hp - damage)
+        if self.hp <= 0:
             self.is_alive = False
             return True
         return False
 
     def heal(self, amount):
         """恢复血量"""
-        self.current_hp = min(self.max_hp, self.current_hp + amount)
+        self.hp = min(self.max_hp, self.hp + amount)
 
     def get_hp_percentage(self):
         """获取血量百分比"""
-        return self.current_hp / self.max_hp if self.is_alive else 0
+        return self.hp / self.max_hp if self.is_alive else 0
+
+    def set_grid_map(self, grid_map: GridMap):
+        """设置机器人的网格地图"""
+        self.grid_map = grid_map

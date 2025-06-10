@@ -4,6 +4,8 @@ from utils import robot_config
 from utils.utils import meters_to_pixels
 from utils.grid_map import GridMap
 import pymunk
+from typing import List, Dict, Optional
+from utils.robot_config import RobotConfig, DEFAULT_ROBOT_CONFIGS
 
 from .physics import PhysicsEngine
 from .robot import Robot
@@ -11,45 +13,72 @@ from .obstacle import Obstacle
 from .game import GameStateManager
 
 class Environment:
-    def __init__(self):
+    def __init__(self, robot_configs: Optional[Dict[str, RobotConfig]] = None):
         # 创建物理引擎
         self.physics_engine = pymunk.Space()
         self.physics_engine.gravity = (0, 0)  # 无重力
 
-        # 创建机器人
-        self.robots = []
-        self._create_robots()
-
-        # 创建墙壁
-        self._create_walls()
+        # 创建中心区域
+        self.center_zone_rect = env_config.CENTER_ZONE_RECT
 
         # 创建障碍物
         self.obstacles = []
         self._create_obstacles()
 
-        # 创建中心区域
-        self.center_zone_rect = env_config.CENTER_ZONE_RECT
+        # # 创建栅格地图
+        # self.grid_map = GridMap(
+        #     env_config.FIELD_WIDTH,
+        #     env_config.FIELD_HEIGHT,
+        #     env_config.GRID_CELL_SIZE
+        # )
+        # self.grid_map.mark_obstacles(self.obstacles)
+
+        # 创建机器人
+        self.robots: List[Robot] = []
+        self.robot_configs = robot_configs or DEFAULT_ROBOT_CONFIGS
+        self._create_robots()
+        
+        # 为每个机器人创建网格地图
+        self._init_robot_grid_maps()
 
         # 创建游戏状态管理器
         self.game_state_manager = GameStateManager()
 
-        # 创建栅格地图
-        self.grid_map = GridMap(
-            env_config.FIELD_WIDTH,
-            env_config.FIELD_HEIGHT,
-            env_config.GRID_CELL_SIZE
-        )
-        self.grid_map.mark_obstacles(self.obstacles)
-
     def _create_robots(self):
-        pos1 = robot_config.ROBOT1_INIT_POS
-        pos2 = robot_config.ROBOT2_INIT_POS
-        self.robots.append(Robot(self.physics_engine, pos1, team=GameTeam.RED, env=self))
-        self.robots.append(Robot(self.physics_engine, pos2, team=GameTeam.BLUE, env=self))
+        """根据配置创建机器人"""
+        for robot_id, config in self.robot_configs.items():
+            robot = Robot(
+                self.physics_engine,
+                config.init_pos,
+                team=config.team,
+                hp=config.hp,
+                speed=config.speed,
+                rotation_speed=config.rotation_speed,
+                radius=config.radius
+            )
+            self.robots.append(robot)
 
-    def _create_walls(self):
-        # Implementation of _create_walls method
-        pass
+    def _init_robot_grid_maps(self):
+        """初始化所有机器人的网格地图"""
+        for robot in self.robots:
+            grid_map = GridMap(
+                width=env_config.FIELD_WIDTH,  # 场地宽度
+                height=env_config.FIELD_HEIGHT,  # 场地高度
+                cell_size=env_config.GRID_CELL_SIZE,  # 网格大小
+                robot_radius=robot.radius
+            )
+            # 标记所有障碍物
+            grid_map.mark_obstacles(self.obstacles)
+            # 设置机器人的网格地图
+            robot.set_grid_map(grid_map)
+
+    # def update_robot_grid_maps(self):
+    #     """更新所有机器人的网格地图"""
+    #     for robot in self.robots:
+    #         if robot.grid_map:
+    #             robot.grid_map.clear()
+    #             # 标记所有障碍物
+    #             robot.grid_map.mark_obstacles(self.obstacles)
 
     def _create_obstacles(self):
         for obstacle_config in env_config.OBSTACLES:
@@ -91,9 +120,7 @@ class Environment:
 
         # 更新游戏状态
         self.game_state_manager.update(robots_in_zone, dt)
-        
-        # 更新网格地图
-        self.grid_map.mark_obstacles(self.obstacles)
+
 
     def get_game_state(self):
         """获取当前游戏状态"""
@@ -101,7 +128,7 @@ class Environment:
             "state": self.game_state_manager.state,
             "remaining_time": self.game_state_manager.get_remaining_time(),
             "center_zone_progress": self.game_state_manager.center_zone_progress.copy(),
-            "grid_map": self.grid_map,
+            "grid_map": self.robots[0].grid_map if self.robots else None,  # 使用第一个机器人的地图
             "robots": self.robots,
         }
         return state

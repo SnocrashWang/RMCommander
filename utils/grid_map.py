@@ -1,37 +1,37 @@
 import heapq
 import math
 
-from . import robot_config
-
 class GridMap:
-    def __init__(self, width, height, cell_size):
-        self.width = width
-        self.height = height
+    def __init__(self, width, height, cell_size, robot_radius):
         self.cell_size = cell_size
-        self.cols = int(math.ceil(width / cell_size))
-        self.rows = int(math.ceil(height / cell_size))
-        self.grid = [[0 for _ in range(self.cols)] for _ in range(self.rows)]
+        self.robot_radius = robot_radius
+        self.grid_cols = int(width / cell_size)
+        self.grid_rows = int(height / cell_size)
+        self.grid_blocked = [[False for _ in range(self.grid_rows)] for _ in range(self.grid_cols)]
 
     def world_to_grid(self, pos):
+        """世界坐标转换为网格坐标"""
         x, y = pos
         col = int(x / self.cell_size)
         row = int(y / self.cell_size)
-        return (col, row)
+        return col, row
 
-    def grid_to_world(self, grid_pos):
-        col, row = grid_pos
-        x = (col + 0.5) * self.cell_size
-        y = (row + 0.5) * self.cell_size
-        return (x, y)
+    def grid_to_world(self, col, row):
+        """网格坐标转换为世界坐标"""
+        x = col * self.cell_size
+        y = row * self.cell_size
+        return x, y
 
     def set_blocked(self, col, row):
-        if 0 <= row < self.rows and 0 <= col < self.cols:
-            self.grid[row][col] = 1
+        if 0 <= row < self.grid_rows and 0 <= col < self.grid_cols:
+            self.grid_blocked[col][row] = True
 
     def is_blocked(self, col, row):
-        if 0 <= row < self.rows and 0 <= col < self.cols:
-            return self.grid[row][col] == 1
-        return True  # 越界视为阻挡
+        """检查指定位置是否被阻塞"""
+        if 0 <= col < self.grid_cols and 0 <= row < self.grid_rows:
+            return self.grid_blocked[col][row]
+        else:
+            raise ValueError(f"Invalid grid coordinates: ({col}, {row})")
 
     def mark_obstacles(self, obstacles):
         for obs in obstacles:
@@ -41,18 +41,26 @@ class GridMap:
             self._mark_line_blocked(start, end, thickness)
 
     def _mark_line_blocked(self, start, end, thickness):
+        """标记线段为阻塞"""
         x1, y1 = start
         x2, y2 = end
         steps = int(max(abs(x2 - x1), abs(y2 - y1)) / self.cell_size) + 1
+        
+        # 影响半径 = 墙体半厚度 + 机器人半径
+        block_radius = int(math.ceil((thickness / 2 + self.robot_radius) / self.cell_size))
+        
         for i in range(steps + 1):
             x = x1 + (x2 - x1) * i / steps
             y = y1 + (y2 - y1) * i / steps
             col, row = self.world_to_grid((x, y))
-            # 影响半径 = 墙体半厚度 + robot半径
-            block_radius = int(math.ceil((thickness / 2 + robot_config.TANK_RADIUS) / self.cell_size))
+            
             for dx in range(-block_radius, block_radius + 1):
                 for dy in range(-block_radius, block_radius + 1):
                     self.set_blocked(col + dx, row + dy)
+
+    def clear(self):
+        """清空地图"""
+        self.grid_blocked = [[False for _ in range(self.grid_rows)] for _ in range(self.grid_cols)]
 
 def a_star(grid_map, start, goal):
     """A*算法，返回网格路径"""

@@ -101,7 +101,7 @@ class Renderer:
         position = robot.get_position()
         x = meters_to_pixels(position[0], env_config.SCALE)
         y = meters_to_pixels(position[1], env_config.SCALE)
-        radius = meters_to_pixels(robot_config.TANK_RADIUS, env_config.SCALE)
+        radius = meters_to_pixels(robot.radius, env_config.SCALE)
 
         # 绘制机器人主体
         pygame.draw.circle(self.screen, robot.color, (x, y), radius)
@@ -237,12 +237,12 @@ class Renderer:
     def _draw_grid(self, grid_map):
         """绘制可移动栅格"""
         # 检查栅格状态是否改变
-        current_state = (grid_map.rows, grid_map.cols, grid_map.cell_size)
+        current_state = (grid_map.grid_cols, grid_map.grid_rows, grid_map.cell_size)
         if self.last_grid_state == current_state:
             # 如果状态没变，直接使用缓存的surface
             self.screen.blit(self.grid_surface, (0, 0))
             return
-            
+
         # 更新缓存状态
         self.last_grid_state = current_state
         
@@ -253,13 +253,14 @@ class Renderer:
         cell_size_px = int(grid_map.cell_size * env_config.SCALE)
         
         # 绘制所有可移动栅格
-        for row in range(grid_map.rows):
-            for col in range(grid_map.cols):
+        for col in range(grid_map.grid_cols):
+            for row in range(grid_map.grid_rows):
                 if not grid_map.is_blocked(col, row):
                     x = int(col * grid_map.cell_size * env_config.SCALE)
                     y = int(row * grid_map.cell_size * env_config.SCALE)
                     pygame.draw.rect(self.grid_surface, env_config.GRID_COLOR, 
                                    (x, y, cell_size_px, cell_size_px), 1)
+
         
         # 将栅格绘制到主屏幕
         self.screen.blit(self.grid_surface, (0, 0))

@@ -2,34 +2,58 @@ import pygame
 import pymunk
 import math
 import time
-from utils import robot_config
-from utils import env_config
-from utils.game_config import GameTeam
+from typing import Tuple
+from utils.exp_prop_config import *
+from utils.robot_config import RobotID
+from utils.game_config import GameTeam, HEAT_PER_17, DAMAGE_PER_17
+from utils.grid_map import GridMap, a_star
 from utils.utils import meters_to_pixels
-from utils.grid_map import a_star
-from typing import Tuple, Optional
-from utils.robot_config import ROBOT_COLORS
-from utils.grid_map import GridMap
 
 class Robot:
     def __init__(
         self,
         physics_engine: pymunk.Space,
-        init_pos: Tuple[float, float],
+        id: str,
         team: GameTeam,
-        hp: int = 200,
-        speed: float = 2.0,
-        rotation_speed: float = 180.0,
-        radius: float = 0.25
+        init_pos: Tuple[float, float],
+        chassis_property_type: CHASSIS_PROPERTY_TYPE,
+        gimbal_property_type: GIMBAL_PROPERTY_TYPE,
+        forward_speed_efficiency: float,
+        rotation_speed_efficiency: float,
+        radius: float
     ):
+        # 全局属性
         self.physics_engine = physics_engine
+        self.id = id
         self.team = team
-        self.hp = hp
-        self.max_hp = hp
-        self.speed = speed
-        self.rotation_speed = rotation_speed
+
+        # 规则性能
+        self.level = 1
+        self.exp = 0
+
+        # 英雄
+        if self.id in [RobotID.RED_1, RobotID.BLUE_1]:
+            self.chassis_property = CHASSIS_PROPERTY_HERO[chassis_property_type]
+            self.gimbal_property = GIMBAL_PROPERTY_42[gimbal_property_type]
+        # 步兵
+        elif self.id in [RobotID.RED_3, RobotID.BLUE_3, RobotID.RED_4, RobotID.BLUE_4, RobotID.RED_5, RobotID.BLUE_5]:
+            self.chassis_property = CHASSIS_PROPERTY_STANDARD[chassis_property_type]
+            self.gimbal_property = GIMBAL_PROPERTY_17[gimbal_property_type]
+        # 哨兵
+        elif self.id in [RobotID.RED_7, RobotID.BLUE_7]:
+            self.level = 10
+            self.chassis_property = CHASSIS_PROPERTY_STANDARD[chassis_property_type]
+            self.gimbal_property = GIMBAL_PROPERTY_17[gimbal_property_type]
+
+        # 更新性能
+        self.update_property()
+        self.hp = self.max_hp
+        self.heat = 0
+        
+        # 物理属性
         self.radius = radius
-        self.color = ROBOT_COLORS[team]
+        self.forward_speed = self.power * forward_speed_efficiency
+        self.rotation_speed = self.power * rotation_speed_efficiency
 
         # 创建物理实体
         self.body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, radius))
@@ -42,19 +66,35 @@ class Robot:
         self.physics_engine.add(self.body, self.shape)
 
         self.angle = 0  # 角度（度）
-        self.in_center_zone = False
         self.target_pos = None
         self.path_points = []
         self.current_path_idx = 0
         self.is_alive = True  # 机器人是否存活
 
         # 攻击相关
-        self.is_attacking = False  # 是否正在攻击
-        self.attack_start_time = 0  # 攻击开始时间
-        self.attack_duration = 0.2  # 攻击持续时间（秒）
+        self.attack_target = None  # 攻击目标
+        self.last_attack_time = 0  # 上次攻击的时间（秒）
+        self.last_in_combat_time = 0  # 上次进入战斗的时间（秒）
 
         # GridMap相关
         self.grid_map = None
+
+    def update_exp(self, exp):
+        """更新经验"""
+        self.exp += exp
+        # 升级
+        if self.exp >= LEVEL_NEED_EXP[self.level + 1]:
+            self.level += 1
+            max_hp_before_upgrade = self.max_hp
+            self.update_property()
+            self.heal(self.max_hp / max_hp_before_upgrade * self.hp - self.hp)
+
+    def update_property(self):
+        """更新机器人属性"""
+        self.max_hp = self.chassis_property[self.level]["HP"]
+        self.power = self.chassis_property[self.level]["POWER"]
+        self.max_heat = self.gimbal_property[self.level]["HEAT"]
+        self.cool_down = self.gimbal_property[self.level]["COOL_DOWN"]
 
     def destroy(self, physics_engine):
         """销毁物理体"""
@@ -67,7 +107,6 @@ class Robot:
     def set_target(self, target_pos):
         """设置目标位置并计算路径"""
         self.target_pos = target_pos
-        print(self.target_pos)
         if self.grid_map is None:
             self.path_points = [target_pos]
             self.current_path_idx = 0
@@ -82,16 +121,11 @@ class Robot:
         self.path_points = [self.grid_map.grid_to_world(gp[0], gp[1]) for gp in path_grids[1:]]
         self.current_path_idx = 0
 
-    def update(self, center_zone_rect, scale):
+    def step(self, dt):
         """沿路径点导航"""
         if not self.is_alive:
             self.body.velocity = (0, 0)
-            self.in_center_zone = False
             return
-
-        # 检查攻击持续时间
-        if self.is_attacking and time.time() - self.attack_start_time >= self.attack_duration:
-            self.is_attacking = False
 
         # 沿路径移动
         if self.path_points and self.current_path_idx < len(self.path_points):
@@ -101,87 +135,89 @@ class Robot:
             if direction.length() < 0.05:
                 self.current_path_idx += 1
             else:
-                direction = direction.normalize() * self.speed
+                direction = direction.normalize() * self.forward_speed
                 self.body.velocity = (direction.x, direction.y)
         else:
             self.body.velocity = (0, 0)
             self.target_pos = None
 
-        # 检查是否在中心区域
-        pos = self.body.position
-        pixel_x = meters_to_pixels(pos.x, scale)
-        pixel_y = meters_to_pixels(pos.y, scale)
-        if isinstance(center_zone_rect, tuple):
-            center_zone_rect = pygame.Rect(*center_zone_rect)
-        self.in_center_zone = center_zone_rect.collidepoint(pixel_x, pixel_y)
+        # 结算热量冷却
+        self.heat = max(0, self.heat - self.cool_down * dt)
 
-    def attack(self, target_robot):
+        # 结算脱战状态
+        if time.time() - self.last_in_combat_time > 6:
+            self.attack_target = None
+
+    def attack(self, target_robot, num=1):
         """攻击目标机器人
         Args:
             target_robot: 目标机器人对象
-        Returns:
-            bool: 目标是否被击毁
+            num: 攻击次数
         """
         if not self.is_alive or not target_robot.is_alive:
-            return False
-            
+            return
+        # 刷新战斗状态
+        self.attack_target = target_robot
+        self.last_attack_time = time.time()
+        self.last_in_combat_time = time.time()
+
         # 计算攻击角度
-        target_pos = target_robot.get_position()
+        target_pos = self.attack_target.get_position()
         current_pos = self.get_position()
         dx = target_pos[0] - current_pos[0]
         dy = target_pos[1] - current_pos[1]
-        target_angle = math.degrees(math.atan2(dy, dx))
-        
-        # 设置炮台角度
-        self.angle = target_angle
-        
-        # 设置攻击标记和时间
-        self.is_attacking = True
-        self.attack_start_time = time.time()
-        
-        # 造成伤害
-        return target_robot.take_damage(10)  # 每次攻击造成10点伤害
+        self.angle = math.degrees(math.atan2(dy, dx))
 
-    def get_attack_line(self, target_robot):
+        # 计算可以攻击的次数
+        num = int(min(num, (self.max_heat - self.heat) // HEAT_PER_17))
+        # 造成伤害
+        damage = self.attack_target.take_damage(DAMAGE_PER_17, num)
+        # 增加热量
+        self.heat += HEAT_PER_17 * num
+        # 结算经验
+        self.update_exp(1 * num) # 每发射1次增加1点经验
+        self.update_exp(damage * 4) # 每造成1点伤害增加4点经验
+        if not self.attack_target.is_alive:
+            # 击杀经验
+            # TODO: 经验分享
+            kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - self.level)))
+            self.update_exp(kill_exp)
+
+    def get_attack_line(self):
         """获取攻击线段的起点和终点
-        Args:
-            target_robot: 目标机器人对象
         Returns:
             tuple: (起点, 终点) 或 None（如果无法攻击）
         """
-        if not self.is_alive or not target_robot.is_alive:
+        if not self.is_alive or not self.attack_target or not self.attack_target.is_alive:
             return None
-            
-        # 检查攻击持续时间
-        if self.is_attacking and time.time() - self.attack_start_time < self.attack_duration:
-            return (self.get_position(), target_robot.get_position())
-        else:
-            self.is_attacking = False
+        if time.time() - self.last_attack_time > 0.2:
             return None
+        return (self.get_position(), self.attack_target.get_position())
 
-    def take_damage(self, damage):
+    def take_damage(self, base_damage, num) -> int:
         """受到伤害
         Args:
-            damage: 伤害值
+            base_damage: 基础伤害值
+            num: 攻击次数
         Returns:
-            bool: 是否被击毁
+            int: 实际受到的伤害值
         """
         if not self.is_alive:
             return False
-            
-        self.hp = max(0, self.hp - damage)
+
+        # 受击刷新战斗状态
+        self.last_in_combat_time = time.time()
+
+        # TODO: 考虑命中
+        damage = min(base_damage * num, self.hp)
+        self.hp = self.hp - damage
         if self.hp <= 0:
             self.is_alive = False
-            return True
-        return False
+        return damage
 
     def heal(self, amount):
         """恢复血量"""
         self.hp = min(self.max_hp, self.hp + amount)
-
-    def get_hp_percentage(self):
-        """获取血量百分比"""
-        return self.hp / self.max_hp if self.is_alive else 0
 
     def set_grid_map(self, grid_map: GridMap):
         """设置机器人的网格地图"""

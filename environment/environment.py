@@ -1,16 +1,16 @@
-from utils.game_config import GameTeam
-from utils import env_config
-from utils import robot_config
-from utils.utils import meters_to_pixels
-from utils.grid_map import GridMap
 import pymunk
+import time
 from typing import List, Dict, Optional
-from utils.robot_config import RobotConfig, DEFAULT_ROBOT_CONFIGS
 
-from .physics import PhysicsEngine
+from utils import env_config
+from utils.game_config import GameTeam
+from utils.grid_map import GridMap
+from utils.robot_config import RobotConfig, DEFAULT_ROBOT_CONFIGS
+from utils.utils import meters_to_pixels
+
 from .robot import Robot
 from .obstacle import Obstacle
-from .game import GameStateManager
+from .game import RMULGameStateManager
 
 class Environment:
     def __init__(self, robot_configs: Optional[Dict[str, RobotConfig]] = None):
@@ -25,14 +25,6 @@ class Environment:
         self.obstacles = []
         self._create_obstacles()
 
-        # # 创建栅格地图
-        # self.grid_map = GridMap(
-        #     env_config.FIELD_WIDTH,
-        #     env_config.FIELD_HEIGHT,
-        #     env_config.GRID_CELL_SIZE
-        # )
-        # self.grid_map.mark_obstacles(self.obstacles)
-
         # 创建机器人
         self.robots: List[Robot] = []
         self.robot_configs = robot_configs or DEFAULT_ROBOT_CONFIGS
@@ -42,18 +34,20 @@ class Environment:
         self._init_robot_grid_maps()
 
         # 创建游戏状态管理器
-        self.game_state_manager = GameStateManager()
+        self.game_state_manager = RMULGameStateManager()
 
     def _create_robots(self):
         """根据配置创建机器人"""
         for robot_id, config in self.robot_configs.items():
             robot = Robot(
                 self.physics_engine,
-                config.init_pos,
+                id=robot_id,
                 team=config.team,
-                hp=config.hp,
-                speed=config.speed,
-                rotation_speed=config.rotation_speed,
+                init_pos=config.init_pos,
+                chassis_property_type=config.chassis_property_type,
+                gimbal_property_type=config.gimbal_property_type,
+                forward_speed_efficiency=config.forward_speed_efficiency,
+                rotation_speed_efficiency=config.rotation_speed_efficiency,
                 radius=config.radius
             )
             self.robots.append(robot)
@@ -110,13 +104,18 @@ class Environment:
 
         # 更新机器人状态
         for robot in self.robots:
-            robot.update(self.center_zone_rect, env_config.SCALE)
+            robot.step(dt)
 
         # 检查中心区域占领情况
         robots_in_zone = {GameTeam.RED: False, GameTeam.BLUE: False}
         for robot in self.robots:
-            if robot.in_center_zone and robot.is_alive:
-                robots_in_zone[robot.team] = True
+            if robot.is_alive:
+                # 检查是否在中心区域
+                pos = robot.body.position
+                pixel_x = meters_to_pixels(pos.x, env_config.SCALE)
+                pixel_y = meters_to_pixels(pos.y, env_config.SCALE)
+                if self.center_zone_rect.collidepoint(pixel_x, pixel_y):
+                    robots_in_zone[robot.team] = True
 
         # 更新游戏状态
         self.game_state_manager.update(robots_in_zone, dt)
@@ -125,14 +124,7 @@ class Environment:
     def get_game_state(self):
         """获取当前游戏状态"""
         state = {
-            "state": self.game_state_manager.state,
-            "remaining_time": self.game_state_manager.get_remaining_time(),
-            "center_zone_progress": self.game_state_manager.center_zone_progress.copy(),
-            "grid_map": self.robots[0].grid_map if self.robots else None,  # 使用第一个机器人的地图
+            "game_state": self.game_state_manager,
             "robots": self.robots,
         }
         return state
-
-    def is_game_over(self):
-        """检查游戏是否结束"""
-        return self.game_state_manager.is_game_over()

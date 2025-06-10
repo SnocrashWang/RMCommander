@@ -1,6 +1,7 @@
-from utils.game_config import GameState, GameTeam, GAME_TIME_LIMIT, OCCUPATION_TARGET
+from utils.game_config import GameState, GameTeam
+from utils.env_config import GAME_TIME_LIMIT, OCCUPATION_TARGET
 
-class GameStateManager:
+class RMULGameStateManager:
     def __init__(self):
         self.state = GameState.PLAYING
         self.center_zone_progress = {GameTeam.RED: 0, GameTeam.BLUE: 0}  # 红蓝队的进度
@@ -51,10 +52,6 @@ class GameStateManager:
         self.state = GameState.PLAYING
         self.center_zone_progress = {GameTeam.RED: 0, GameTeam.BLUE: 0}
         self.remaining_time = self.total_time
-
-    def is_game_over(self):
-        """检查游戏是否结束"""
-        return self.state != GameState.PLAYING
 
     def get_remaining_time(self):
         return int(self.remaining_time)

@@ -24,7 +24,6 @@ class Obstacle:
         shape = pymunk.Segment(body, self.p1, self.p2, self.thickness)
         shape.elasticity = 0.8
         shape.friction = 0.5
-        shape.color = env_config.OBSTACLE_COLOR
 
         physics_engine.add(body, shape)
         self.shape = shape

@@ -54,9 +54,7 @@ def main():
                 elif event.key == pygame.K_a:  # A键攻击
                     if env.robots and len(env.robots) > 1:
                         # 第一个机器人攻击第二个机器人
-                        killed = env.robots[0].attack(env.robots[1])
-                        if killed:
-                            print("Target destroyed!")
+                        env.robots[0].attack(env.robots[1], 1)
 
         # 更新环境
         env.step(dt)

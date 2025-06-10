@@ -21,9 +21,27 @@ class Obstacle:
 
         # 创建物理体
         body = pymunk.Body(body_type=pymunk.Body.STATIC)
-        shape = pymunk.Segment(body, self.p1, self.p2, self.thickness)
+        body.position = self.center
+
+        # 计算矩形的四个顶点（相对于中心点）
+        half_length = self.length / 2
+        half_thickness = self.thickness / 2
+        
+        # 计算矩形的四个顶点（相对于中心点）
+        vertices = [
+            (-half_length, -half_thickness),  # 左下
+            (half_length, -half_thickness),   # 右下
+            (half_length, half_thickness),    # 右上
+            (-half_length, half_thickness)    # 左上
+        ]
+        
+        # 创建多边形形状
+        shape = pymunk.Poly(body, vertices)
         shape.elasticity = 0.8
         shape.friction = 0.5
+
+        # 设置旋转角度
+        body.angle = self.angle
 
         physics_engine.add(body, shape)
         self.shape = shape

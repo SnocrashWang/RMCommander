@@ -1,5 +1,6 @@
 import heapq
 import math
+from typing import Tuple
 from utils.utils import point_in_polygon, point_to_line_segment_distance
 
 class GridMap:
@@ -13,14 +14,14 @@ class GridMap:
     def world_to_grid(self, pos):
         """世界坐标转换为网格坐标"""
         x, y = pos
-        col = int(x / self.cell_size)
-        row = int(y / self.cell_size)
+        col = int(x / self.cell_size - 0.5)
+        row = int(y / self.cell_size - 0.5)
         return col, row
 
     def grid_to_world(self, col, row):
         """网格坐标转换为世界坐标"""
-        x = col * self.cell_size
-        y = row * self.cell_size
+        x = (col + 0.5) * self.cell_size
+        y = (row + 0.5) * self.cell_size
         return x, y
 
     def set_blocked(self, col, row):
@@ -175,7 +176,7 @@ class GridMap:
         """清空地图"""
         self.grid_blocked = [[False for _ in range(self.grid_rows)] for _ in range(self.grid_cols)]
 
-def a_star(grid_map, start, goal):
+def a_star(grid_map, start: Tuple[int, int], goal: Tuple[int, int]):
     """A*算法，返回网格路径"""
     open_set = []
     heapq.heappush(open_set, (0, start))
@@ -209,4 +210,5 @@ def reconstruct_path(came_from, current):
         current = came_from[current]
         path.append(current)
     path.reverse()
+    # print(path)
     return path

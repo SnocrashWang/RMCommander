@@ -269,11 +269,13 @@ class Renderer:
     def _draw_path(self, robot):
         """绘制路径"""
         point1 = robot.get_position()
+        # point1 = (point1[0] - env_config.GRID_CELL_SIZE/2, point1[1] - env_config.GRID_CELL_SIZE/2)
         for i in range(robot.current_path_idx, len(robot.path_points) - 1):
             point2 = robot.path_points[i]
-            x1 = int(point1[0] * env_config.SCALE)
-            y1 = int(point1[1] * env_config.SCALE)
-            x2 = int(point2[0] * env_config.SCALE)
-            y2 = int(point2[1] * env_config.SCALE)
+            # 将世界坐标转换为像素坐标，并加上半个栅格的大小使其居中
+            x1 = int((point1[0]) * env_config.SCALE)
+            y1 = int((point1[1]) * env_config.SCALE)
+            x2 = int((point2[0]) * env_config.SCALE)
+            y2 = int((point2[1]) * env_config.SCALE)
             pygame.draw.line(self.screen, (0, 120, 120), (x1, y1), (x2, y2), 2)
             point1 = point2

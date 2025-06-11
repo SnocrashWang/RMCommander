@@ -1,7 +1,8 @@
-from utils.game_config import GameState, GameTeam
-from utils.env_config import GAME_TIME_LIMIT, OCCUPATION_TARGET
+from base_game.game import GameStateManager
+from utils.config.game_config import GameState, GameTeam
+from base_game.config.env_config import GAME_TIME_LIMIT, OCCUPATION_TARGET
 
-class RMULGameStateManager:
+class GameStateManager(GameStateManager):
     def __init__(self):
         self.state = GameState.PLAYING
         self.center_zone_progress = {GameTeam.RED: 0, GameTeam.BLUE: 0}  # 红蓝队的进度

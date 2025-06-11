@@ -2,21 +2,20 @@ import pygame
 import sys
 import time
 
-from environment.environment import Environment
+from base_game.environment import Environment
+from RMUL.environment import EnvironmentRL
 from visualization.renderer import Renderer
-from utils import env_config
+from base_game.config import env_config as base_env_config
+from visualization.config import render_config
 
 def main():
     # 初始化pygame
     pygame.init()
 
-    # 计算屏幕尺寸
-    screen_width = int(env_config.FIELD_WIDTH * env_config.SCALE)
-    screen_height = int(env_config.FIELD_HEIGHT * env_config.SCALE)
-
     # 创建环境和渲染器
     env = Environment()
-    renderer = Renderer(screen_width, screen_height)
+    # env = EnvironmentRL()
+    renderer = Renderer(base_env_config)
 
     # 创建时钟对象
     clock = pygame.time.Clock()
@@ -27,7 +26,7 @@ def main():
     while running:
         frame_start = time.perf_counter()
 
-        dt = 1 / env_config.FPS
+        dt = env.dt
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -37,10 +36,10 @@ def main():
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = pygame.mouse.get_pos()  # 屏幕坐标
                 # 转换为世界坐标
-                world_x = mouse_pos[0] / env_config.SCALE
-                world_y = mouse_pos[1] / env_config.SCALE
+                world_x = mouse_pos[0] / render_config.SCALE
+                world_y = mouse_pos[1] / render_config.SCALE
                 if env.robots:  # 兼容机器人列表
-                    env.robots[0].set_target((world_x, world_y))
+                    env.robots["RED_3_STANDARD"].set_target((world_x, world_y))
 
             # 按键事件
             elif event.type == pygame.KEYDOWN:
@@ -54,7 +53,7 @@ def main():
                 elif event.key == pygame.K_a:  # A键攻击
                     if env.robots and len(env.robots) > 1:
                         # 第一个机器人攻击第二个机器人
-                        env.robots[0].attack(env.robots[1], 1)
+                        env.robots["RED_3_STANDARD"].attack(env.robots["BLUE_3_STANDARD"], 1)
 
         # 更新环境
         env.step(dt)
@@ -63,7 +62,7 @@ def main():
         env_state = env.get_game_state()
 
         # 渲染环境
-        renderer.render(env_state, env.obstacles, show_grid=show_grid)
+        renderer.render(env_state, show_grid=show_grid)
 
         # 更新显示
         pygame.display.flip()

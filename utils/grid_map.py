@@ -3,12 +3,14 @@ import math
 from typing import Tuple
 from utils.utils import point_in_polygon, point_to_line_segment_distance
 
+GRID_CELL_SIZE = 0.1  # 栅格大小（米）
+
 class GridMap:
-    def __init__(self, width, height, cell_size, robot_radius):
-        self.cell_size = cell_size
+    def __init__(self, width, height, robot_radius):
+        self.cell_size = GRID_CELL_SIZE
         self.robot_radius = robot_radius
-        self.grid_cols = int(width / cell_size)
-        self.grid_rows = int(height / cell_size)
+        self.grid_cols = int(width / self.cell_size)
+        self.grid_rows = int(height / self.cell_size)
         self.grid_blocked = [[False for _ in range(self.grid_rows)] for _ in range(self.grid_cols)]
 
     def world_to_grid(self, pos):
@@ -38,10 +40,6 @@ class GridMap:
     def mark_obstacles(self, obstacles):
         for obs in obstacles:
             self._mark_obstacle_blocked(obs)
-            # start = obs.p1
-            # end = obs.p2
-            # thickness = getattr(obs, "thickness", 0.1)
-            # self._mark_line_blocked(start, end, thickness)
 
     def _mark_line_blocked(self, start, end, thickness):
         """标记线段为阻塞

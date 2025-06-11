@@ -3,9 +3,9 @@ import pymunk
 import math
 import time
 from typing import Tuple
-from utils.exp_prop_config import *
-from utils.robot_config import RobotID
-from utils.game_config import GameTeam, HEAT_PER_17, DAMAGE_PER_17
+from utils.config.exp_prop_config import *
+from utils.config.robot_config import ROBOT_ID, RobotType
+from utils.config.game_config import GameTeam, HEAT_PER_17, DAMAGE_PER_17
 from utils.grid_map import GridMap, a_star
 from utils.utils import meters_to_pixels
 
@@ -13,8 +13,8 @@ class Robot:
     def __init__(
         self,
         physics_engine: pymunk.Space,
-        id: str,
         team: GameTeam,
+        robot_type: RobotType,
         init_pos: Tuple[float, float],
         chassis_property_type: CHASSIS_PROPERTY_TYPE,
         gimbal_property_type: GIMBAL_PROPERTY_TYPE,
@@ -24,26 +24,28 @@ class Robot:
     ):
         # 全局属性
         self.physics_engine = physics_engine
-        self.id = id
         self.team = team
+        self.robot_type = robot_type
+        self.id = ROBOT_ID[team][robot_type]
 
         # 规则性能
         self.level = 1
         self.exp = 0
 
         # 英雄
-        if self.id in [RobotID.RED_1, RobotID.BLUE_1]:
+        if self.robot_type == RobotType.HERO:
             self.chassis_property = CHASSIS_PROPERTY_HERO[chassis_property_type]
-            self.gimbal_property = GIMBAL_PROPERTY_42[gimbal_property_type]
+            self.gimbal_property = GIMBAL_PROPERTY_42[GIMBAL_PROPERTY_TYPE.DEFAULT]
         # 步兵
-        elif self.id in [RobotID.RED_3, RobotID.BLUE_3, RobotID.RED_4, RobotID.BLUE_4, RobotID.RED_5, RobotID.BLUE_5]:
+        elif self.robot_type in [RobotType.STANDARD_3, RobotType.STANDARD_4, RobotType.STANDARD_5]:
             self.chassis_property = CHASSIS_PROPERTY_STANDARD[chassis_property_type]
             self.gimbal_property = GIMBAL_PROPERTY_17[gimbal_property_type]
         # 哨兵
-        elif self.id in [RobotID.RED_7, RobotID.BLUE_7]:
+        elif self.robot_type == RobotType.SENTRY:
             self.level = 10
+            self.exp = LEVEL_NEED_EXP[self.level]
             self.chassis_property = CHASSIS_PROPERTY_STANDARD[chassis_property_type]
-            self.gimbal_property = GIMBAL_PROPERTY_17[gimbal_property_type]
+            self.gimbal_property = GIMBAL_PROPERTY_17[GIMBAL_PROPERTY_TYPE.COOL_DOWN]
 
         # 更新性能
         self.update_property()
@@ -78,6 +80,22 @@ class Robot:
 
         # GridMap相关
         self.grid_map = None
+
+    def print_info(self):
+        info = {
+            "id": self.id,
+            "position": self.get_position(),
+            "angle": self.angle,
+            "is_alive": self.is_alive,
+            "level": self.level,
+            "hp": self.hp,
+            "heat": self.heat,
+            "attack_target": self.attack_target.id if self.attack_target else None,
+        }
+        print("-" * 20 + "Robot Info" + "-" * 20)
+        for key, value in info.items():
+            print(f"{key}: {value}")
+        print("-" * 50)
 
     def update_exp(self, exp):
         """更新经验"""
@@ -154,7 +172,7 @@ class Robot:
             target_robot: 目标机器人对象
             num: 攻击次数
         """
-        if not self.is_alive or not target_robot.is_alive:
+        if not self.is_alive or not target_robot or not target_robot.is_alive:
             return
         # 刷新战斗状态
         self.attack_target = target_robot
@@ -169,7 +187,10 @@ class Robot:
         self.angle = math.degrees(math.atan2(dy, dx))
 
         # 计算可以攻击的次数
-        num = int(min(num, (self.max_heat - self.heat) // HEAT_PER_17))
+        try:
+            num = int(min(num, (self.max_heat - self.heat) // HEAT_PER_17))
+        except:
+            print(num, self.max_heat, self.heat, DAMAGE_PER_17)
         # 造成伤害
         damage = self.attack_target.take_damage(DAMAGE_PER_17, num)
         # 增加热量

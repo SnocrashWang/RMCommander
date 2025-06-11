@@ -124,3 +124,13 @@ def point_to_line_segment_distance(point, line_start, line_end):
     
     # 返回距离
     return math.hypot(x - px, y - py)
+
+def get_reverse_obstacle_config(obstacle_config, field_width, field_height):
+    """获取障碍物的反向配置"""
+    return {
+        "x1": field_width - obstacle_config["x1"],
+        "y1": field_height - obstacle_config["y1"],
+        "x2": field_width - obstacle_config["x2"],
+        "y2": field_height - obstacle_config["y2"],
+        "thickness": obstacle_config["thickness"]
+    }

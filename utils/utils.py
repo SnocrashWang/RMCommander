@@ -2,8 +2,15 @@ import math
 import pygame
 from typing import List, Tuple
 
+from utils.config.game_config import GameTeam
 from utils.obstacle import Obstacle
 from visualization.config import render_config
+
+def opposite_team(team: GameTeam) -> GameTeam:
+    if team == GameTeam.RED:
+        return GameTeam.BLUE
+    else:
+        return GameTeam.RED
 
 def meters_to_pixels(meters: float) -> int:
     """将米转换为像素"""

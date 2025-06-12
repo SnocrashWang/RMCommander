@@ -13,7 +13,7 @@ from utils.config.game_config import GameTeam, GameState
 def train(
     num_episodes: int = 1000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 100,
+    save_interval: int = 50,
     model_dir: str = "models",
     log_dir: str = "logs",
     visualize: bool = False,

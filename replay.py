@@ -9,6 +9,7 @@ from base.environment import Environment, Action
 from base.config import env_config
 from visualization.renderer import Renderer
 from utils.config.game_config import GameTeam
+from utils.config.robot_config import RobotType
 
 def load_episode(log_file: str) -> Dict[str, Any]:
     """加载回合日志文件"""
@@ -45,7 +46,7 @@ def replay_episode(episode_data: Dict[str, Any], dt: float = 0.5):
             robot_id: Action(
                 navigation=tuple(action['navigation']) if action['navigation'] else None,
                 attack=action['attack'],
-                target=action['target']
+                target=RobotType(action['target']) if action['target'] else RobotType.NONE
             ) for robot_id, action in frame_action['red_action'].items()
         }
         
@@ -53,7 +54,7 @@ def replay_episode(episode_data: Dict[str, Any], dt: float = 0.5):
             robot_id: Action(
                 navigation=tuple(action['navigation']) if action['navigation'] else None,
                 attack=action['attack'],
-                target=action['target']
+                target=RobotType(action['target']) if action['target'] else RobotType.NONE
             ) for robot_id, action in frame_action['blue_action'].items()
         }
         

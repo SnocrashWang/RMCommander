@@ -5,11 +5,11 @@ from typing import List, Dict, Optional, Tuple, Any
 
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
-from utils.config.robot_config import RobotConfig, ROBOT_ID
+from utils.config.robot_config import RobotConfig, ROBOT_ID, RobotType
 from utils.grid_map import GridMap
 from utils.robot import Robot
 from utils.obstacle import Obstacle
-from utils.utils import has_line_of_sight, calc_distance
+from utils.utils import has_line_of_sight, calc_distance, opposite_team
 
 from base.config import env_config
 from base.config.robot_config import DEFAULT_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
@@ -19,7 +19,7 @@ from base.game import GameStateManager
 class Action():
     navigation: Tuple[float, float]
     attack: bool
-    target: int
+    target: RobotType
 
 class Environment:
     def __init__(
@@ -155,8 +155,8 @@ class Environment:
             robot = self.get_robot(robot_id)
             if robot_action.navigation is not None:
                 robot.set_target(robot_action.navigation)
-            if robot_action.attack:
-                target_robot = self.get_robot(robot_action.target)
+            if robot_action.attack and robot_action.target != RobotType.NONE:
+                target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][robot_action.target])
                 if target_robot is not None:
                     if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
                         robot.attack(target_robot)

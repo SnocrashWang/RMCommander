@@ -4,6 +4,7 @@ import time
 
 from config import CURRENT_GAME
 from utils.config.game_config import GameTeam, GameType
+from utils.config.robot_config import RobotType
 from visualization.config import render_config
 from visualization.renderer import Renderer
 
@@ -72,7 +73,7 @@ def main():
                     show_grid = not show_grid
                 elif event.key == pygame.K_a:  # A键攻击
                     red_action["RED_3_STANDARD"].attack = True
-                    red_action["RED_3_STANDARD"].target = "BLUE_3_STANDARD"
+                    red_action["RED_3_STANDARD"].target = RobotType.STANDARD_3
 
         # 更新环境
         env.step(dt, red_action, blue_action)

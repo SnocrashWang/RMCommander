@@ -3,7 +3,7 @@ from utils.utils import get_reverse_obstacle_config
 ENV_NAME = "base_game"
 
 # 仿真配置
-FPS = 5
+FPS = 60
 
 # 场地尺寸（米）
 FIELD_WIDTH = 5.0
@@ -23,4 +23,4 @@ wall_blue = get_reverse_obstacle_config(wall_red, FIELD_WIDTH, FIELD_HEIGHT)
 OBSTACLES.append(wall_red)
 OBSTACLES.append(wall_blue)
 
-GAME_TIME_LIMIT = 120  # 游戏时间限制（秒）
+GAME_TIME_LIMIT = 60  # 游戏时间限制（秒）

@@ -1,5 +1,10 @@
 from enum import Enum
 
+class GameType(Enum):
+    BASE = 0
+    RMUL = 1
+    RMUC = 2
+
 class GameState(Enum):
     PLAYING = 0
     DRAW = 1
@@ -7,8 +12,8 @@ class GameState(Enum):
     BLUE_TEAM_WIN = 3
 
 class GameTeam(Enum):
-    RED = "RED"
-    BLUE = "BLUE"
+    RED = 0
+    BLUE = 1
 
 # 伤害
 DAMAGE_PER_17 = 10

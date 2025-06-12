@@ -2,23 +2,28 @@ import pygame
 import sys
 import time
 
-from base_game.environment import Environment
-from RMUL.environment import EnvironmentRL
-from visualization.renderer import Renderer
-from base_game.config import env_config as base_env_config
+from config import CURRENT_GAME
+from utils.config.game_config import GameTeam, GameType
 from visualization.config import render_config
+from visualization.renderer import Renderer
+
+if CURRENT_GAME == GameType.BASE:
+    from base.environment import Environment, Action
+    from base.config import env_config
+elif CURRENT_GAME == GameType.RMUL:
+    from RMUL.environment import EnvironmentRMUL as Environment, Action
+    from RMUL.config import env_config
+# elif CURRENT_GAME == GameType.RMUC:
+#     from RMUC.environment import EnvironmentRMUC, Action
+#     from RMUC.config import env_config
 
 def main():
     # 初始化pygame
     pygame.init()
 
     # 创建环境和渲染器
-    env = Environment()
-    # env = EnvironmentRL()
-    renderer = Renderer(base_env_config)
-
-    # 创建时钟对象
-    clock = pygame.time.Clock()
+    env = Environment(env_config)
+    renderer = Renderer(env_config)
 
     show_grid = False  # 控制是否显示可移动栅格
 
@@ -27,6 +32,21 @@ def main():
         frame_start = time.perf_counter()
 
         dt = env.dt
+
+        red_action = {
+            robot_id: Action(
+                navigation=None,
+                attack=False,
+                target=None,
+            ) for robot_id, robot in env.robots.items() if robot.team == GameTeam.RED
+        }
+        blue_action = {
+            robot_id: Action(
+                navigation=None,
+                attack=False,
+                target=None,
+            ) for robot_id, robot in env.robots.items() if robot.team == GameTeam.BLUE
+        }
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -39,7 +59,7 @@ def main():
                 world_x = mouse_pos[0] / render_config.SCALE
                 world_y = mouse_pos[1] / render_config.SCALE
                 if env.robots:  # 兼容机器人列表
-                    env.robots["RED_3_STANDARD"].set_target((world_x, world_y))
+                    red_action["RED_3_STANDARD"].navigation = (world_x, world_y)
 
             # 按键事件
             elif event.type == pygame.KEYDOWN:
@@ -51,12 +71,11 @@ def main():
                 elif event.key == pygame.K_g:  # 切换显示栅格
                     show_grid = not show_grid
                 elif event.key == pygame.K_a:  # A键攻击
-                    if env.robots and len(env.robots) > 1:
-                        # 第一个机器人攻击第二个机器人
-                        env.robots["RED_3_STANDARD"].attack(env.robots["BLUE_3_STANDARD"], 1)
+                    red_action["RED_3_STANDARD"].attack = True
+                    red_action["RED_3_STANDARD"].target = "BLUE_3_STANDARD"
 
         # 更新环境
-        env.step(dt)
+        env.step(dt, red_action, blue_action)
 
         # 获取环境状态
         env_state = env.get_game_state()

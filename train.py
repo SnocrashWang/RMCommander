@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from rl.rl_env import RLEnvironment
 from rl.agents.ppo_agent import PPOAgent
 from visualization.renderer import Renderer
-from base_game.config import env_config
+from base.config import env_config
 
 def train(
     episodes: int = 1000,

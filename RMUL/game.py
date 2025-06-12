@@ -1,6 +1,6 @@
-from base_game.game import GameStateManager
+from base.game import GameStateManager
 from utils.config.game_config import GameState, GameTeam
-from base_game.config.env_config import GAME_TIME_LIMIT, OCCUPATION_TARGET
+from RMUL.config.env_config import GAME_TIME_LIMIT, OCCUPATION_TARGET
 
 class GameStateManager(GameStateManager):
     def __init__(self):

@@ -1,14 +1,15 @@
+import math
 import pygame
 from typing import Tuple
-import math
+from visualization.config import render_config
 
-def meters_to_pixels(meters, scale):
+def meters_to_pixels(meters: float) -> int:
     """将米转换为像素"""
-    return meters * scale
+    return int(meters * render_config.SCALE)
 
-def pixels_to_meters(pixels, scale):
+def pixels_to_meters(pixels: int) -> float:
     """将像素转换为米"""
-    return pixels / scale
+    return pixels / render_config.SCALE
 
 def second2minute(seconds: int) -> Tuple[int, int]:
     min = seconds // 60
@@ -17,7 +18,6 @@ def second2minute(seconds: int) -> Tuple[int, int]:
 
 def draw_dashed_line(
     surface: pygame.Surface,
-    scale: float,
     color: Tuple[int, int, int],
     start_pos: Tuple[float, float],
     end_pos: Tuple[float, float],
@@ -35,8 +35,8 @@ def draw_dashed_line(
         dash_length: 虚线段的长度
         gap_length: 间隔的长度
     """
-    start_pos = (meters_to_pixels(start_pos[0], scale), meters_to_pixels(start_pos[1], scale))
-    end_pos = (meters_to_pixels(end_pos[0], scale), meters_to_pixels(end_pos[1], scale))
+    start_pos = (meters_to_pixels(start_pos[0]), meters_to_pixels(start_pos[1]))
+    end_pos = (meters_to_pixels(end_pos[0]), meters_to_pixels(end_pos[1]))
     dx = end_pos[0] - start_pos[0]
     dy = end_pos[1] - start_pos[1]
     distance = math.hypot(dx, dy)

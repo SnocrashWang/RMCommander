@@ -103,9 +103,9 @@ class Renderer:
     def _draw_tank(self, robot):
         """绘制机器人"""
         position = robot.get_position()
-        x = meters_to_pixels(position[0], render_config.SCALE)
-        y = meters_to_pixels(position[1], render_config.SCALE)
-        radius = meters_to_pixels(robot.radius, render_config.SCALE)
+        x = meters_to_pixels(position[0])
+        y = meters_to_pixels(position[1])
+        radius = meters_to_pixels(robot.radius)
 
         # 绘制机器人主体
         pygame.draw.circle(self.screen, render_config.ROBOT_COLORS[robot.team], (x, y), radius)
@@ -171,7 +171,7 @@ class Renderer:
         """
         if attack_line:
             draw_dashed_line(
-                self.screen, render_config.SCALE, (0, 255, 0), attack_line[0], attack_line[1],
+                self.screen, (0, 255, 0), attack_line[0], attack_line[1],
                 int(render_config.SCALE * 0.02), int(render_config.SCALE * 0.05), int(render_config.SCALE * 0.1)
             )
 
@@ -214,20 +214,17 @@ class Renderer:
         """Draw game info and controls (English)"""
         controls = [
             "Controls:",
-            "Left Mouse Button: Set target for Robot1",
+            "Left Mouse Button: Set target",
             "R: Reset Game",
             "G: Toggle movable grid display",
+            "A: Attack once",
             "ESC: Quit",
+            f"Movable Grid: {'ON' if show_grid else 'OFF'}",
         ]
 
         for i, text in enumerate(controls):
             text_control = self.font.render(text, True, render_config.COLOR_TEXT)
-            self.screen.blit(text_control, (10, render_config.SCALE * self.env_config.FIELD_HEIGHT - (len(controls) - i + 1) * 30))
-
-        # Show grid status
-        grid_status = "ON" if show_grid else "OFF"
-        grid_text = self.font.render(f"Movable Grid: {grid_status}", True, render_config.COLOR_TEXT)
-        self.screen.blit(grid_text, (10, render_config.SCALE * self.env_config.FIELD_HEIGHT - 30))
+            self.screen.blit(text_control, (10, render_config.SCALE * self.env_config.FIELD_HEIGHT - (len(controls) - i) * 30))
 
         # Show game state
         if game_state.state == GameState.RED_TEAM_WIN:
@@ -282,9 +279,9 @@ class Renderer:
         for i in range(robot.current_path_idx, len(robot.path_points) - 1):
             point2 = robot.path_points[i]
             # 将世界坐标转换为像素坐标，并加上半个栅格的大小使其居中
-            x1 = int((point1[0]) * self.env_config.SCALE)
-            y1 = int((point1[1]) * self.env_config.SCALE)
-            x2 = int((point2[0]) * self.env_config.SCALE)
-            y2 = int((point2[1]) * self.env_config.SCALE)
+            x1 = int((point1[0]) * render_config.SCALE)
+            y1 = int((point1[1]) * render_config.SCALE)
+            x2 = int((point2[0]) * render_config.SCALE)
+            y2 = int((point2[1]) * render_config.SCALE)
             pygame.draw.line(self.screen, (0, 120, 120), (x1, y1), (x2, y2), 2)
             point1 = point2

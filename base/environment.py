@@ -1,18 +1,27 @@
 import pymunk
+from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple, Any
 
+from utils.config.game_config import GameTeam
 from utils.config.robot_config import RobotConfig
 from utils.grid_map import GridMap
 from utils.robot import Robot
 from utils.obstacle import Obstacle
 
-from base_game.config import env_config
-from base_game.config.robot_config import DEFAULT_ROBOT_CONFIGS
-from base_game.game import GameStateManager
+from base.config import env_config
+from base.config.robot_config import DEFAULT_ROBOT_CONFIGS
+from base.game import GameStateManager
+
+@dataclass
+class Action():
+    navigation: Tuple[float, float]
+    attack: bool
+    target: int
 
 class Environment:
     def __init__(
             self,
+            env_config,
             obstacle_configs: Optional[List[Dict[str, Any]]] = env_config.OBSTACLES,
             robot_configs: Optional[Dict[str, RobotConfig]] = DEFAULT_ROBOT_CONFIGS,
         ):
@@ -31,7 +40,7 @@ class Environment:
         self._create_robots()
         
         # 为每个机器人创建网格地图
-        self._init_robot_grid_maps()
+        self._init_robot_grid_maps(env_config)
 
         # 创建游戏状态管理器
         self.game_state_manager = GameStateManager()
@@ -52,7 +61,7 @@ class Environment:
             )
             self.robots[robot.id] = robot
 
-    def _init_robot_grid_maps(self):
+    def _init_robot_grid_maps(self, env_config):
         """初始化所有机器人的网格地图"""
         for robot in self.robots.values():
             grid_map = GridMap(
@@ -80,10 +89,14 @@ class Environment:
         # 创建新机器人
         self._create_robots()
 
-    def step(self, dt):
+    def step(self, dt: float, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
         """推进环境仿真"""
         # 更新物理引擎
         self.physics_engine.step(dt)
+
+        # 应用动作
+        self._apply_team_action(GameTeam.RED, red_action)
+        self._apply_team_action(GameTeam.BLUE, blue_action)
 
         # 更新机器人状态
         for robot in self.robots.values():
@@ -94,6 +107,14 @@ class Environment:
             robot.id: robot.hp for robot in self.robots.values()
         }
         self.game_state_manager.update(robot_hp, dt)
+
+    def _apply_team_action(self, team: GameTeam, action: Dict[str, Any]):
+        for robot_id, action in action.items():
+            robot = self.get_robot(robot_id)
+            if action.navigation is not None:
+                robot.set_target(action.navigation)
+            if action.attack:
+                robot.attack(self.get_robot(action.target))
 
     def get_game_state(self):
         """获取当前游戏状态"""

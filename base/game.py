@@ -1,7 +1,7 @@
 from typing import Dict
 from utils.config.game_config import GameState, GameTeam
 from utils.config.robot_config import ROBOT_ID, RobotType
-from base_game.config.env_config import GAME_TIME_LIMIT
+from base.config.env_config import GAME_TIME_LIMIT
 
 class GameStateManager:
     def __init__(self):

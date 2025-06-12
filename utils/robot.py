@@ -7,7 +7,6 @@ from utils.config.exp_prop_config import *
 from utils.config.robot_config import ROBOT_ID, RobotType
 from utils.config.game_config import GameTeam, HEAT_PER_17, DAMAGE_PER_17
 from utils.grid_map import GridMap, a_star
-from utils.utils import meters_to_pixels
 
 class Robot:
     def __init__(
@@ -31,20 +30,22 @@ class Robot:
         # 规则性能
         self.level = 1
         self.exp = 0
+        self.chassis_property_type = chassis_property_type
+        self.gimbal_property_type = gimbal_property_type
 
         # 英雄
         if self.robot_type == RobotType.HERO:
-            self.chassis_property = CHASSIS_PROPERTY_HERO[chassis_property_type]
+            self.chassis_property = CHASSIS_PROPERTY_HERO[self.chassis_property_type]
             self.gimbal_property = GIMBAL_PROPERTY_42[GIMBAL_PROPERTY_TYPE.DEFAULT]
         # 步兵
         elif self.robot_type in [RobotType.STANDARD_3, RobotType.STANDARD_4, RobotType.STANDARD_5]:
-            self.chassis_property = CHASSIS_PROPERTY_STANDARD[chassis_property_type]
-            self.gimbal_property = GIMBAL_PROPERTY_17[gimbal_property_type]
+            self.chassis_property = CHASSIS_PROPERTY_STANDARD[self.chassis_property_type]
+            self.gimbal_property = GIMBAL_PROPERTY_17[self.gimbal_property_type]
         # 哨兵
         elif self.robot_type == RobotType.SENTRY:
             self.level = 10
             self.exp = LEVEL_NEED_EXP[self.level]
-            self.chassis_property = CHASSIS_PROPERTY_STANDARD[chassis_property_type]
+            self.chassis_property = CHASSIS_PROPERTY_STANDARD[self.chassis_property_type]
             self.gimbal_property = GIMBAL_PROPERTY_17[GIMBAL_PROPERTY_TYPE.COOL_DOWN]
 
         # 更新性能
@@ -99,7 +100,7 @@ class Robot:
 
     def update_exp(self, exp):
         """更新经验"""
-        self.exp += exp
+        self.exp = min(self.exp + exp, LEVEL_NEED_EXP[10])
         # 升级
         if self.exp >= LEVEL_NEED_EXP[self.level + 1]:
             self.level += 1

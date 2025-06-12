@@ -5,7 +5,7 @@ import torch
 from rl.rl_env import RLEnvironment
 from rl.agents.dqn_agent import DQNAgent
 from visualization.renderer import Renderer
-from base_game.config import env_config
+from base.config import env_config
 
 def main():
     # 初始化pygame

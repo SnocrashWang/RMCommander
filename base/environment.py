@@ -48,7 +48,11 @@ class Environment:
         # 创建游戏状态管理器
         self.game_state_manager = GameStateManager()
 
-        self.last_robot_distance = None  # 记录距离
+        # 状态记录，仅用于计算奖励
+        self.last_team_state = {
+            GameTeam.RED: self._get_team_state(GameTeam.RED),
+            GameTeam.BLUE: self._get_team_state(GameTeam.BLUE)
+        }
 
     def _create_robots(self):
         """根据配置创建机器人"""
@@ -89,10 +93,12 @@ class Environment:
         for robot in self.robots.values():
             robot.destroy(self.physics_engine)
         self.robots.clear()
-        # 重置游戏状态
-        self.game_state_manager.reset()
         # 创建新机器人
         self._create_robots()
+        # 为每个机器人创建网格地图
+        self._init_robot_grid_maps(env_config)
+        # 重置游戏状态
+        self.game_state_manager.reset()
 
     def step(self, dt: float, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
         """推进环境仿真"""
@@ -113,7 +119,7 @@ class Environment:
         }
         self.game_state_manager.update(robot_hp, dt)
     
-    def _state_encoder(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _encode_state(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """编码状态"""
         # 全局状态向量
         game_state = [
@@ -140,10 +146,49 @@ class Environment:
             else:
                 blue_robot_state.extend(robot_state)
         return np.array(game_state), np.array(red_robot_state), np.array(blue_robot_state)
+    
+    def _decode_state(self, state: np.ndarray, team: GameTeam) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """解码状态"""
+        game_state = state[:1]
+        red_robots = [robot for robot in self.robots.values() if robot.team == GameTeam.RED]
+        blue_robots = [robot for robot in self.robots.values() if robot.team == GameTeam.BLUE]
+        if team == GameTeam.RED:
+            red_robot_state = state[1:1+8*len(red_robots)]
+            blue_robot_state = state[1+8*len(red_robots):]
+        else:
+            blue_robot_state = state[1:1+8*len(blue_robots)]
+            red_robot_state = state[1+8*len(blue_robots):]
+
+        game_state_dict = {
+            "remaining_time": game_state[0] * env_config.GAME_TIME_LIMIT,
+        }
+        red_robot_state_dict = {
+            robot.id: {
+                "position": (red_robot_state[i * 8 + 0] * env_config.FIELD_WIDTH, red_robot_state[i * 8 + 1] * env_config.FIELD_HEIGHT),
+                "chassis_property_type": red_robot_state[i * 8 + 2],
+                "gimbal_property_type": red_robot_state[i * 8 + 3],
+                "level": red_robot_state[i * 8 + 4],
+                "exp": red_robot_state[i * 8 + 5],
+                "hp": red_robot_state[i * 8 + 6],
+                "heat": red_robot_state[i * 8 + 7],
+            } for i, robot in enumerate(red_robots)
+        }
+        blue_robot_state_dict = {
+            robot.id: {
+                "position": (blue_robot_state[i * 8 + 0] * env_config.FIELD_WIDTH, blue_robot_state[i * 8 + 1] * env_config.FIELD_HEIGHT),
+                "chassis_property_type": blue_robot_state[i * 8 + 2],
+                "gimbal_property_type": blue_robot_state[i * 8 + 3],
+                "level": blue_robot_state[i * 8 + 4],
+                "exp": blue_robot_state[i * 8 + 5],
+                "hp": blue_robot_state[i * 8 + 6],
+                "heat": blue_robot_state[i * 8 + 7],
+            } for i, robot in enumerate(blue_robots)
+        }
+        return game_state_dict, red_robot_state_dict, blue_robot_state_dict
 
     def _get_team_state(self, team: GameTeam) -> np.ndarray:
         """获取当前状态"""
-        game_state, red_robot_state, blue_robot_state = self._state_encoder()
+        game_state, red_robot_state, blue_robot_state = self._encode_state()
         if team == GameTeam.RED:
             return np.concatenate((game_state, red_robot_state, blue_robot_state))
         else:
@@ -167,13 +212,20 @@ class Environment:
             team: 队伍
         Returns:
             float: 奖励值
-        """        
+        """
+        game_state_dict, red_robot_state_dict, blue_robot_state_dict = self._decode_state(self.last_team_state[team], team)
+
+        # 时间消耗惩罚
+        reward_time = (self.game_state_manager.remaining_time - game_state_dict["remaining_time"]) * 1
+
         # 获取当前血量
-        our_hp = sum([robot.hp for robot in self.robots.values() if robot.team == team])
-        enemy_hp = sum([robot.hp for robot in self.robots.values() if robot.team != team])
+        our_hp = sum([robot["hp"] for robot in red_robot_state_dict.values()])
+        our_last_hp = sum([robot["hp"] for robot in red_robot_state_dict.values()])
+        enemy_hp = sum([robot["hp"] for robot in blue_robot_state_dict.values()])
+        enemy_last_hp = sum([robot["hp"] for robot in blue_robot_state_dict.values()])
         
         # 血量奖励
-        reward_hp = (our_hp - enemy_hp) * 0.1
+        reward_hp = (enemy_last_hp - enemy_hp) * 1.0 - (our_last_hp - our_hp) * 1.0
 
         # 距离奖励
         our_robot = self.get_robot("RED_3_STANDARD")
@@ -181,25 +233,26 @@ class Environment:
         current_distance = calc_distance(our_robot.get_position(), enemy_robot.get_position())
         
         # 计算距离变化奖励
-        if self.last_robot_distance is not None:
-            distance_change = self.last_robot_distance - current_distance  # 正值表示距离减小
-            reward_distance = distance_change * 1.0  # 距离减小给予正奖励，距离增加给予负奖励
-        else:
-            reward_distance = 0
-        
-        self.last_robot_distance = current_distance  # 更新上一帧的距离
+        last_distance = calc_distance(red_robot_state_dict["RED_3_STANDARD"]["position"], blue_robot_state_dict["BLUE_3_STANDARD"]["position"])
+        current_distance = calc_distance(our_robot.get_position(), enemy_robot.get_position())
+        reward_distance = (last_distance - current_distance) * 10  # 距离减小给予正奖励，距离增加给予负奖励
         
         # 游戏结束奖励
         if self.game_state_manager.state == GameState.RED_TEAM_WIN:
-            reward_win = 10000.0
+            reward_win = 1000.0
         elif self.game_state_manager.state == GameState.BLUE_TEAM_WIN:
-            reward_win = -10000.0
+            reward_win = -1000.0
         else:
             reward_win = 0.0
         
-        # print(reward_hp, reward_distance, reward_win)
-        
-        return reward_hp + reward_distance + reward_win
+        # 更新状态记录
+        self.last_team_state = {
+            GameTeam.RED: self._get_team_state(GameTeam.RED),
+            GameTeam.BLUE: self._get_team_state(GameTeam.BLUE)
+        }
+
+        # print(reward_time, reward_hp, reward_distance, reward_win)
+        return reward_time + reward_hp + reward_distance + reward_win
     
     def get_robot(self, id: str) -> Robot:
         if id not in self.robots:

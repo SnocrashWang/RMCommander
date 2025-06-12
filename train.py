@@ -3,17 +3,19 @@ import os
 import time
 import json
 from tqdm import tqdm
+from collections import defaultdict
 
 from agents.ppo_agent import PPOAgent
 from base.config import env_config
 from base.environment import Environment, Action
 from visualization.renderer import Renderer
 from utils.config.game_config import GameTeam, GameState
+from utils.utils import timer
 
 def train(
     num_episodes: int = 1000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 50,
+    save_interval: int = 20,
     model_dir: str = "models",
     log_dir: str = "logs",
     visualize: bool = False,
@@ -52,6 +54,9 @@ def train(
     episode_rewards = []
     episode_lengths = []
     
+    # 性能统计
+    time_stats = defaultdict(list)
+    
     # 训练循环
     for episode in tqdm(range(num_episodes)):
         env.reset()
@@ -62,59 +67,61 @@ def train(
         episode_actions = []
         
         for step in range(max_steps):
-            # 获取状态
-            state = env._get_team_state(GameTeam.RED)
-            
-            # 选择动作
-            red_action = agent.act(state)
-            blue_action = {"BLUE_3_STANDARD": Action(navigation=None, attack=False, target=None)}
-            
-            # 记录动作
-            frame_action = {
-                'red_action': {
-                    robot_id: {
-                        'navigation': action.navigation,
-                        'attack': action.attack,
-                        'target': action.target.value if action.target is not None else None
-                    } for robot_id, action in red_action.items()
-                },
-                'blue_action': {
-                    robot_id: {
-                        'navigation': action.navigation,
-                        'attack': action.attack,
-                        'target': action.target.value if action.target is not None else None
-                    } for robot_id, action in blue_action.items()
-                }
-            }
-            episode_actions.append(frame_action)
-            
-            # 执行动作
-            env.step(1/env_config.FPS, red_action, blue_action)
-            
-            # 计算奖励
-            reward = env.calculate_reward(GameTeam.RED)
-            episode_reward += reward
-            
-            # 存储轨迹
-            agent.store_reward(reward, env.game_state_manager.state != GameState.PLAYING)
-            
-            # 更新步数
-            episode_length += 1
-            
-            # 检查是否结束
-            if env.game_state_manager.state != GameState.PLAYING:
-                break
-            
-            # 可视化模式
-            if visualize:
-                renderer.render(env, show_grid=False)
-                pygame.display.flip()
-                time.sleep(0.5)  # 控制渲染速度
-            
-            # print(env.robots["RED_3_STANDARD"].get_position())
-            # print(red_action)
-            # print(reward)
-            # print("-" * 20)
+            with timer(time_stats, 'total_step'):
+                # 获取状态
+                with timer(time_stats, 'get_state'):
+                    state = env._get_team_state(GameTeam.RED)
+                
+                # 选择动作
+                with timer(time_stats, 'act'):
+                    red_action = agent.act(state)
+                    blue_action = {"BLUE_3_STANDARD": Action(navigation=None, attack=False, target=None)}
+                
+                # 记录动作
+                with timer(time_stats, 'record_action'):
+                    frame_action = {
+                        'red_action': {
+                            robot_id: {
+                                'navigation': action.navigation,
+                                'attack': action.attack,
+                                'target': action.target.value if action.target is not None else None
+                            } for robot_id, action in red_action.items()
+                        },
+                        'blue_action': {
+                            robot_id: {
+                                'navigation': action.navigation,
+                                'attack': action.attack,
+                                'target': action.target.value if action.target is not None else None
+                            } for robot_id, action in blue_action.items()
+                        }
+                    }
+                    episode_actions.append(frame_action)
+                
+                # 执行动作
+                with timer(time_stats, 'env_step'):
+                    env.step(1/env_config.FPS, red_action, blue_action)
+                
+                # 计算奖励
+                with timer(time_stats, 'calculate_reward'):
+                    reward = env.calculate_reward(GameTeam.RED)
+                    episode_reward += reward
+                
+                # 存储轨迹
+                with timer(time_stats, 'store_reward'):
+                    agent.store_reward(reward, env.game_state_manager.state != GameState.PLAYING)
+                
+                # 更新步数
+                episode_length += 1
+                
+                # 检查是否结束
+                if env.game_state_manager.state != GameState.PLAYING:
+                    break
+                
+                # 可视化模式
+                if visualize:
+                    renderer.render(env, show_grid=False)
+                    pygame.display.flip()
+                    time.sleep(0.5)  # 控制渲染速度
         
         # 保存当前回合的动作序列
         if episode % save_interval == 0:
@@ -129,7 +136,8 @@ def train(
                 json.dump(episode_log, f, indent=2)
         
         # 更新策略
-        agent.update()
+        with timer(time_stats, 'update'):
+            agent.update()
         
         # 记录训练数据
         episode_rewards.append(episode_reward)
@@ -141,6 +149,13 @@ def train(
         print(f"回合长度: {episode_length}")
         print(f"剩余时间: {env.game_state_manager.remaining_time:.2f}")
         print(f"比赛结果: {env.game_state_manager.state}")
+        
+        # 打印性能统计
+        print("\n性能统计 (平均耗时，单位：秒):")
+        for key, times in time_stats.items():
+            if times:  # 确保有数据
+                avg_time = sum(times) / len(times)
+                print(f"{key}: {avg_time:.6f}")
         print("=" * 50)
         
         # 保存模型

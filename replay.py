@@ -19,13 +19,11 @@ def load_episode(log_file: str) -> Dict[str, Any]:
 def replay_episode(episode_data: Dict[str, Any], dt: float = 0.5):
     """回放一个回合的动作序列"""
     # 初始化环境和渲染器
-    env = Environment()
-
     pygame.init()
-    renderer = Renderer(env_config)
-    
-    # 重置环境
+
+    env = Environment()
     env.reset()
+    renderer = Renderer(env_config)
     
     # 回放每一帧
     for frame_action in episode_data['actions']:
@@ -40,7 +38,7 @@ def replay_episode(episode_data: Dict[str, Any], dt: float = 0.5):
                 if event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     return
-        
+        print(frame_action)
         # 转换动作格式
         red_action = {
             robot_id: Action(
@@ -59,10 +57,11 @@ def replay_episode(episode_data: Dict[str, Any], dt: float = 0.5):
         }
         
         # 执行动作
-        env.step(1/env_config.FPS, red_action, blue_action)
+        print(red_action)
+        env.step(env.dt, red_action, blue_action)
         
         # 渲染环境
-        renderer.render(env, show_grid=False)
+        renderer.render(env, show_grid=True)
         pygame.display.flip()
         
         # 计算本帧消耗的时间

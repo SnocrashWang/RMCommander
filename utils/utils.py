@@ -1,10 +1,21 @@
 import math
 import pygame
+import time
+from contextlib import contextmanager
 from typing import List, Tuple
 
 from utils.config.game_config import GameTeam
 from utils.obstacle import Obstacle
 from visualization.config import render_config
+
+@contextmanager
+def timer(stats_dict, key):
+    """计时器上下文管理器"""
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        stats_dict[key].append(time.perf_counter() - start)
 
 def opposite_team(team: GameTeam) -> GameTeam:
     if team == GameTeam.RED:

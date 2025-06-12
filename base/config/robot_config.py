@@ -3,6 +3,10 @@ from utils.config.game_config import GameTeam
 from utils.config.exp_prop_config import CHASSIS_PROPERTY_TYPE, GIMBAL_PROPERTY_TYPE
 from utils.config.robot_config import RobotConfig, RobotType
 
+BASE_ROBOT_TYPE_LIST = [
+    RobotType.STANDARD_3,
+]
+
 # 默认机器人配置
 DEFAULT_ROBOT_CONFIGS: List[RobotConfig] = [
     RobotConfig(

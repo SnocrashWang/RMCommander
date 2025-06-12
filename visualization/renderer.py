@@ -25,7 +25,7 @@ class Renderer:
         self.small_font = pygame.font.Font(None, 24)
         self.tiny_font = pygame.font.Font(None, 12)
 
-    def render(self, env_state, show_grid=False):
+    def render(self, env, show_grid=False):
         """渲染环境"""
         # 清空屏幕
         self.screen.fill(render_config.COLOR_BACKGROUND)
@@ -37,27 +37,27 @@ class Renderer:
         self._draw_walls()
 
         # 绘制障碍物
-        self._draw_obstacles(env_state["obstacles"])
+        self._draw_obstacles(env.obstacles)
 
         # 绘制所有机器人
-        for robot in env_state["robots"].values():
+        for robot in env.robots.values():
             self._draw_tank(robot)
 
         # 绘制攻击线
-        for robot in env_state["robots"].values():
+        for robot in env.robots.values():
             self._draw_attack_line(robot.get_attack_line())
 
         # 绘制进度条
         if self.env_config.ENV_NAME == "RMUL":
-            self._draw_progress_bars(env_state["game_state"])
+            self._draw_progress_bars(env.game_state_manager)
 
         # 绘制状态信息
-        self._draw_info(env_state["game_state"], show_grid)
+        self._draw_info(env.game_state_manager, show_grid)
 
         # 绘制可移动栅格（如果启用）
         if show_grid:
-            self._draw_grid(env_state["robots"]["RED_3_STANDARD"].grid_map)
-            self._draw_path(env_state["robots"]["RED_3_STANDARD"])
+            self._draw_grid(env.robots["RED_3_STANDARD"].grid_map)
+            self._draw_path(env.robots["RED_3_STANDARD"])
 
     def _draw_buff_zone(self):
         """绘制增益区域"""

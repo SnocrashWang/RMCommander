@@ -2,15 +2,19 @@ import os
 import time
 import pygame
 import numpy as np
-from typing import List
+from typing import List, Dict, Any, Tuple
 import matplotlib.pyplot as plt
-from rl.rl_env import RLEnvironment
-from rl.agents.ppo_agent import PPOAgent
-from visualization.renderer import Renderer
+from tqdm import tqdm
+import torch
+
+from agents.ppo_agent import PPOAgent
 from base.config import env_config
+from base.environment import Environment, Action
+from visualization.renderer import Renderer
+from utils.config.game_config import GameTeam, GameState
 
 def train(
-    episodes: int = 1000,
+    num_episodes: int = 1000,
     max_steps: int = 1000,
     save_interval: int = 100,
     model_dir: str = "models",
@@ -21,7 +25,7 @@ def train(
     训练PPO智能体
     
     Args:
-        episodes: 训练回合数
+        num_episodes: 训练回合数
         max_steps: 每回合最大步数
         save_interval: 模型保存间隔
         model_dir: 模型保存目录
@@ -32,18 +36,19 @@ def train(
     os.makedirs(model_dir, exist_ok=True)
     
     # 创建环境和智能体
-    env = RLEnvironment()
-    state_size = env.state_size
-    action_space = env.action_space
-    agent = PPOAgent(state_size, action_space)
+    env = Environment()
+    state_size = len(env._get_team_state(GameTeam.RED))
+    agent = PPOAgent(
+        team=GameTeam.RED,
+        state_size=state_size,
+        field_width=env_config.FIELD_WIDTH,
+        field_height=env_config.FIELD_HEIGHT
+    )
     
     if visualize:
         # 初始化pygame
         pygame.init()
-        # 计算屏幕尺寸
-        screen_width = int(env_config.FIELD_WIDTH * env_config.SCALE)
-        screen_height = int(env_config.FIELD_HEIGHT * env_config.SCALE)
-        renderer = Renderer(screen_width, screen_height)
+        renderer = Renderer(env_config)
     
     # 训练记录
     episode_rewards = []
@@ -51,94 +56,99 @@ def train(
     win_rates = []
     wins = 0
     
-    for episode in range(episodes):
-        state, info = env.reset()
+    # 训练循环
+    for episode in tqdm(range(num_episodes)):
+        env.reset()
         episode_reward = 0
-        steps = 0
+        episode_length = 0
         
         for step in range(max_steps):
+            # 获取状态
+            state = env._get_team_state(GameTeam.RED)
+            
             # 选择动作
-            action = agent.act(state)
+            red_action = agent.act(state)
+            blue_action = {"BLUE_3_STANDARD": Action(navigation=None, attack=False, target=None)}
             
             # 执行动作
-            next_state, reward, done, info = env.step(action)
-            print(f"训练循环收到奖励: {reward}")  # 调试信息
+            env.step(1/env_config.FPS, red_action, blue_action)
             
-            # 存储奖励
-            agent.store_reward(reward, done)
-            
-            # 更新状态和奖励
-            state = next_state
+            # 计算奖励
+            reward = env.calculate_reward(GameTeam.RED)
             episode_reward += reward
-            print(f"当前回合累计奖励: {episode_reward}")  # 调试信息
-            steps += 1
+            
+            # 存储轨迹
+            agent.store_reward(reward, env.game_state_manager.state != GameState.PLAYING)
+            
+            # 更新步数
+            episode_length += 1
+            
+            # 检查是否结束
+            if env.game_state_manager.state != GameState.PLAYING:
+                if env.game_state_manager.state == GameState.RED_WIN:
+                    wins += 1
+                break
             
             # 可视化模式
             if visualize:
-                env_state = env.get_game_state()
-                renderer.render(env_state, show_grid=False)
+                renderer.render(env, show_grid=False)
                 time.sleep(render_delay)  # 控制渲染速度
             
-            # 如果回合结束，更新策略
-            if done:
-                if info['game_state'].game_state.value == 2:  # 红方胜利
-                    wins += 1
-                agent.update()
-                break
-
             time.sleep(0.5)
+            print(red_action)
+            print(reward)
             print("-" * 50)
+        
+        # 更新策略
+        agent.update()
         
         # 记录训练数据
         episode_rewards.append(episode_reward)
-        episode_lengths.append(steps)
+        episode_lengths.append(episode_length)
         win_rates.append(wins / (episode + 1))
         
         # 打印训练进度
-        print(f"回合 {episode + 1}/{episodes}")
+        print(f"回合 {episode + 1}/{num_episodes}")
         print(f"总奖励: {episode_reward:.2f}")
-        print(f"回合长度: {steps}")
+        print(f"回合长度: {episode_length}")
         print(f"胜率: {win_rates[-1]:.2%}")
         print("-" * 50)
         
-        # 定期保存模型
+        # 保存模型
         if (episode + 1) % save_interval == 0:
-            agent.save(os.path.join(model_dir, f"ppo_agent_episode_{episode + 1}.pth"))
+            agent.save(os.path.join(model_dir, f"ppo_agent_episode_{episode+1}.pt"))
     
     # 保存最终模型
-    agent.save(os.path.join(model_dir, "ppo_agent_final.pth"))
+    agent.save(os.path.join(model_dir, "ppo_agent_final.pt"))
     
-    # 绘制训练曲线
-    plt.figure(figsize=(15, 5))
+    # # 绘制训练曲线
+    # plt.figure(figsize=(12, 4))
     
-    # 绘制奖励曲线
-    plt.subplot(131)
-    plt.plot(episode_rewards)
-    plt.title('回合奖励')
-    plt.xlabel('回合')
-    plt.ylabel('奖励')
+    # plt.subplot(131)
+    # plt.plot(episode_rewards)
+    # plt.title('Episode Rewards')
+    # plt.xlabel('Episode')
+    # plt.ylabel('Reward')
     
-    # 绘制回合长度曲线
-    plt.subplot(132)
-    plt.plot(episode_lengths)
-    plt.title('回合长度')
-    plt.xlabel('回合')
-    plt.ylabel('步数')
+    # plt.subplot(132)
+    # plt.plot(episode_lengths)
+    # plt.title('Episode Lengths')
+    # plt.xlabel('Episode')
+    # plt.ylabel('Length')
     
-    # 绘制胜率曲线
-    plt.subplot(133)
-    plt.plot(win_rates)
-    plt.title('胜率')
-    plt.xlabel('回合')
-    plt.ylabel('胜率')
+    # plt.subplot(133)
+    # plt.plot(win_rates)
+    # plt.title('Win Rates')
+    # plt.xlabel('Episode')
+    # plt.ylabel('Win Rate')
     
-    plt.tight_layout()
-    plt.savefig(os.path.join(model_dir, "training_curves.png"))
-    plt.close()
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(model_dir, 'training_curves.png'))
+    # plt.close()
 
 if __name__ == "__main__":
     # 设置可视化模式
-    VISUALIZE = False  # 设置为True启用可视化
+    VISUALIZE = True  # 设置为True启用可视化
     RENDER_DELAY = 0.5  # 渲染延迟时间（秒）
     
-    train(visualize=VISUALIZE, render_delay=RENDER_DELAY)
+    train(num_episodes=1000, visualize=VISUALIZE, render_delay=RENDER_DELAY)

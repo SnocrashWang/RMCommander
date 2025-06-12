@@ -77,11 +77,8 @@ def main():
         # 更新环境
         env.step(dt, red_action, blue_action)
 
-        # 获取环境状态
-        env_state = env.get_game_state()
-
         # 渲染环境
-        renderer.render(env_state, show_grid=show_grid)
+        renderer.render(env, show_grid=show_grid)
 
         # 更新显示
         pygame.display.flip()

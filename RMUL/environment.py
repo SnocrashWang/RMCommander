@@ -64,10 +64,9 @@ class EnvironmentRMUL(Environment):
         # 更新游戏状态
         self.game_state_manager.update(self.robots_in_zone, dt)
         
-    def reset(self) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """重置环境并返回初始状态"""
+    def reset(self):
+        """重置环境"""
         super().reset()
-        return self._get_team_state(GameTeam.RED), self.get_game_state()
     
     # def step(self, dt: float) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
     #     """执行动作并返回下一个状态、奖励、是否结束和额外信息"""

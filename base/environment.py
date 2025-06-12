@@ -1,8 +1,10 @@
 import pymunk
+import numpy as np
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple, Any
 
-from utils.config.game_config import GameTeam
+from utils.config.exp_prop_config import LEVEL_NEED_EXP
+from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotConfig
 from utils.grid_map import GridMap
 from utils.robot import Robot
@@ -108,24 +110,78 @@ class Environment:
             robot.id: robot.hp for robot in self.robots.values()
         }
         self.game_state_manager.update(robot_hp, dt)
+    
+    def _state_encoder(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """编码状态"""
+        # 全局状态向量
+        game_state = [
+            self.game_state_manager.remaining_time / env_config.GAME_TIME_LIMIT,
+        ]
+        
+        # 机器人状态向量
+        red_robot_state = []
+        blue_robot_state = []
+        for robot in self.robots.values():
+            robot_state = [
+                robot.body.position.x / env_config.FIELD_WIDTH,
+                robot.body.position.y / env_config.FIELD_HEIGHT,
+                # robot.angle / 360,
+                robot.chassis_property_type.value,
+                robot.gimbal_property_type.value,
+                robot.level,
+                robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1,
+                robot.hp / robot.max_hp,
+                robot.heat / robot.max_heat,
+            ]
+            if robot.team == GameTeam.RED:
+                red_robot_state.extend(robot_state)
+            else:
+                blue_robot_state.extend(robot_state)
+        return np.array(game_state), np.array(red_robot_state), np.array(blue_robot_state)
 
-    def _apply_team_action(self, team: GameTeam, action: Dict[str, Any]):
-        for robot_id, action in action.items():
+    def _get_team_state(self, team: GameTeam) -> np.ndarray:
+        """获取当前状态"""
+        game_state, red_robot_state, blue_robot_state = self._state_encoder()
+        if team == GameTeam.RED:
+            return np.concatenate((game_state, red_robot_state, blue_robot_state))
+        else:
+            return np.concatenate((game_state, blue_robot_state, red_robot_state))
+
+    def _apply_team_action(self, team: GameTeam, action: Dict[str, Action]):
+        """应用动作"""
+        for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
-            if action.navigation is not None:
-                robot.set_target(action.navigation)
-            if action.attack:
-                if has_line_of_sight(robot.get_position(), self.get_robot(action.target).get_position(), self.obstacles):
-                    robot.attack(self.get_robot(action.target))
+            if robot_action.navigation is not None:
+                robot.set_target(robot_action.navigation)
+            if robot_action.attack:
+                target_robot = self.get_robot(robot_action.target)
+                if target_robot is not None:
+                    if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
+                        robot.attack(target_robot)
 
-    def get_game_state(self):
-        """获取当前游戏状态"""
-        state = {
-            "game_state": self.game_state_manager,
-            "obstacles": self.obstacles,
-            "robots": self.robots,
-        }
-        return state
+    def calculate_reward(self, team: GameTeam) -> float:
+        """计算奖励
+        Args:
+            team: 队伍
+        Returns:
+            float: 奖励值
+        """
+        reward = 0.0
+        
+        # 获取当前血量
+        our_hp = sum([robot.hp for robot in self.robots.values() if robot.team == team])
+        enemy_hp = sum([robot.hp for robot in self.robots.values() if robot.team != team])
+        
+        # 血量奖励
+        reward += (our_hp - enemy_hp) * 0.1
+        
+        # 游戏结束奖励
+        if self.game_state_manager.state == GameState.RED_TEAM_WIN:
+            reward += 10.0
+        elif self.game_state_manager.state == GameState.BLUE_TEAM_WIN:
+            reward -= 10.0
+        
+        return reward
     
     def get_robot(self, id: str) -> Robot:
         if id not in self.robots:

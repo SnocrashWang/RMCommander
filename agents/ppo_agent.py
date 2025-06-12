@@ -2,9 +2,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from typing import Dict, Any, Tuple
-from utils.config.robot_config import RobotType
-from RMUL.config.robot_config import ROBOT_TYPE_RMUL
+from typing import List, Dict, Any, Tuple
+from base.environment import Action
+from base.config.robot_config import BASE_ROBOT_TYPE_LIST
+from utils.config.game_config import GameTeam
+from utils.config.robot_config import ROBOT_ID, RobotType
 from torch.distributions import Normal, Categorical
 
 class PPONetwork(nn.Module):
@@ -39,10 +41,11 @@ class PPONetwork(nn.Module):
         )
         
         # 目标选择分支（离散动作）
+        # 输出维度为1（NONE）+ len(BASE_ROBOT_TYPE_LIST)
         self.target_network = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 4)  # 输出可能目标的logits
+            nn.Linear(64, 1 + len(BASE_ROBOT_TYPE_LIST))  # 输出可能目标的logits
         )
         
         # 价值网络
@@ -51,7 +54,7 @@ class PPONetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(64, 1)
         )
-    
+
     def forward(self, state):
         features = self.shared_network(state)
         
@@ -73,8 +76,10 @@ class PPONetwork(nn.Module):
 class PPOAgent:
     def __init__(
         self,
+        team: GameTeam,
         state_size: int,
-        action_space: Dict[str, Tuple],
+        field_width: float,
+        field_height: float,
         learning_rate: float = 3e-4,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
@@ -86,8 +91,12 @@ class PPOAgent:
         update_epochs: int = 10,
         batch_size: int = 64
     ):
+        self.team = team
         self.state_size = state_size
-        self.action_space = action_space
+        self.field_width = field_width
+        self.field_height = field_height
+        self.target_robot_list = [RobotType.NONE] + BASE_ROBOT_TYPE_LIST
+        
         self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.clip_ratio = clip_ratio
@@ -109,17 +118,16 @@ class PPOAgent:
         self.values = []
         self.log_probs = []
         self.dones = []
-        
-        # 定义可用的目标机器人ID列表
-        self.available_targets = [RobotType.NONE] + ROBOT_TYPE_RMUL
     
-    def _process_network_output(self, nav_mean, nav_std, attack_logits, target_logits) -> Dict[str, Any]:
+    def _process_network_output(self, nav_mean, nav_std, attack_logits, target_logits) -> Dict[str, Action]:
         """将网络输出转换为实际动作"""
         # 处理导航坐标
         nav_dist = Normal(nav_mean, nav_std)
         nav_action = nav_dist.sample()
-        x = torch.sigmoid(nav_action[0]) * self.action_space['navigation'][1]
-        y = torch.sigmoid(nav_action[1]) * self.action_space['navigation'][3]
+
+        # 将输出映射到场地范围内
+        x = torch.sigmoid(nav_action[0]) * self.field_width
+        y = torch.sigmoid(nav_action[1]) * self.field_height
         
         # 处理攻击决策
         attack_dist = Categorical(logits=attack_logits)
@@ -129,22 +137,19 @@ class PPOAgent:
         # 处理目标选择
         target_dist = Categorical(logits=target_logits)
         target_action = target_dist.sample()
-        target_id = self.available_targets[target_action.item()]
+        target_id = self.target_robot_list[target_action.item()]
         
         return {
-            'navigation': (x.item(), y.item()),
-            'attack': int(should_attack),
-            'target': target_id
+            ROBOT_ID[self.team][robot_type]: Action(
+                navigation=(x.item(), y.item()),
+                attack=should_attack,
+                target=target_id
+            ) for robot_type in BASE_ROBOT_TYPE_LIST
         }
     
-    def _get_target_index(self, target_id: RobotType) -> int:
-        """获取目标机器人在可用目标列表中的索引"""
-        return self.available_targets.index(target_id)
-    
-    def act(self, state: np.ndarray) -> Dict[str, Any]:
+    def act(self, state: np.ndarray) -> Dict[str, Action]:
         """选择动作"""
         state_tensor = torch.FloatTensor(state).unsqueeze(0)
-        
         with torch.no_grad():
             nav_mean, nav_std, attack_logits, target_logits, value = self.network(state_tensor)
             action = self._process_network_output(nav_mean[0], nav_std[0], attack_logits[0], target_logits[0])
@@ -154,11 +159,18 @@ class PPOAgent:
             attack_dist = Categorical(logits=attack_logits[0])
             target_dist = Categorical(logits=target_logits[0])
             
-            log_prob = (
-                nav_dist.log_prob(torch.tensor([action['navigation'][0], action['navigation'][1]]))
-                + attack_dist.log_prob(torch.tensor(action['attack']))
-                + target_dist.log_prob(torch.tensor(self._get_target_index(action['target'])))
-            ).sum()
+            # 计算每个机器人的动作概率
+            log_probs = []
+            for robot_id, robot_action in action.items():
+                robot_log_prob = (
+                    nav_dist.log_prob(torch.tensor([robot_action.navigation[0], robot_action.navigation[1]]))
+                    + attack_dist.log_prob(torch.tensor(int(robot_action.attack)))
+                    + target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target)))
+                ).sum()
+                log_probs.append(robot_log_prob)
+            
+            # 所有机器人的平均对数概率
+            log_prob = torch.stack(log_probs).mean()
         
         # 存储轨迹
         self.states.append(state)
@@ -226,11 +238,22 @@ class PPOAgent:
                 target_dist = Categorical(logits=target_logits)
                 
                 # 计算策略损失
-                ratio = torch.exp(
-                    nav_dist.log_prob(batch_states[:, :2]).sum(dim=1) +
-                    attack_dist.log_prob(torch.tensor([a['attack'] for a in self.actions])[batch_indices]) +
-                    target_dist.log_prob(torch.tensor([self._get_target_index(a['target']) for a in self.actions])[batch_indices])
-                )
+                batch_actions = [self.actions[i] for i in batch_indices]
+                batch_log_probs = []
+                
+                for actions in batch_actions:
+                    robot_log_probs = []
+                    for robot_id, robot_action in actions.items():
+                        robot_log_prob = (
+                            nav_dist.log_prob(torch.tensor([[robot_action.navigation[0], robot_action.navigation[1]]]))
+                            + attack_dist.log_prob(torch.tensor([int(robot_action.attack)]))
+                            + target_dist.log_prob(torch.tensor([robot_action.target]))
+                        ).sum()
+                        robot_log_probs.append(robot_log_prob)
+                    batch_log_probs.append(torch.stack(robot_log_probs).mean())
+                
+                batch_log_probs = torch.stack(batch_log_probs)
+                ratio = torch.exp(batch_log_probs - batch_old_log_probs)
                 
                 surr1 = ratio * batch_advantages
                 surr2 = torch.clamp(ratio, 1 - self.clip_ratio, 1 + self.clip_ratio) * batch_advantages

@@ -3,7 +3,7 @@ from utils.utils import get_reverse_obstacle_config
 ENV_NAME = "base_game"
 
 # 仿真配置
-FPS = 60
+FPS = 5
 
 # 场地尺寸（米）
 FIELD_WIDTH = 5.0

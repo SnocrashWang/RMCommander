@@ -30,7 +30,8 @@ class PPONetwork(nn.Module):
         self.navigation_std = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 2)  # 输出x,y的标准差
+            nn.Linear(64, 2),  # 输出x,y的标准差
+            nn.Softplus()  # 确保标准差为正
         )
         
         # 攻击分支（离散动作）
@@ -60,7 +61,7 @@ class PPONetwork(nn.Module):
         
         # 导航动作（连续）
         nav_mean = self.navigation_mean(features)
-        nav_std = torch.exp(self.navigation_std(features))  # 确保标准差为正
+        nav_std = self.navigation_std(features) + 1e-6  # 添加小值确保标准差为正
         
         # 攻击动作（离散）
         attack_logits = self.attack_network(features)
@@ -162,11 +163,18 @@ class PPOAgent:
             # 计算每个机器人的动作概率
             log_probs = []
             for robot_id, robot_action in action.items():
-                robot_log_prob = (
-                    nav_dist.log_prob(torch.tensor([robot_action.navigation[0], robot_action.navigation[1]]))
-                    + attack_dist.log_prob(torch.tensor(int(robot_action.attack)))
-                    + target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target)))
-                ).sum()
+                # 确保导航动作的维度正确
+                nav_action = torch.tensor([robot_action.navigation[0], robot_action.navigation[1]], dtype=torch.float32)
+                nav_log_prob = nav_dist.log_prob(nav_action).sum()
+                
+                # 计算攻击动作的log概率
+                attack_log_prob = attack_dist.log_prob(torch.tensor(int(robot_action.attack)))
+                
+                # 计算目标选择的log概率
+                target_log_prob = target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target)))
+                
+                # 合并所有log概率
+                robot_log_prob = nav_log_prob + attack_log_prob + target_log_prob
                 log_probs.append(robot_log_prob)
             
             # 所有机器人的平均对数概率
@@ -211,7 +219,7 @@ class PPOAgent:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
         # 转换为张量
-        states = torch.FloatTensor(self.states)
+        states = torch.FloatTensor(np.array(self.states))  # 先转换为numpy数组
         old_log_probs = torch.FloatTensor(self.log_probs)
         old_values = torch.FloatTensor(self.values)
         
@@ -244,11 +252,18 @@ class PPOAgent:
                 for actions in batch_actions:
                     robot_log_probs = []
                     for robot_id, robot_action in actions.items():
-                        robot_log_prob = (
-                            nav_dist.log_prob(torch.tensor([[robot_action.navigation[0], robot_action.navigation[1]]]))
-                            + attack_dist.log_prob(torch.tensor([int(robot_action.attack)]))
-                            + target_dist.log_prob(torch.tensor([robot_action.target]))
-                        ).sum()
+                        # 确保导航动作的维度正确
+                        nav_action = torch.tensor([robot_action.navigation[0], robot_action.navigation[1]], dtype=torch.float32)
+                        nav_log_prob = nav_dist.log_prob(nav_action).sum()
+                        
+                        # 计算攻击动作的log概率
+                        attack_log_prob = attack_dist.log_prob(torch.tensor(int(robot_action.attack)))
+                        
+                        # 计算目标选择的log概率
+                        target_log_prob = target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target)))
+                        
+                        # 合并所有log概率
+                        robot_log_prob = nav_log_prob + attack_log_prob + target_log_prob
                         robot_log_probs.append(robot_log_prob)
                     batch_log_probs.append(torch.stack(robot_log_probs).mean())
                 

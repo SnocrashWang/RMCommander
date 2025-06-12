@@ -5,14 +5,14 @@ from typing import List, Dict, Optional, Tuple, Any
 
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
-from utils.config.robot_config import RobotConfig
+from utils.config.robot_config import RobotConfig, ROBOT_ID
 from utils.grid_map import GridMap
 from utils.robot import Robot
 from utils.obstacle import Obstacle
-from utils.utils import has_line_of_sight
+from utils.utils import has_line_of_sight, calc_distance
 
 from base.config import env_config
-from base.config.robot_config import DEFAULT_ROBOT_CONFIGS
+from base.config.robot_config import DEFAULT_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 from base.game import GameStateManager
 
 @dataclass
@@ -47,6 +47,8 @@ class Environment:
 
         # 创建游戏状态管理器
         self.game_state_manager = GameStateManager()
+
+        self.last_robot_distance = None  # 记录距离
 
     def _create_robots(self):
         """根据配置创建机器人"""
@@ -165,23 +167,39 @@ class Environment:
             team: 队伍
         Returns:
             float: 奖励值
-        """
-        reward = 0.0
-        
+        """        
         # 获取当前血量
         our_hp = sum([robot.hp for robot in self.robots.values() if robot.team == team])
         enemy_hp = sum([robot.hp for robot in self.robots.values() if robot.team != team])
         
         # 血量奖励
-        reward += (our_hp - enemy_hp) * 0.1
+        reward_hp = (our_hp - enemy_hp) * 0.1
+
+        # 距离奖励
+        our_robot = self.get_robot("RED_3_STANDARD")
+        enemy_robot = self.get_robot("BLUE_3_STANDARD")
+        current_distance = calc_distance(our_robot.get_position(), enemy_robot.get_position())
+        
+        # 计算距离变化奖励
+        if self.last_robot_distance is not None:
+            distance_change = self.last_robot_distance - current_distance  # 正值表示距离减小
+            reward_distance = distance_change * 1.0  # 距离减小给予正奖励，距离增加给予负奖励
+        else:
+            reward_distance = 0
+        
+        self.last_robot_distance = current_distance  # 更新上一帧的距离
         
         # 游戏结束奖励
         if self.game_state_manager.state == GameState.RED_TEAM_WIN:
-            reward += 10.0
+            reward_win = 10000.0
         elif self.game_state_manager.state == GameState.BLUE_TEAM_WIN:
-            reward -= 10.0
+            reward_win = -10000.0
+        else:
+            reward_win = 0.0
         
-        return reward
+        # print(reward_hp, reward_distance, reward_win)
+        
+        return reward_hp + reward_distance + reward_win
     
     def get_robot(self, id: str) -> Robot:
         if id not in self.robots:

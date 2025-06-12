@@ -1,11 +1,8 @@
+import pygame
 import os
 import time
-import pygame
-import numpy as np
-from typing import List, Dict, Any, Tuple
-import matplotlib.pyplot as plt
+import json
 from tqdm import tqdm
-import torch
 
 from agents.ppo_agent import PPOAgent
 from base.config import env_config
@@ -15,11 +12,11 @@ from utils.config.game_config import GameTeam, GameState
 
 def train(
     num_episodes: int = 1000,
-    max_steps: int = 1000,
+    max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
     save_interval: int = 100,
     model_dir: str = "models",
+    log_dir: str = "logs",
     visualize: bool = False,
-    render_delay: float = 0.5  # 渲染延迟时间（秒）
 ):
     """
     训练PPO智能体
@@ -29,11 +26,12 @@ def train(
         max_steps: 每回合最大步数
         save_interval: 模型保存间隔
         model_dir: 模型保存目录
+        log_dir: 日志保存目录
         visualize: 是否启用可视化模式
-        render_delay: 渲染延迟时间（秒）
     """
-    # 创建保存模型的目录
+    # 创建保存目录
     os.makedirs(model_dir, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
     
     # 创建环境和智能体
     env = Environment()
@@ -53,14 +51,15 @@ def train(
     # 训练记录
     episode_rewards = []
     episode_lengths = []
-    win_rates = []
-    wins = 0
     
     # 训练循环
     for episode in tqdm(range(num_episodes)):
         env.reset()
         episode_reward = 0
         episode_length = 0
+        
+        # 记录当前回合的动作序列
+        episode_actions = []
         
         for step in range(max_steps):
             # 获取状态
@@ -69,6 +68,25 @@ def train(
             # 选择动作
             red_action = agent.act(state)
             blue_action = {"BLUE_3_STANDARD": Action(navigation=None, attack=False, target=None)}
+            
+            # 记录动作
+            frame_action = {
+                'red_action': {
+                    robot_id: {
+                        'navigation': action.navigation,
+                        'attack': action.attack,
+                        'target': action.target.value if action.target is not None else None
+                    } for robot_id, action in red_action.items()
+                },
+                'blue_action': {
+                    robot_id: {
+                        'navigation': action.navigation,
+                        'attack': action.attack,
+                        'target': action.target.value if action.target is not None else None
+                    } for robot_id, action in blue_action.items()
+                }
+            }
+            episode_actions.append(frame_action)
             
             # 执行动作
             env.step(1/env_config.FPS, red_action, blue_action)
@@ -85,19 +103,30 @@ def train(
             
             # 检查是否结束
             if env.game_state_manager.state != GameState.PLAYING:
-                if env.game_state_manager.state == GameState.RED_WIN:
-                    wins += 1
                 break
             
             # 可视化模式
             if visualize:
                 renderer.render(env, show_grid=False)
-                time.sleep(render_delay)  # 控制渲染速度
+                pygame.display.flip()
+                time.sleep(0.5)  # 控制渲染速度
             
-            time.sleep(0.5)
-            print(red_action)
-            print(reward)
-            print("-" * 50)
+            # print(env.robots["RED_3_STANDARD"].get_position())
+            # print(red_action)
+            # print(reward)
+            # print("-" * 20)
+        
+        # 保存当前回合的动作序列
+        if episode % save_interval == 0:
+            episode_log = {
+                'episode': episode,
+                'reward': episode_reward,
+                'length': episode_length,
+                'game_state': env.game_state_manager.state.value,
+                'actions': episode_actions
+            }
+            with open(os.path.join(log_dir, f'episode_{episode}.json'), 'w') as f:
+                json.dump(episode_log, f, indent=2)
         
         # 更新策略
         agent.update()
@@ -105,14 +134,14 @@ def train(
         # 记录训练数据
         episode_rewards.append(episode_reward)
         episode_lengths.append(episode_length)
-        win_rates.append(wins / (episode + 1))
         
         # 打印训练进度
         print(f"回合 {episode + 1}/{num_episodes}")
         print(f"总奖励: {episode_reward:.2f}")
         print(f"回合长度: {episode_length}")
-        print(f"胜率: {win_rates[-1]:.2%}")
-        print("-" * 50)
+        print(f"剩余时间: {env.game_state_manager.remaining_time:.2f}")
+        print(f"比赛结果: {env.game_state_manager.state}")
+        print("=" * 50)
         
         # 保存模型
         if (episode + 1) % save_interval == 0:
@@ -121,34 +150,11 @@ def train(
     # 保存最终模型
     agent.save(os.path.join(model_dir, "ppo_agent_final.pt"))
     
-    # # 绘制训练曲线
-    # plt.figure(figsize=(12, 4))
-    
-    # plt.subplot(131)
-    # plt.plot(episode_rewards)
-    # plt.title('Episode Rewards')
-    # plt.xlabel('Episode')
-    # plt.ylabel('Reward')
-    
-    # plt.subplot(132)
-    # plt.plot(episode_lengths)
-    # plt.title('Episode Lengths')
-    # plt.xlabel('Episode')
-    # plt.ylabel('Length')
-    
-    # plt.subplot(133)
-    # plt.plot(win_rates)
-    # plt.title('Win Rates')
-    # plt.xlabel('Episode')
-    # plt.ylabel('Win Rate')
-    
-    # plt.tight_layout()
-    # plt.savefig(os.path.join(model_dir, 'training_curves.png'))
-    # plt.close()
+    if visualize:
+        pygame.quit()
 
 if __name__ == "__main__":
     # 设置可视化模式
-    VISUALIZE = True  # 设置为True启用可视化
-    RENDER_DELAY = 0.5  # 渲染延迟时间（秒）
+    VISUALIZE = False  # 设置为True启用可视化
     
-    train(num_episodes=1000, visualize=VISUALIZE, render_delay=RENDER_DELAY)
+    train(num_episodes=1000, visualize=VISUALIZE)

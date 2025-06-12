@@ -22,7 +22,7 @@ class Action():
 class EnvironmentRMUL(Environment):
     def __init__(
             self,
-            env_config,
+            env_config = env_config,
             obstacle_configs: Optional[List[Dict[str, Any]]] = env_config.OBSTACLES,
             robot_configs: Optional[Dict[str, RobotConfig]] = RMUL_ROBOT_CONFIGS,
         ):

@@ -22,7 +22,7 @@ def main():
     pygame.init()
 
     # 创建环境和渲染器
-    env = Environment(env_config)
+    env = Environment()
     renderer = Renderer(env_config)
 
     show_grid = False  # 控制是否显示可移动栅格

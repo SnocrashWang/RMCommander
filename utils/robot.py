@@ -173,8 +173,10 @@ class Robot:
             target_robot: 目标机器人对象
             num: 攻击次数
         """
+        # 检查是否可以攻击
         if not self.is_alive or not target_robot or not target_robot.is_alive:
             return
+
         # 刷新战斗状态
         self.attack_target = target_robot
         self.last_attack_time = time.time()

@@ -1,8 +1,6 @@
 import pymunk
 import math
 
-from base.config import env_config
-
 class Obstacle:
     def __init__(self, physics_engine, obstacle_config):
         # obstacle_config 需要包含: x1, y1, x2, y2, thickness
@@ -28,7 +26,7 @@ class Obstacle:
         half_thickness = self.thickness / 2
         
         # 计算矩形的四个顶点（相对于中心点）
-        vertices = [
+        self.vertices = [
             (-half_length, -half_thickness),  # 左下
             (half_length, -half_thickness),   # 右下
             (half_length, half_thickness),    # 右上
@@ -36,7 +34,7 @@ class Obstacle:
         ]
         
         # 创建多边形形状
-        shape = pymunk.Poly(body, vertices)
+        shape = pymunk.Poly(body, self.vertices)
         shape.elasticity = 0.8
         shape.friction = 0.5
 

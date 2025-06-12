@@ -7,6 +7,7 @@ from utils.config.robot_config import RobotConfig
 from utils.grid_map import GridMap
 from utils.robot import Robot
 from utils.obstacle import Obstacle
+from utils.utils import has_line_of_sight
 
 from base.config import env_config
 from base.config.robot_config import DEFAULT_ROBOT_CONFIGS
@@ -21,7 +22,7 @@ class Action():
 class Environment:
     def __init__(
             self,
-            env_config,
+            env_config = env_config,
             obstacle_configs: Optional[List[Dict[str, Any]]] = env_config.OBSTACLES,
             robot_configs: Optional[Dict[str, RobotConfig]] = DEFAULT_ROBOT_CONFIGS,
         ):
@@ -114,7 +115,8 @@ class Environment:
             if action.navigation is not None:
                 robot.set_target(action.navigation)
             if action.attack:
-                robot.attack(self.get_robot(action.target))
+                if has_line_of_sight(robot.get_position(), self.get_robot(action.target).get_position(), self.obstacles):
+                    robot.attack(self.get_robot(action.target))
 
     def get_game_state(self):
         """获取当前游戏状态"""

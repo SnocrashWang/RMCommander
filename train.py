@@ -15,7 +15,7 @@ from utils.utils import timer
 def train(
     num_episodes: int = 1000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 1,
+    save_interval: int = 50,
     model_dir: str = "models",
     log_dir: str = "logs",
     visualize: bool = False,
@@ -133,7 +133,7 @@ def train(
                 'game_state': env.game_state_manager.state.value,
                 'actions': episode_actions
             }
-            with open(os.path.join(log_dir, f'episode_{episode}.json'), 'w') as f:
+            with open(os.path.join(log_dir, f'episode_{episode+1}.json'), 'w') as f:
                 json.dump(episode_log, f, indent=2)
         
         # 更新策略

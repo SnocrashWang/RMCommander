@@ -20,7 +20,7 @@ DEFAULT_ROBOT_CONFIGS: List[RobotConfig] = [
         team=GameTeam.BLUE,
         robot_type=RobotType.STANDARD_3,
         init_pos=(4.5, 4.5),
-        chassis_property_type=CHASSIS_PROPERTY_TYPE.HP,
+        chassis_property_type=CHASSIS_PROPERTY_TYPE.POWER,
         gimbal_property_type=GIMBAL_PROPERTY_TYPE.COOL_DOWN,
     ),
 ]

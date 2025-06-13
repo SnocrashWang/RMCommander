@@ -7,7 +7,7 @@ from typing import List, Dict, Optional, Tuple, Any
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotConfig, ROBOT_ID, RobotType
-from utils.grid_map import GridMap
+from utils.grid_map import GridMap, world_to_grid
 from utils.robot import Robot
 from utils.obstacle import Obstacle
 from utils.utils import has_line_of_sight, calc_distance, opposite_team, timer
@@ -245,8 +245,7 @@ class Environment:
         reward_weight.append(0)
 
         # 导航点惩罚
-        navigation_target_pos = action["RED_3_STANDARD"].navigation
-        col, row = self.robots["RED_3_STANDARD"].grid_map.world_to_grid(navigation_target_pos)  
+        col, row = world_to_grid(action["RED_3_STANDARD"].navigation)  
         if self.robots["RED_3_STANDARD"].grid_map.is_blocked(col, row):
             reward_navigation = -1.0
         else:

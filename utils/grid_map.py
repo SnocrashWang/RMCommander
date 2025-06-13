@@ -1,9 +1,22 @@
 import heapq
 import math
 from typing import Tuple
-from utils.utils import point_in_polygon, point_to_line_segment_distance
+from utils.utils import point_in_polygon, point_to_line_segment_distance, has_line_of_sight
 
 GRID_CELL_SIZE = 0.1  # 栅格大小（米）
+
+def world_to_grid(pos):
+    """世界坐标转换为网格坐标"""
+    x, y = pos
+    col = int(x / GRID_CELL_SIZE - 0.5)
+    row = int(y / GRID_CELL_SIZE - 0.5)
+    return col, row
+
+def grid_to_world(col, row):
+    """网格坐标转换为世界坐标"""
+    x = (col + 0.5) * GRID_CELL_SIZE
+    y = (row + 0.5) * GRID_CELL_SIZE
+    return x, y
 
 class GridMap:
     def __init__(self, width, height, robot_radius):
@@ -12,19 +25,6 @@ class GridMap:
         self.grid_cols = int(width / self.cell_size)
         self.grid_rows = int(height / self.cell_size)
         self.grid_blocked = [[False for _ in range(self.grid_rows)] for _ in range(self.grid_cols)]
-
-    def world_to_grid(self, pos):
-        """世界坐标转换为网格坐标"""
-        x, y = pos
-        col = int(x / self.cell_size - 0.5)
-        row = int(y / self.cell_size - 0.5)
-        return col, row
-
-    def grid_to_world(self, col, row):
-        """网格坐标转换为世界坐标"""
-        x = (col + 0.5) * self.cell_size
-        y = (row + 0.5) * self.cell_size
-        return x, y
 
     def set_blocked(self, col, row):
         if 0 <= row < self.grid_rows and 0 <= col < self.grid_cols:
@@ -71,17 +71,18 @@ class GridMap:
         max_y = max(start[1], end[1]) + block_radius
         
         # 转换为网格坐标
-        min_col = max(0, int(min_x / self.cell_size))
-        max_col = min(self.grid_cols - 1, int(max_x / self.cell_size))
-        min_row = max(0, int(min_y / self.cell_size))
-        max_row = min(self.grid_rows - 1, int(max_y / self.cell_size))
+        min_col, min_row = world_to_grid((min_x, min_y))
+        max_col, max_row = world_to_grid((max_x, max_y))
+        min_col = max(0, min_col)
+        max_col = min(self.grid_cols - 1, max_col)
+        min_row = max(0, min_row)
+        max_row = min(self.grid_rows - 1, max_row)
         
         # 遍历可能受影响的网格
         for col in range(min_col, max_col + 1):
             for row in range(min_row, max_row + 1):
                 # 计算网格中心点坐标
-                cell_x = (col + 0.5) * self.cell_size
-                cell_y = (row + 0.5) * self.cell_size
+                cell_x, cell_y = grid_to_world(col, row)
                 
                 # 计算点到线段的距离
                 # 1. 计算点到线段起点的向量
@@ -142,17 +143,18 @@ class GridMap:
         max_y = max(y for x, y in corners) + self.robot_radius
         
         # 转换为网格坐标
-        min_col = max(0, int(min_x / self.cell_size))
-        max_col = min(self.grid_cols - 1, int(max_x / self.cell_size))
-        min_row = max(0, int(min_y / self.cell_size))
-        max_row = min(self.grid_rows - 1, int(max_y / self.cell_size))
+        min_col, min_row = world_to_grid((min_x, min_y))
+        max_col, max_row = world_to_grid((max_x, max_y))
+        min_col = max(0, min_col)
+        max_col = min(self.grid_cols - 1, max_col)
+        min_row = max(0, min_row)
+        max_row = min(self.grid_rows - 1, max_row)
         
         # 遍历可能受影响的网格
         for col in range(min_col, max_col + 1):
             for row in range(min_row, max_row + 1):
                 # 计算网格中心点坐标
-                cell_x = (col + 0.5) * self.cell_size
-                cell_y = (row + 0.5) * self.cell_size
+                cell_x, cell_y = grid_to_world(col, row)
                 
                 # 1. 检查点是否在矩形内
                 if point_in_polygon((cell_x, cell_y), corners):
@@ -210,3 +212,65 @@ def reconstruct_path(came_from, current):
     path.reverse()
     # print(path)
     return path
+
+def bresenham_line(x0, y0, x1, y1):
+    """
+    使用Bresenham算法计算两点之间连线经过的所有栅格点
+    """
+    points = []
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    x, y = x0, y0
+    n = 1 + dx + dy
+    x_inc = 1 if x1 > x0 else -1
+    y_inc = 1 if y1 > y0 else -1
+    error = dx - dy
+    dx *= 2
+    dy *= 2
+
+    for _ in range(n):
+        points.append((x, y))
+        if error > 0:
+            x += x_inc
+            error -= dy
+        else:
+            y += y_inc
+            error += dx
+    return points
+
+def simplify_path(path, grid_map):
+    """
+    使用可行栅格对A*路径进行简化，只保留转折点或关键点。
+    确保简化后的路径点仍然在可行栅格内，并检测两点之间连线触及的所有栅格是否可行。
+    Args:
+        path: A*返回的网格路径，列表[(col, row), ...]
+        grid_map: GridMap实例，用于检查栅格是否可行
+    Returns:
+        简化后的路径点列表（与输入path同格式）
+    """
+    if not path or len(path) <= 2:
+        return path
+
+    simplified = [path[0]]
+    last_idx = 0
+    for i in range(2, len(path)+1):
+        # 检查从last_idx到i-1是否有直线可行性
+        col1, row1 = path[last_idx]
+        col2, row2 = path[i-1]
+        # 使用Bresenham算法检查两点连线经过的栅格是否可行
+        line_points = bresenham_line(col1, row1, col2, row2)
+        feasible = True
+        for col, row in line_points:
+            if grid_map.is_blocked(col, row):
+                feasible = False
+                break
+        if i == len(path) or not feasible:
+            # 上一个点是关键点
+            simplified.append(path[i-2])
+            last_idx = i-2
+    # 保证终点在最后
+    if simplified[-1] != path[-1]:
+        simplified.append(path[-1])
+    # 确保简化后的路径点仍然在可行栅格内
+    simplified = [p for p in simplified if not grid_map.is_blocked(*p)]
+    return simplified

@@ -6,7 +6,7 @@ from typing import Tuple
 from utils.config.exp_prop_config import *
 from utils.config.robot_config import ROBOT_ID, RobotType
 from utils.config.game_config import GameTeam, HEAT_PER_17, DAMAGE_PER_17
-from utils.grid_map import GridMap, a_star
+from utils.grid_map import GridMap, a_star, world_to_grid, grid_to_world, simplify_path
 
 class Robot:
     def __init__(
@@ -132,12 +132,13 @@ class Robot:
             return
 
         # 使用A*算法规划路径
-        start_grid = self.grid_map.world_to_grid(self.get_position())
-        goal_grid = self.grid_map.world_to_grid(target_pos)
+        start_grid = world_to_grid(self.get_position())
+        goal_grid = world_to_grid(target_pos)
         path_grids = a_star(self.grid_map, start_grid, goal_grid)
+        path_grids = simplify_path(path_grids, self.grid_map)
         
         # 将栅格坐标转换回世界坐标
-        self.path_points = [self.grid_map.grid_to_world(gp[0], gp[1]) for gp in path_grids[1:]]
+        self.path_points = [grid_to_world(gp[0], gp[1]) for gp in path_grids[1:]]
         self.current_path_idx = 0
 
     def step(self, dt):

@@ -3,5 +3,6 @@ numpy==1.26.4
 
 pygame==2.6.1
 pymunk==7.0.0
+opencv-python==4.11.0.86
 
 torch==2.5.1

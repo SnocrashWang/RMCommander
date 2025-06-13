@@ -1,6 +1,8 @@
 import pygame
+import os
 import sys
 import time
+import argparse
 
 from config import CURRENT_GAME
 from utils.config.game_config import GameTeam, GameType
@@ -18,6 +20,12 @@ elif CURRENT_GAME == GameType.RMUL:
 #     from RMUC.config import env_config
 
 def main():
+    parser = argparse.ArgumentParser(description='')
+    parser.add_argument('--model_dir', type=str, default='models', help='模型文件目录')
+    parser.add_argument('-e', '--episode', type=str, default=None, help='模型文件名')
+    parser.add_argument('-d', '--delay', type=float, default=None, help='渲染延迟时间（秒）')
+    args = parser.parse_args()
+
     # 初始化pygame
     pygame.init()
 
@@ -36,7 +44,7 @@ def main():
     
     # 加载训练好的模型
     try:
-        agent.load("models/ppo_agent_episode_1.pt")
+        agent.load(os.path.join(args.model_dir, f'ppo_agent_episode_{args.episode}.pt'))
         print("成功加载模型")
     except:
         print("未找到模型文件，使用随机策略")
@@ -47,7 +55,8 @@ def main():
     while running:
         frame_start = time.perf_counter()
 
-        dt = env.dt
+        if args.delay is None:
+            args.delay = env.dt
 
         # 获取当前状态
         state = env._get_team_state(GameTeam.RED)
@@ -78,7 +87,7 @@ def main():
                     show_grid = not show_grid
 
         # 更新环境
-        env.step(dt, red_action, blue_action)
+        env.step(args.delay, red_action, blue_action)
 
         # 渲染环境
         renderer.render(env, show_grid=show_grid)
@@ -88,10 +97,9 @@ def main():
 
         # 计算本帧消耗的时间
         time_cost = time.perf_counter() - frame_start
-        wait_time = max(0, dt - time_cost)
+        wait_time = max(0, args.delay - time_cost)
         if wait_time > 0:
             time.sleep(wait_time)
-            time.sleep(2)
 
     pygame.quit()
     sys.exit()

@@ -2,6 +2,7 @@ import pygame
 import os
 import time
 import json
+from datetime import datetime
 from tqdm import tqdm
 from collections import defaultdict
 
@@ -15,10 +16,11 @@ from utils.utils import timer
 def train(
     num_episodes: int = 1000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 50,
+    save_interval: int = 10,
     model_dir: str = "models",
     log_dir: str = "logs",
     visualize: bool = False,
+    load_model: str = None,  # 预训练模型路径，None表示从头开始训练
 ):
     """
     训练PPO智能体
@@ -30,11 +32,13 @@ def train(
         model_dir: 模型保存目录
         log_dir: 日志保存目录
         visualize: 是否启用可视化模式
+        load_model: 预训练模型路径，None表示从头开始训练
     """
     # 创建保存目录
     os.makedirs(model_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
-    
+    time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     # 创建环境和智能体
     env = Environment()
     state_size = len(env._get_team_state(GameTeam.RED))
@@ -44,6 +48,14 @@ def train(
         field_width=env_config.FIELD_WIDTH,
         field_height=env_config.FIELD_HEIGHT
     )
+    
+    # 如果指定了预训练模型，则加载它
+    if load_model is not None:
+        if os.path.exists(load_model):
+            agent.load(load_model)
+            print(f"已加载预训练模型: {load_model}")
+        else:
+            print(f"警告: 预训练模型 {load_model} 不存在，将从头开始训练")
     
     if visualize:
         # 初始化pygame
@@ -125,7 +137,7 @@ def train(
                     time.sleep(0.5)  # 控制渲染速度
         
         # 保存当前回合的动作序列
-        if episode % save_interval == 0:
+        if (episode + 1) % save_interval == 0 or episode == 0:
             episode_log = {
                 'episode': episode,
                 'reward': episode_reward,
@@ -133,7 +145,7 @@ def train(
                 'game_state': env.game_state_manager.state.value,
                 'actions': episode_actions
             }
-            with open(os.path.join(log_dir, f'episode_{episode+1}.json'), 'w') as f:
+            with open(os.path.join(log_dir, f'episode_{time_tag}_{episode+1}.json'), 'w') as f:
                 json.dump(episode_log, f, indent=2)
         
         # 更新策略
@@ -161,7 +173,7 @@ def train(
         
         # 保存模型
         if (episode + 1) % save_interval == 0:
-            agent.save(os.path.join(model_dir, f"ppo_agent_episode_{episode+1}.pt"))
+            agent.save(os.path.join(model_dir, f"ppo_agent_{time_tag}_episode_{episode+1}.pt"))
     
     # 保存最终模型
     agent.save(os.path.join(model_dir, "ppo_agent_final.pt"))
@@ -173,4 +185,11 @@ if __name__ == "__main__":
     # 设置可视化模式
     VISUALIZE = False  # 设置为True启用可视化
     
-    train(num_episodes=1000, visualize=VISUALIZE)
+    # 设置预训练模型路径（如果需要从预训练模型继续训练）
+    LOAD_MODEL = "models/ppo_agent_episode_5.pt"
+    
+    train(
+        num_episodes=1000, 
+        visualize=VISUALIZE,
+        load_model=LOAD_MODEL
+    )

@@ -7,3 +7,5 @@ models/*
 !models/.gitkeep
 logs/*
 !logs/.gitkeep
+videos/*
+!videos/.gitkeep

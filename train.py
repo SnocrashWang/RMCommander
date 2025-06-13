@@ -15,7 +15,7 @@ from utils.utils import timer
 def train(
     num_episodes: int = 1000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 20,
+    save_interval: int = 1,
     model_dir: str = "models",
     log_dir: str = "logs",
     visualize: bool = False,
@@ -58,8 +58,9 @@ def train(
     time_stats = defaultdict(list)
     
     # 训练循环
-    for episode in tqdm(range(num_episodes)):
-        env.reset()
+    for episode in tqdm(range(num_episodes), dynamic_ncols=True):
+        with timer(time_stats, 'env_reset'):
+            env.reset()
         episode_reward = 0
         episode_length = 0
         
@@ -103,7 +104,7 @@ def train(
                 
                 # 计算奖励
                 with timer(time_stats, 'calculate_reward'):
-                    reward = env.calculate_reward(GameTeam.RED)
+                    reward = env.calculate_reward(GameTeam.RED, red_action)
                     episode_reward += reward
                 
                 # 存储轨迹
@@ -144,19 +145,19 @@ def train(
         episode_lengths.append(episode_length)
         
         # 打印训练进度
-        print(f"回合 {episode + 1}/{num_episodes}")
-        print(f"总奖励: {episode_reward:.2f}")
-        print(f"回合长度: {episode_length}")
-        print(f"剩余时间: {env.game_state_manager.remaining_time:.2f}")
-        print(f"比赛结果: {env.game_state_manager.state}")
+        tqdm.write(f"回合 {episode + 1}/{num_episodes}")
+        tqdm.write(f"总奖励: {episode_reward:.2f}")
+        tqdm.write(f"回合长度: {episode_length}")
+        tqdm.write(f"剩余时间: {env.game_state_manager.remaining_time:.2f}")
+        tqdm.write(f"比赛结果: {env.game_state_manager.state}")
         
         # 打印性能统计
-        print("\n性能统计 (平均耗时，单位：秒):")
+        tqdm.write("\n性能统计 (平均耗时，单位：秒):")
         for key, times in time_stats.items():
             if times:  # 确保有数据
-                avg_time = sum(times) / len(times)
-                print(f"{key}: {avg_time:.6f}")
-        print("=" * 50)
+                avg_time = sum(times)
+                tqdm.write(f"{key}: {avg_time:.6f}")
+        tqdm.write("=" * 50)
         
         # 保存模型
         if (episode + 1) % save_interval == 0:

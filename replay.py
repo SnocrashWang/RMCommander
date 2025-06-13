@@ -38,7 +38,7 @@ def replay_episode(episode_data: Dict[str, Any], dt: float = 0.5):
                 if event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     return
-        print(frame_action)
+        # print(frame_action)
         # 转换动作格式
         red_action = {
             robot_id: Action(
@@ -75,7 +75,7 @@ def replay_episode(episode_data: Dict[str, Any], dt: float = 0.5):
 def main():
     parser = argparse.ArgumentParser(description='回放训练过程中的动作序列')
     parser.add_argument('--log_dir', type=str, default='logs', help='日志文件目录')
-    parser.add_argument('--episode', type=int, help='要回放的回合编号')
+    parser.add_argument('--episode', type=int, default=0, help='要回放的回合编号')
     parser.add_argument('--delay', type=float, default=None, help='渲染延迟时间（秒）')
     args = parser.parse_args()
 

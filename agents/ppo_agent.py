@@ -25,13 +25,15 @@ class PPONetwork(nn.Module):
         self.navigation_mean = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 2)  # 输出x,y的均值
+            nn.Linear(64, 2),
+            nn.Tanh()  # 添加tanh激活函数
         )
         self.navigation_std = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 2),  # 输出x,y的标准差
-            nn.Softplus()  # 确保标准差为正
+            nn.Softplus(),  # 确保标准差为正
+            nn.Tanh()  # 添加tanh激活函数
         )
         
         # 攻击分支（离散动作）
@@ -123,12 +125,15 @@ class PPOAgent:
     def _process_network_output(self, nav_mean, nav_std, attack_logits, target_logits) -> Dict[str, Action]:
         """将网络输出转换为实际动作"""
         # 处理导航坐标
+        # print(nav_mean, nav_std)
         nav_dist = Normal(nav_mean, nav_std)
         nav_action = nav_dist.sample()
+        # print(nav_action)
 
         # 将输出映射到场地范围内
-        x = torch.sigmoid(nav_action[0]) * self.field_width
-        y = torch.sigmoid(nav_action[1]) * self.field_height
+        x = (torch.tanh(nav_action[0]) + 1) * self.field_width / 2
+        y = (torch.tanh(nav_action[1]) + 1) * self.field_height / 2
+        # print(x, y)
         
         # 处理攻击决策
         attack_dist = Categorical(logits=attack_logits)

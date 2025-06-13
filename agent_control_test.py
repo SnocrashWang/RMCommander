@@ -36,7 +36,7 @@ def main():
     
     # 加载训练好的模型
     try:
-        agent.load("models/ppo_agent_episode_50.pt")
+        agent.load("models/ppo_agent_episode_1.pt")
         print("成功加载模型")
     except:
         print("未找到模型文件，使用随机策略")
@@ -91,6 +91,7 @@ def main():
         wait_time = max(0, dt - time_cost)
         if wait_time > 0:
             time.sleep(wait_time)
+            time.sleep(2)
 
     pygame.quit()
     sys.exit()

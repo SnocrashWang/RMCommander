@@ -92,7 +92,8 @@ class PPOAgent:
         value_coef: float = 0.5,
         max_grad_norm: float = 0.5,
         update_epochs: int = 10,
-        batch_size: int = 64
+        batch_size: int = 64,
+        device: str = None  # 新增设备参数
     ):
         self.team = team
         self.state_size = state_size
@@ -110,8 +111,15 @@ class PPOAgent:
         self.update_epochs = update_epochs
         self.batch_size = batch_size
         
-        # 创建网络
-        self.network = PPONetwork(state_size)
+        # 设置设备
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(device)
+        print(f"使用设备: {self.device}")
+        
+        # 创建网络并移动到指定设备
+        self.network = PPONetwork(state_size).to(self.device)
         self.optimizer = optim.Adam(self.network.parameters(), lr=learning_rate)
         
         # 存储轨迹
@@ -125,15 +133,12 @@ class PPOAgent:
     def _process_network_output(self, nav_mean, nav_std, attack_logits, target_logits) -> Dict[str, Action]:
         """将网络输出转换为实际动作"""
         # 处理导航坐标
-        # print(nav_mean, nav_std)
         nav_dist = Normal(nav_mean, nav_std)
         nav_action = nav_dist.sample()
-        # print(nav_action)
 
         # 将输出映射到场地范围内
         x = (torch.tanh(nav_action[0]) + 1) * self.field_width / 2
         y = (torch.tanh(nav_action[1]) + 1) * self.field_height / 2
-        # print(x, y)
         
         # 处理攻击决策
         attack_dist = Categorical(logits=attack_logits)
@@ -155,7 +160,7 @@ class PPOAgent:
     
     def act(self, state: np.ndarray) -> Dict[str, Action]:
         """选择动作"""
-        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         with torch.no_grad():
             nav_mean, nav_std, attack_logits, target_logits, value = self.network(state_tensor)
             action = self._process_network_output(nav_mean[0], nav_std[0], attack_logits[0], target_logits[0])
@@ -169,14 +174,14 @@ class PPOAgent:
             log_probs = []
             for robot_id, robot_action in action.items():
                 # 确保导航动作的维度正确
-                nav_action = torch.tensor([robot_action.navigation[0], robot_action.navigation[1]], dtype=torch.float32)
+                nav_action = torch.tensor([robot_action.navigation[0], robot_action.navigation[1]], dtype=torch.float32).to(self.device)
                 nav_log_prob = nav_dist.log_prob(nav_action).sum()
                 
                 # 计算攻击动作的log概率
-                attack_log_prob = attack_dist.log_prob(torch.tensor(int(robot_action.attack)))
+                attack_log_prob = attack_dist.log_prob(torch.tensor(int(robot_action.attack), device=self.device))
                 
                 # 计算目标选择的log概率
-                target_log_prob = target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target)))
+                target_log_prob = target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target), device=self.device))
                 
                 # 合并所有log概率
                 robot_log_prob = nav_log_prob + attack_log_prob + target_log_prob
@@ -212,7 +217,7 @@ class PPOAgent:
             gae = delta + self.gamma * self.gae_lambda * (1 - self.dones[t]) * gae
             advantages.insert(0, gae)
         
-        return torch.FloatTensor(advantages)
+        return torch.FloatTensor(advantages).to(self.device)
     
     def update(self):
         """更新策略"""
@@ -224,9 +229,9 @@ class PPOAgent:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
         # 转换为张量
-        states = torch.FloatTensor(np.array(self.states))  # 先转换为numpy数组
-        old_log_probs = torch.FloatTensor(self.log_probs)
-        old_values = torch.FloatTensor(self.values)
+        states = torch.FloatTensor(np.array(self.states)).to(self.device)  # 先转换为numpy数组
+        old_log_probs = torch.FloatTensor(self.log_probs).to(self.device)
+        old_values = torch.FloatTensor(self.values).to(self.device)
         
         # 多轮更新
         for _ in range(self.update_epochs):
@@ -258,14 +263,14 @@ class PPOAgent:
                     robot_log_probs = []
                     for robot_id, robot_action in actions.items():
                         # 确保导航动作的维度正确
-                        nav_action = torch.tensor([robot_action.navigation[0], robot_action.navigation[1]], dtype=torch.float32)
+                        nav_action = torch.tensor([robot_action.navigation[0], robot_action.navigation[1]], dtype=torch.float32).to(self.device)
                         nav_log_prob = nav_dist.log_prob(nav_action).sum()
                         
                         # 计算攻击动作的log概率
-                        attack_log_prob = attack_dist.log_prob(torch.tensor(int(robot_action.attack)))
+                        attack_log_prob = attack_dist.log_prob(torch.tensor(int(robot_action.attack), device=self.device))
                         
                         # 计算目标选择的log概率
-                        target_log_prob = target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target)))
+                        target_log_prob = target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target), device=self.device))
                         
                         # 合并所有log概率
                         robot_log_prob = nav_log_prob + attack_log_prob + target_log_prob
@@ -310,11 +315,12 @@ class PPOAgent:
         """保存模型"""
         torch.save({
             'network_state_dict': self.network.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict()
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'device': str(self.device)  # 保存设备信息
         }, path)
     
     def load(self, path: str):
         """加载模型"""
-        checkpoint = torch.load(path)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=True)
         self.network.load_state_dict(checkpoint['network_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict']) 
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

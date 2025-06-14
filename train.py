@@ -16,11 +16,12 @@ from utils.utils import timer
 def train(
     num_episodes: int = 1000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 10,
+    save_interval: int = 50,
     model_dir: str = "models",
     log_dir: str = "logs",
     visualize: bool = False,
     load_model: str = None,  # 预训练模型路径，None表示从头开始训练
+    device: str = None,  # 训练设备，None表示自动选择
 ):
     """
     训练PPO智能体
@@ -33,6 +34,7 @@ def train(
         log_dir: 日志保存目录
         visualize: 是否启用可视化模式
         load_model: 预训练模型路径，None表示从头开始训练
+        device: 训练设备，None表示自动选择
     """
     # 创建保存目录
     os.makedirs(model_dir, exist_ok=True)
@@ -46,7 +48,8 @@ def train(
         team=GameTeam.RED,
         state_size=state_size,
         field_width=env_config.FIELD_WIDTH,
-        field_height=env_config.FIELD_HEIGHT
+        field_height=env_config.FIELD_HEIGHT,
+        device=device  # 传入设备参数
     )
     
     # 如果指定了预训练模型，则加载它
@@ -66,11 +69,11 @@ def train(
     episode_rewards = []
     episode_lengths = []
     
-    # 性能统计
-    time_stats = defaultdict(list)
-    
     # 训练循环
     for episode in tqdm(range(num_episodes), dynamic_ncols=True):
+        # 性能统计
+        time_stats = defaultdict(list)
+
         with timer(time_stats, 'env_reset'):
             env.reset()
         episode_reward = 0
@@ -137,7 +140,7 @@ def train(
                     time.sleep(0.5)  # 控制渲染速度
         
         # 保存当前回合的动作序列
-        if (episode + 1) % save_interval == 0 or episode == 0:
+        if (episode + 1) % (save_interval // 5) == 0 or episode == 0:
             episode_log = {
                 'episode': episode,
                 'reward': episode_reward,
@@ -186,10 +189,14 @@ if __name__ == "__main__":
     VISUALIZE = False  # 设置为True启用可视化
     
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    LOAD_MODEL = "models/ppo_agent_episode_5.pt"
+    # LOAD_MODEL = "models/ppo_agent_20250614_144920_episode_20.pt"
+    LOAD_MODEL = None
+    
+    # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
+    DEVICE = 'cuda'
     
     train(
-        num_episodes=1000, 
         visualize=VISUALIZE,
-        load_model=LOAD_MODEL
+        load_model=LOAD_MODEL,
+        device=DEVICE
     )

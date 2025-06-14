@@ -101,8 +101,7 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
 
 def main():
     parser = argparse.ArgumentParser(description='回放训练过程中的动作序列')
-    parser.add_argument('--log_dir', type=str, default='logs', help='日志文件目录')
-    parser.add_argument('-e', '--episode', type=str, default=None, help='要回放的回合编号')
+    parser.add_argument('-l', '--log_file', type=str, default=None, help='日志文件')
     parser.add_argument('-d', '--delay', type=float, default=None, help='渲染延迟时间（秒）')
     parser.add_argument('-v', '--video', action='store_true', help='是否保存为视频')
     parser.add_argument('--video_dir', type=str, default='videos', help='视频保存目录')
@@ -111,15 +110,14 @@ def main():
     if args.delay is None:
         args.delay = 1 / env_config.FPS
     
-    if args.episode is not None:
+    if args.log_file is not None:
         # 回放指定回合
-        log_file = os.path.join(args.log_dir, f'episode_{args.episode}.json')
-        if not os.path.exists(log_file):
-            print(f"错误：找不到回合 {args.episode} 的日志文件")
+        if not os.path.exists(args.log_file):
+            print(f"错误：找不到 {args.log_file}")
             return
         
-        episode_data = load_episode(log_file)
-        print(f"回放回合 {args.episode}")
+        episode_data = load_episode(args.log_file)
+        print(f"回放回合 {args.log_file}")
         print(f"总奖励: {episode_data['reward']:.2f}")
         print(f"回合长度: {episode_data['length']}")
         
@@ -127,21 +125,21 @@ def main():
         video_path = None
         if args.video:
             os.makedirs(args.video_dir, exist_ok=True)
-            video_path = os.path.join(args.video_dir, f'episode_{args.episode}.mp4')
+            video_path = os.path.join(args.video_dir, f'{args.log_file}.mp4')
             print(f"视频将保存到: {video_path}")
         
         replay_episode(episode_data, args.delay, args.video, video_path)
     else:
         # 列出所有可用的回合
-        log_files = [f for f in os.listdir(args.log_dir) if f.startswith('episode_') and f.endswith('.json')]
+        log_files = [f for f in os.listdir('logs') if f.endswith('.json')]
         if not log_files:
-            print(f"错误：在 {args.log_dir} 目录下找不到任何回合日志文件")
+            print(f"错误：在 logs 目录下找不到任何回合日志文件")
             return
         
         print("可用的回合：")
         for log_file in sorted(log_files):
             episode_num = int(log_file.split('_')[1].split('.')[0])
-            episode_data = load_episode(os.path.join(args.log_dir, log_file))
+            episode_data = load_episode(os.path.join('logs', log_file))
             print(f"回合 {episode_num}: 奖励={episode_data['reward']:.2f}, 长度={episode_data['length']}")
 
 if __name__ == "__main__":

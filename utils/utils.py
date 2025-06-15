@@ -40,6 +40,10 @@ def calc_distance(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
     """计算两点之间的距离"""
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
+def opposite_position(p: Tuple[float, float], field_width: float, field_height: float) -> Tuple[float, float]:
+    """计算相反位置"""
+    return field_width - p[0], field_height - p[1]
+
 def draw_dashed_line(
     surface: pygame.Surface,
     color: Tuple[int, int, int],

@@ -11,12 +11,12 @@ from base.config import env_config
 from base.environment import Environment, Action
 from visualization.renderer import Renderer
 from utils.config.game_config import GameTeam, GameState
-from utils.utils import timer
+from utils.utils import timer, opposite_position
 
 def train(
     num_episodes: int = 1000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 50,
+    save_interval: int = 100,
     model_dir: str = "models",
     log_dir: str = "logs",
     visualize: bool = False,
@@ -44,18 +44,25 @@ def train(
     # 创建环境和智能体
     env = Environment()
     state_size = len(env._get_team_state(GameTeam.RED))
-    agent = PPOAgent(
+    agent_train = PPOAgent(
         team=GameTeam.RED,
         state_size=state_size,
         field_width=env_config.FIELD_WIDTH,
         field_height=env_config.FIELD_HEIGHT,
         device=device  # 传入设备参数
     )
-    
+    agent_test = PPOAgent(
+        team=GameTeam.BLUE,
+        state_size=state_size,
+        field_width=env_config.FIELD_WIDTH,
+        field_height=env_config.FIELD_HEIGHT,
+        device=device  # 传入设备参数
+    )
     # 如果指定了预训练模型，则加载它
     if load_model is not None:
         if os.path.exists(load_model):
-            agent.load(load_model)
+            agent_train.load(load_model)
+            agent_test.load("models/ppo_agent_20250615_004153_episode_800.pt")
             print(f"已加载预训练模型: {load_model}")
         else:
             print(f"警告: 预训练模型 {load_model} 不存在，将从头开始训练")
@@ -90,8 +97,10 @@ def train(
                 
                 # 选择动作
                 with timer(time_stats, 'act'):
-                    red_action = agent.act(state)
-                    blue_action = {"BLUE_3_STANDARD": Action(navigation=None, attack=False, target=None)}
+                    red_action = agent_train.act(state)
+                    blue_action = agent_test.act(state)
+                    blue_action["BLUE_3_STANDARD"].navigation = opposite_position(blue_action["BLUE_3_STANDARD"].navigation, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                    # blue_action = {"BLUE_3_STANDARD": Action(navigation=None, attack=False, target=None)}
                 
                 # 记录动作
                 with timer(time_stats, 'record_action'):
@@ -124,7 +133,7 @@ def train(
                 
                 # 存储轨迹
                 with timer(time_stats, 'store_reward'):
-                    agent.store_reward(reward, env.game_state_manager.state != GameState.PLAYING)
+                    agent_train.store_reward(reward, env.game_state_manager.state != GameState.PLAYING)
                 
                 # 更新步数
                 episode_length += 1
@@ -140,7 +149,7 @@ def train(
                     time.sleep(0.5)  # 控制渲染速度
         
         # 保存当前回合的动作序列
-        if (episode + 1) % (save_interval // 5) == 0 or episode == 0:
+        if (episode + 1) % (save_interval) == 0 or episode == 0:
             episode_log = {
                 'episode': episode,
                 'reward': episode_reward,
@@ -153,7 +162,7 @@ def train(
         
         # 更新策略
         with timer(time_stats, 'update'):
-            agent.update()
+            agent_train.update()
         
         # 记录训练数据
         episode_rewards.append(episode_reward)
@@ -176,10 +185,10 @@ def train(
         
         # 保存模型
         if (episode + 1) % save_interval == 0:
-            agent.save(os.path.join(model_dir, f"ppo_agent_{time_tag}_episode_{episode+1}.pt"))
+            agent_train.save(os.path.join(model_dir, f"ppo_agent_{time_tag}_episode_{episode+1}.pt"))
     
     # 保存最终模型
-    agent.save(os.path.join(model_dir, "ppo_agent_final.pt"))
+    agent_train.save(os.path.join(model_dir, "ppo_agent_final.pt"))
     
     if visualize:
         pygame.quit()
@@ -189,8 +198,8 @@ if __name__ == "__main__":
     VISUALIZE = False  # 设置为True启用可视化
     
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    # LOAD_MODEL = "models/ppo_agent_20250614_144920_episode_20.pt"
-    LOAD_MODEL = None
+    LOAD_MODEL = "models/ppo_agent_20250615_004153_episode_800.pt"
+    # LOAD_MODEL = None
     
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
     DEVICE = 'cuda'

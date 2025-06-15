@@ -106,7 +106,7 @@ class Robot:
             self.level += 1
             max_hp_before_upgrade = self.max_hp
             self.update_property()
-            self.heal(self.max_hp / max_hp_before_upgrade * self.hp - self.hp)
+            self.heal(int(self.max_hp / max_hp_before_upgrade * self.hp - self.hp))
 
     def update_property(self):
         """更新机器人属性"""

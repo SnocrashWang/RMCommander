@@ -136,7 +136,11 @@ class Renderer:
         current_hp_width = int(bar_width * robot.hp / robot.max_hp)
         pygame.draw.rect(self.screen, render_config.TEAM_COLORS[robot.team],
                         (hp_bar_x, hp_bar_y, current_hp_width, bar_height))
-        hp_text = self.tiny_font.render(f"{robot.hp:>3d}/{robot.max_hp:>3d}", True, render_config.COLOR_TEXT)
+        try:
+            hp_text = self.tiny_font.render(f"{robot.hp:>3d}/{robot.max_hp:>3d}", True, render_config.COLOR_TEXT)
+        except:
+            print(robot.hp, robot.max_hp, robot.id)
+            exit()
         self.screen.blit(hp_text, (hp_bar_x + bar_width / 2 - hp_text.get_width() / 2, hp_bar_y + bar_height / 2 - hp_text.get_height() / 2))
 
         # 热量条

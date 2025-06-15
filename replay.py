@@ -75,7 +75,7 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
         }
         
         # 执行动作
-        print(red_action)
+        # print(red_action)
         env.step(env.dt, red_action, blue_action)
         
         # 渲染环境
@@ -125,7 +125,7 @@ def main():
         video_path = None
         if args.video:
             os.makedirs(args.video_dir, exist_ok=True)
-            video_path = os.path.join(args.video_dir, f'{args.log_file}.mp4')
+            video_path = os.path.join(args.video_dir, f'{args.log_file.replace('\\', '/').split("/")[-1].split(".")[0]}.mp4')
             print(f"视频将保存到: {video_path}")
         
         replay_episode(episode_data, args.delay, args.video, video_path)

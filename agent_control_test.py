@@ -3,11 +3,14 @@ import os
 import sys
 import time
 import argparse
+import cv2
+import numpy as np
 
 from config import CURRENT_GAME
 from utils.config.game_config import GameTeam, GameType
 from visualization.renderer import Renderer
 from agents.ppo_agent import PPOAgent
+from utils.utils import opposite_position
 
 if CURRENT_GAME == GameType.BASE:
     from base.environment import Environment, Action
@@ -21,9 +24,10 @@ elif CURRENT_GAME == GameType.RMUL:
 
 def main():
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('--model_dir', type=str, default='models', help='模型文件目录')
-    parser.add_argument('-e', '--episode', type=str, default=None, help='模型文件名')
+    parser.add_argument('-m', '--model_file', type=str, default=None, help='模型文件')
     parser.add_argument('-d', '--delay', type=float, default=None, help='渲染延迟时间（秒）')
+    parser.add_argument('-v', '--video', action='store_true', help='是否保存为视频')
+    parser.add_argument('--video_dir', type=str, default='videos', help='视频保存目录')
     args = parser.parse_args()
 
     # 初始化pygame
@@ -33,18 +37,42 @@ def main():
     env = Environment()
     renderer = Renderer(env_config)
     
+    # 如果保存视频，初始化视频写入器
+    video_writer = None
+    if args.video:
+        os.makedirs(args.video_dir, exist_ok=True)
+        # 获取第一帧来确定视频尺寸
+        renderer.render(env, show_grid=False)
+        pygame.display.flip()
+        frame = pygame.surfarray.array3d(pygame.display.get_surface())
+        frame = frame.transpose([1, 0, 2])  # 转置以匹配cv2的格式
+        height, width = frame.shape[:2]
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video_path = os.path.join(args.video_dir, f'agent_control_{time.strftime("%Y%m%d_%H%M%S")}.mp4')
+        video_writer = cv2.VideoWriter(video_path, fourcc, int(1/env.dt), (width, height))
+        print(f"视频将保存到: {video_path}")
+    
     # 创建PPO agent
     state_size = len(env._get_team_state(GameTeam.RED))
-    agent = PPOAgent(
+    agent_red = PPOAgent(
         team=GameTeam.RED,
         state_size=state_size,
         field_width=env_config.FIELD_WIDTH,
-        field_height=env_config.FIELD_HEIGHT
+        field_height=env_config.FIELD_HEIGHT,
+        device="cpu"
+    )
+    agent_blue = PPOAgent(
+        team=GameTeam.BLUE,
+        state_size=state_size,
+        field_width=env_config.FIELD_WIDTH,
+        field_height=env_config.FIELD_HEIGHT,
+        device="cpu"
     )
     
     # 加载训练好的模型
     try:
-        agent.load(os.path.join(args.model_dir, f'ppo_agent_episode_{args.episode}.pt'))
+        agent_red.load(args.model_file)
+        agent_blue.load(args.model_file)
         print("成功加载模型")
     except:
         print("未找到模型文件，使用随机策略")
@@ -61,17 +89,19 @@ def main():
         # 获取当前状态
         state = env._get_team_state(GameTeam.RED)
         
-        # 使用agent选择动作
-        red_action = agent.act(state)
+        # 红方动作
+        red_action = agent_red.act(state)
         
-        # 蓝方保持静止
-        blue_action = {
-            robot_id: Action(
-                navigation=None,
-                attack=False,
-                target=None,
-            ) for robot_id, robot in env.robots.items() if robot.team == GameTeam.BLUE
-        }
+        # # 蓝方动作
+        # blue_action = {
+        #     robot_id: Action(
+        #         navigation=None,
+        #         attack=False,
+        #         target=None,
+        #     ) for robot_id, robot in env.robots.items() if robot.team == GameTeam.BLUE
+        # }
+        blue_action = agent_blue.act(state)
+        blue_action["BLUE_3_STANDARD"].navigation = opposite_position(blue_action["BLUE_3_STANDARD"].navigation, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -92,6 +122,13 @@ def main():
         # 渲染环境
         renderer.render(env, show_grid=show_grid)
 
+        # 如果保存视频，保存当前帧
+        if video_writer:
+            frame = pygame.surfarray.array3d(pygame.display.get_surface())
+            frame = frame.transpose([1, 0, 2])  # 转置以匹配cv2的格式
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # 转换颜色空间
+            video_writer.write(frame)
+
         # 更新显示
         pygame.display.flip()
 
@@ -101,6 +138,8 @@ def main():
         if wait_time > 0:
             time.sleep(wait_time)
 
+    if video_writer:
+        video_writer.release()
     pygame.quit()
     sys.exit()
 

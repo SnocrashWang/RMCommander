@@ -147,22 +147,26 @@ class Renderer:
         team_text = self.tiny_font.render(f"{robot.id}", True, render_config.COLOR_TEXT)
         self.screen.blit(team_text, (x - team_text.get_width() / 2, y + radius * 1.5))
 
-
         # 绘制数据条
         bar_width = render_config.SCALE * 0.5
         bar_height = render_config.SCALE * 0.08
         # 血量条
-        hp_bar_x = x - bar_width / 2
-        hp_bar_y = y - radius * 1.5 - bar_height * 2
-        current_hp_width = int(bar_width * robot.hp / robot.max_hp)
-        pygame.draw.rect(self.screen, render_config.TEAM_COLORS[robot.team],
-                        (hp_bar_x, hp_bar_y, current_hp_width, bar_height))
-        try:
+        if robot.is_alive:
+            hp_bar_x = x - bar_width / 2
+            hp_bar_y = y - radius * 1.5 - bar_height * 2
+            current_hp_width = int(bar_width * robot.hp / robot.max_hp)
+            pygame.draw.rect(self.screen, render_config.TEAM_COLORS[robot.team],
+                            (hp_bar_x, hp_bar_y, current_hp_width, bar_height))
             hp_text = self.tiny_font.render(f"{robot.hp:>3d}/{robot.max_hp:>3d}", True, render_config.COLOR_TEXT)
-        except:
-            print(robot.hp, robot.max_hp, robot.id)
-            exit()
-        self.screen.blit(hp_text, (hp_bar_x + bar_width / 2 - hp_text.get_width() / 2, hp_bar_y + bar_height / 2 - hp_text.get_height() / 2))
+            self.screen.blit(hp_text, (hp_bar_x + bar_width / 2 - hp_text.get_width() / 2, hp_bar_y + bar_height / 2 - hp_text.get_height() / 2))
+        else:
+            revive_bar_x = x - bar_width / 2
+            revive_bar_y = y - radius * 1.5 - bar_height * 2
+            current_revive_width = int(bar_width * robot.revive_progress / robot.revive_target)
+            pygame.draw.rect(self.screen, render_config.COLOR_REVIVE_BAR,
+                            (revive_bar_x, revive_bar_y, current_revive_width, bar_height))
+            revive_text = self.tiny_font.render(f"{int(robot.revive_progress):>3d}/{robot.revive_target:>3d}", True, render_config.COLOR_TEXT)
+            self.screen.blit(revive_text, (revive_bar_x + bar_width / 2 - revive_text.get_width() / 2, revive_bar_y + bar_height / 2 - revive_text.get_height() / 2))
 
         # 热量条
         heat_bar_x = x - bar_width / 2
@@ -172,6 +176,9 @@ class Renderer:
                         (heat_bar_x, heat_bar_y, current_heat_width, bar_height))
         heat_text = self.tiny_font.render(f"{int(robot.heat)}/{int(robot.max_heat)}", True, render_config.COLOR_TEXT)
         self.screen.blit(heat_text, (heat_bar_x + bar_width / 2 - heat_text.get_width() / 2, heat_bar_y + bar_height / 2 - heat_text.get_height() / 2))
+        # 子弹
+        ammo_text = self.tiny_font.render(f"{robot.ammo_allowed}", True, render_config.COLOR_TEXT)
+        self.screen.blit(ammo_text, (heat_bar_x - ammo_text.get_width(), heat_bar_y + bar_height / 2 - ammo_text.get_height() / 2))
 
         # 经验条
         exp_bar_x = x - bar_width / 2

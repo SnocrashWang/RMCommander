@@ -13,7 +13,7 @@ from utils.obstacle import Obstacle
 from utils.utils import has_line_of_sight, calc_distance, opposite_team, timer
 
 from base.config import env_config
-from base.config.robot_config import DEFAULT_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
+from base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 from base.game import GameStateManager
 
 @dataclass
@@ -27,7 +27,7 @@ class Environment:
             self,
             env_config = env_config,
             obstacle_configs: Optional[List[Dict[str, Any]]] = env_config.OBSTACLES,
-            robot_configs: Optional[Dict[str, RobotConfig]] = DEFAULT_ROBOT_CONFIGS,
+            robot_configs: Optional[Dict[str, RobotConfig]] = BASE_ROBOT_CONFIGS,
         ):
         # 创建物理引擎
         self.physics_engine = pymunk.Space()
@@ -70,7 +70,8 @@ class Environment:
                 gimbal_property_type=config.gimbal_property_type,
                 forward_speed_efficiency=config.forward_speed_efficiency,
                 rotation_speed_efficiency=config.rotation_speed_efficiency,
-                radius=config.radius
+                radius=config.radius,
+                max_ammo=config.max_ammo
             )
             self.robots[robot.id] = robot
 

@@ -4,22 +4,23 @@ import math
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional, Tuple
 
-from base.environment import Environment
+from base.environment import Environment, Action
 from utils.config.game_config import GameTeam
-from utils.config.robot_config import RobotConfig
+from utils.config.robot_config import RobotConfig, RobotType, ROBOT_ID
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.robot import Robot
-from utils.utils import meters_to_pixels, point_in_polygon
+from utils.utils import point_in_polygon, opposite_team, has_line_of_sight
 
 from RMUL.config import env_config
 from RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
 from RMUL.game import GameStateManagerRMUL
 
 @dataclass
-class Action():
+class ActionRMUL(Action):
     navigation: Tuple[float, float]
     attack: bool
-    target: int
+    target: RobotType
+    purchase: int   # TODO: 购买弹药
 
 class EnvironmentRMUL(Environment):
     def __init__(
@@ -61,7 +62,7 @@ class EnvironmentRMUL(Environment):
             GameTeam.BLUE: self._get_team_state(GameTeam.BLUE)
         }
 
-    def step(self, dt: float, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
+    def step(self, dt: float, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL]):
         """推进环境仿真"""
         # 更新物理引擎
         self.physics_engine.step(dt)
@@ -82,6 +83,11 @@ class EnvironmentRMUL(Environment):
                 pos = robot.body.position
                 if point_in_polygon(pos, self.buff_zone["center"]):
                     self.robots_in_zone[robot.team] = True
+        
+        # TODO: 检查补给区占领情况
+        # for robot in self.robots.values():
+        #     if point_in_polygon(robot.body.position, self.buff_zone["red_start"]):
+        #         robot.gun_locked = False
 
         # 更新游戏状态
         self.game_state_manager.update(self.robots_in_zone, dt)
@@ -152,12 +158,15 @@ class EnvironmentRMUL(Environment):
     
     def _apply_team_action(self, team: GameTeam, action: Dict[str, Any]):
         """应用本方动作"""
-        for robot_id, action in action.items():
+        for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
-            if action.navigation is not None:
-                robot.set_target(action.navigation)
-            if action.attack:
-                robot.attack(self.get_robot(action.target))
+            if robot_action.navigation is not None:
+                robot.set_target(robot_action.navigation)
+            if robot_action.attack and robot_action.target != RobotType.NONE:
+                target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][robot_action.target])
+                if target_robot is not None:
+                    if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
+                        robot.attack(target_robot)
 
     def _calculate_reward(self) -> float:
         """计算奖励"""

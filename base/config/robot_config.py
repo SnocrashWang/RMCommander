@@ -8,7 +8,7 @@ BASE_ROBOT_TYPE_LIST = [
 ]
 
 # 默认机器人配置
-DEFAULT_ROBOT_CONFIGS: List[RobotConfig] = [
+BASE_ROBOT_CONFIGS: List[RobotConfig] = [
     RobotConfig(
         team=GameTeam.RED,
         robot_type=RobotType.STANDARD_3,

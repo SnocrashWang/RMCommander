@@ -19,7 +19,8 @@ class Robot:
         gimbal_property_type: GIMBAL_PROPERTY_TYPE,
         forward_speed_efficiency: float,
         rotation_speed_efficiency: float,
-        radius: float
+        radius: float,
+        max_ammo: int
     ):
         # 全局属性
         self.physics_engine = physics_engine
@@ -74,10 +75,21 @@ class Robot:
         self.current_path_idx = 0
         self.is_alive = True  # 机器人是否存活
 
+        # 弹丸相关
+        self.max_ammo = max_ammo
+        self.ammo = self.max_ammo
+        self.ammo_allowed = 10
+
         # 攻击相关
+        self.gun_locked = False
         self.attack_target = None  # 攻击目标
         self.last_attack_time = 0  # 上次攻击的时间（秒）
         self.last_in_combat_time = 0  # 上次进入战斗的时间（秒）
+
+        # 复活相关
+        self.revive_progress = 0    # 复活进度
+        self.revive_target = 10     # 复活所需进度
+        self.revive_efficiency = 2  # 复活效率（每秒增加的进度）
 
         # GridMap相关
         self.grid_map = None
@@ -145,6 +157,14 @@ class Robot:
         """沿路径点导航"""
         if not self.is_alive:
             self.body.velocity = (0, 0)
+            
+            self.revive_progress = min(self.revive_progress + self.revive_efficiency * dt, self.revive_target)
+            if self.revive_progress >= self.revive_target:
+                self.is_alive = True
+                self.hp = self.max_hp
+                self.heat = 0
+                self.revive_progress = 0
+                self.revive_target += 10
             return
 
         # 沿路径移动
@@ -191,14 +211,18 @@ class Robot:
         self.angle = math.degrees(math.atan2(dy, dx))
 
         # 计算可以攻击的次数
-        try:
-            num = int(min(num, (self.max_heat - self.heat) // HEAT_PER_17))
-        except:
-            print(num, self.max_heat, self.heat, DAMAGE_PER_17)
+        num = int(min(num, self.ammo, self.ammo_allowed, (self.max_heat - self.heat) // HEAT_PER_17))
+        if num <= 0:
+            self.attack_target = None
+            return
+        
         # 造成伤害
         damage = self.attack_target.take_damage(DAMAGE_PER_17, num)
         # 增加热量
         self.heat += HEAT_PER_17 * num
+        # 减少子弹
+        self.ammo -= num
+        self.ammo_allowed -= num
         # 结算经验
         self.update_exp(1 * num) # 每发射1次增加1点经验
         self.update_exp(damage * 4) # 每造成1点伤害增加4点经验
@@ -238,6 +262,7 @@ class Robot:
         self.hp = self.hp - damage
         if self.hp <= 0:
             self.is_alive = False
+            self.gun_locked = True
         return damage
 
     def heal(self, amount):

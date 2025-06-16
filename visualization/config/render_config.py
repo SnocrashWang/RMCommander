@@ -18,7 +18,7 @@ ROBOT_COLORS = {
 # 其他颜色
 COLOR_BACKGROUND = (240, 240, 240)  # 浅灰色背景
 COLOR_WALL = (100, 100, 100)  # 深灰色墙壁
-COLOR_CENTER_ZONE = (200, 255, 200)  # 浅绿色中心区域
+COLOR_CENTER_ZONE = (200, 255, 200)  # 浅绿色增益区
 COLOR_OBSTACLE = (150, 150, 150)  # 灰色障碍物
 COLOR_TEXT = (50, 50, 50)  # 深灰色文字
 COLOR_PROGRESS_BAR_BG = (200, 200, 200)  # 进度条背景色

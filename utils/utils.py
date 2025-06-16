@@ -99,7 +99,7 @@ def draw_dashed_line(
         # 更新剩余距离
         distance -= (current_length + gap_length)
 
-def point_in_polygon(point, polygon):
+def point_in_polygon(point: Tuple[float, float], polygon: List[Tuple[float, float]]) -> bool:
     """判断点是否在多边形内
     Args:
         point: 点坐标 (x, y)
@@ -156,10 +156,8 @@ def point_to_line_segment_distance(point, line_start, line_end):
 def get_reverse_obstacle_config(obstacle_config, field_width, field_height):
     """获取障碍物的反向配置"""
     return {
-        "x1": field_width - obstacle_config["x1"],
-        "y1": field_height - obstacle_config["y1"],
-        "x2": field_width - obstacle_config["x2"],
-        "y2": field_height - obstacle_config["y2"],
+        "p1": opposite_position(obstacle_config["p1"], field_width, field_height),
+        "p2": opposite_position(obstacle_config["p2"], field_width, field_height),
         "thickness": obstacle_config["thickness"]
     }
 

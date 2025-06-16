@@ -1,3 +1,4 @@
+import pymunk
 import numpy as np
 import math
 from dataclasses import dataclass
@@ -7,11 +8,12 @@ from base.environment import Environment
 from utils.config.game_config import GameTeam
 from utils.config.robot_config import RobotConfig
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
-from utils.utils import meters_to_pixels
+from utils.robot import Robot
+from utils.utils import meters_to_pixels, point_in_polygon
 
 from RMUL.config import env_config
 from RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
-from RMUL.game import GameStateManager
+from RMUL.game import GameStateManagerRMUL
 
 @dataclass
 class Action():
@@ -26,17 +28,38 @@ class EnvironmentRMUL(Environment):
             obstacle_configs: Optional[List[Dict[str, Any]]] = env_config.OBSTACLES,
             robot_configs: Optional[Dict[str, RobotConfig]] = RMUL_ROBOT_CONFIGS,
         ):
-        super().__init__(env_config, obstacle_configs, robot_configs)
+        # 创建物理引擎
+        self.physics_engine = pymunk.Space()
+        self.physics_engine.gravity = (0, 0)  # 无重力
+        self.dt = 1 / env_config.FPS
 
-        # 创建中心区域
-        self.center_zone_rect = env_config.CENTER_ZONE_RECT
+        # 创建障碍物
+        self.obstacles = []
+        self._create_obstacles(obstacle_configs)
+
+        # 创建增益区
+        self.buff_zone = {}
+        self.buff_zone["center"] = env_config.CENTER_ZONE_VERTICES
+        self.buff_zone["red_start"] = env_config.RED_START_ZONE_VERTICES
+        self.buff_zone["blue_start"] = env_config.BLUE_START_ZONE_VERTICES
         self.robots_in_zone = {GameTeam.RED: False, GameTeam.BLUE: False}
 
-        # 创建游戏状态管理器
-        self.game_state_manager = GameStateManager()
+        # 创建机器人
+        self.robots: Dict[str, Robot] = {}
+        self.robot_configs = robot_configs
+        self._create_robots()
+        
+        # 为每个机器人创建网格地图
+        self._init_robot_grid_maps(env_config)
 
-        # 定义状态空间大小
-        self.state_size = len(self._get_team_state(GameTeam.RED))
+        # 创建游戏状态管理器
+        self.game_state_manager = GameStateManagerRMUL()
+
+        # 状态记录，仅用于计算奖励
+        self.last_team_state = {
+            GameTeam.RED: self._get_team_state(GameTeam.RED),
+            GameTeam.BLUE: self._get_team_state(GameTeam.BLUE)
+        }
 
     def step(self, dt: float, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
         """推进环境仿真"""
@@ -52,13 +75,12 @@ class EnvironmentRMUL(Environment):
             robot.step(dt)
 
         # 检查中心区域占领情况
+        self.robots_in_zone = {GameTeam.RED: False, GameTeam.BLUE: False}
         for robot in self.robots.values():
             if robot.is_alive:
                 # 检查是否在中心区域
                 pos = robot.body.position
-                pixel_x = meters_to_pixels(pos.x)
-                pixel_y = meters_to_pixels(pos.y)
-                if self.center_zone_rect.collidepoint(pixel_x, pixel_y):
+                if point_in_polygon(pos, self.buff_zone["center"]):
                     self.robots_in_zone[robot.team] = True
 
         # 更新游戏状态

@@ -25,13 +25,14 @@ class Renderer:
         self.small_font = pygame.font.Font(None, 24)
         self.tiny_font = pygame.font.Font(None, 12)
 
-    def render(self, env, show_grid=False):
+    def render(self, env, show_grid=False, show_control=False):
         """渲染环境"""
         # 清空屏幕
         self.screen.fill(render_config.COLOR_BACKGROUND)
 
         # 绘制增益区域
-        self._draw_buff_zone()
+        if hasattr(env, "buff_zone"):
+            self._draw_buff_zone(env)
 
         # 绘制四周墙壁
         self._draw_walls()
@@ -47,21 +48,41 @@ class Renderer:
         for robot in env.robots.values():
             self._draw_attack_line(robot.get_attack_line())
 
-        # 绘制进度条
-        if self.env_config.ENV_NAME == "RMUL":
-            self._draw_progress_bars(env.game_state_manager)
+        # 绘制顶部信息
+        self._draw_top_bar(env.game_state_manager, self.env_config.ENV_NAME)
 
-        # 绘制状态信息
-        self._draw_info(env.game_state_manager, show_grid)
+        # 绘制控制提示信息
+        if show_control:
+            self._draw_control_info(show_grid)
+
+        # 绘制游戏结束信息
+        self._draw_game_over(env.game_state_manager)
 
         # 绘制可移动栅格（如果启用）
         if show_grid:
             self._draw_grid(env.robots["RED_3_STANDARD"].grid_map)
             self._draw_path(env.robots["RED_3_STANDARD"])
 
-    def _draw_buff_zone(self):
+    def _draw_buff_zone(self, env):
         """绘制增益区域"""
-        # TODO: 绘制增益区域
+        # 创建一个用于所有增益区的Surface
+        s = pygame.Surface((self.env_config.FIELD_WIDTH * render_config.SCALE, 
+                          self.env_config.FIELD_HEIGHT * render_config.SCALE), 
+                          pygame.SRCALPHA)
+        
+        # 绘制所有增益区
+        for buff_zone in env.buff_zone.values():
+            vertices = []
+            for x, y in buff_zone:
+                px = meters_to_pixels(x)
+                py = meters_to_pixels(y)
+                vertices.append((px, py))
+            
+            # 在Surface上绘制增益区
+            pygame.draw.polygon(s, render_config.COLOR_CENTER_ZONE, vertices)
+        
+        # 将包含所有增益区的Surface绘制到主屏幕
+        self.screen.blit(s, (0, 0))
 
     def _draw_walls(self):
         """绘制围墙"""
@@ -162,7 +183,7 @@ class Renderer:
         current_exp_width = int(bar_width * min(1, (robot.exp - LEVEL_NEED_EXP[min(robot.level, len(LEVEL_NEED_EXP) - 1)]) / exp_need_to_level_up))
         pygame.draw.rect(self.screen, render_config.COLOR_EXP_BAR,
                         (exp_bar_x, exp_bar_y, current_exp_width, bar_height))
-        exp_text = self.tiny_font.render(f"{robot.exp - LEVEL_NEED_EXP[robot.level]:>3d}/{exp_need_to_level_up:>3d}", True, render_config.COLOR_TEXT)
+        exp_text = self.tiny_font.render(f"{robot.exp - LEVEL_NEED_EXP[min(robot.level, len(LEVEL_NEED_EXP) - 1)]:>3d}/{exp_need_to_level_up:>3d}", True, render_config.COLOR_TEXT)
         self.screen.blit(exp_text, (exp_bar_x + bar_width / 2 - exp_text.get_width() / 2, exp_bar_y + bar_height / 2 - exp_text.get_height() / 2))
         # 等级
         level_text = self.tiny_font.render(f"Lv.{robot.level:>2d}", True, render_config.COLOR_TEXT)
@@ -179,42 +200,44 @@ class Renderer:
                 int(render_config.SCALE * 0.02), int(render_config.SCALE * 0.05), int(render_config.SCALE * 0.1)
             )
 
-    def _draw_progress_bars(self, game_state):
-        """绘制进度条"""
-        bar_height = render_config.SCALE * self.env_config.FIELD_HEIGHT * 0.02
+    def _draw_top_bar(self, game_state, env_name):
+        """绘制顶部信息条"""
         screen_width = render_config.SCALE * self.env_config.FIELD_WIDTH
-        bar_width = screen_width * 0.4
-
-        # 红队进度条
-        pygame.draw.rect(self.screen, render_config.COLOR_PROGRESS_BAR_BG, (10, 10, bar_width, bar_height))
-        progress_width = int(bar_width * (game_state.center_zone_progress[GameTeam.RED] / self.env_config.OCCUPATION_TARGET))
-        pygame.draw.rect(self.screen, render_config.TEAM_COLORS[GameTeam.RED],
-                         (10, 10, progress_width, bar_height))
-
-        # 蓝队进度条
-        pygame.draw.rect(self.screen, render_config.COLOR_PROGRESS_BAR_BG, (screen_width - bar_width - 10, 10, bar_width, bar_height))
-        progress_width = int(bar_width * (game_state.center_zone_progress[GameTeam.BLUE] / self.env_config.OCCUPATION_TARGET))
-        pygame.draw.rect(self.screen, render_config.TEAM_COLORS[GameTeam.BLUE], 
-                         (screen_width - bar_width - 10 + (bar_width - progress_width), 10, progress_width, bar_height))
-
-        # 进度文本
-        text1 = self.font.render(
-            f"Team {GameTeam.RED.value}: {int(game_state.center_zone_progress[GameTeam.RED] / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
-            True, render_config.COLOR_TEXT
-        )
-        text2 = self.font.render(
-            f"Team {GameTeam.BLUE.value}: {int(game_state.center_zone_progress[GameTeam.BLUE] / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
-            True, render_config.COLOR_TEXT
-        )
-        self.screen.blit(text1, (bar_width - text1.get_width(), text1.get_height() // 2))
-        self.screen.blit(text2, (screen_width - bar_width, text2.get_height() // 2))
 
         # 倒计时
         min, sec = second2minute(game_state.get_remaining_time())
         text3 = self.font.render(f"Time: {min:02d}:{sec:02d}", True, render_config.COLOR_TEXT)
         self.screen.blit(text3, ((screen_width - text3.get_width()) // 2, text3.get_height() // 2))
 
-    def _draw_info(self, game_state, show_grid=False):
+        if env_name == "RMUL":
+            bar_height = render_config.SCALE * self.env_config.FIELD_HEIGHT * 0.02
+            bar_width = screen_width * 0.4
+
+            # 红队进度条
+            pygame.draw.rect(self.screen, render_config.COLOR_PROGRESS_BAR_BG, (10, 10, bar_width, bar_height))
+            progress_width = int(bar_width * (game_state.center_zone_progress[GameTeam.RED] / self.env_config.OCCUPATION_TARGET))
+            pygame.draw.rect(self.screen, render_config.TEAM_COLORS[GameTeam.RED],
+                            (10, 10, progress_width, bar_height))
+
+            # 蓝队进度条
+            pygame.draw.rect(self.screen, render_config.COLOR_PROGRESS_BAR_BG, (screen_width - bar_width - 10, 10, bar_width, bar_height))
+            progress_width = int(bar_width * (game_state.center_zone_progress[GameTeam.BLUE] / self.env_config.OCCUPATION_TARGET))
+            pygame.draw.rect(self.screen, render_config.TEAM_COLORS[GameTeam.BLUE], 
+                            (screen_width - bar_width - 10 + (bar_width - progress_width), 10, progress_width, bar_height))
+
+            # 进度文本
+            text1 = self.font.render(
+                f"Team {GameTeam.RED.value}: {int(game_state.center_zone_progress[GameTeam.RED] / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
+                True, render_config.COLOR_TEXT
+            )
+            text2 = self.font.render(
+                f"Team {GameTeam.BLUE.value}: {int(game_state.center_zone_progress[GameTeam.BLUE] / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
+                True, render_config.COLOR_TEXT
+            )
+            self.screen.blit(text1, (bar_width - text1.get_width(), text1.get_height() // 2))
+            self.screen.blit(text2, (screen_width - bar_width, text2.get_height() // 2))
+
+    def _draw_control_info(self, show_grid=False):
         """Draw game info and controls (English)"""
         controls = [
             "Controls:",
@@ -230,7 +253,8 @@ class Renderer:
             text_control = self.font.render(text, True, render_config.COLOR_TEXT)
             self.screen.blit(text_control, (10, render_config.SCALE * self.env_config.FIELD_HEIGHT - (len(controls) - i) * 30))
 
-        # Show game state
+    def _draw_game_over(self, game_state):
+        # Show game over info
         if game_state.state == GameState.RED_TEAM_WIN:
             win_text = self.large_font.render("Team Red Wins!", True, render_config.TEAM_COLORS[GameTeam.RED])
             text_rect = win_text.get_rect(center=(render_config.SCALE * self.env_config.FIELD_WIDTH // 2, 

@@ -79,7 +79,7 @@ def main():
         env.step(dt, red_action, blue_action)
 
         # 渲染环境
-        renderer.render(env, show_grid=show_grid)
+        renderer.render(env, show_grid=show_grid, show_control=True)
 
         # 更新显示
         pygame.display.flip()

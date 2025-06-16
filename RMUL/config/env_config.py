@@ -1,5 +1,4 @@
-import pygame
-from visualization.config import render_config
+from utils.utils import opposite_position, get_reverse_obstacle_config
 
 ENV_NAME = "RMUL"
 
@@ -10,29 +9,46 @@ FPS = 60
 FIELD_WIDTH = 12.0
 FIELD_HEIGHT = 8.0
 
-# 中心区域
-CENTER_ZONE_SIZE = 2.0  # 米
-
-# 计算中心区域矩形（像素坐标）
-CENTER_ZONE_RECT = pygame.Rect(
-    (FIELD_WIDTH - CENTER_ZONE_SIZE) * render_config.SCALE / 2,  # x
-    (FIELD_HEIGHT - CENTER_ZONE_SIZE) * render_config.SCALE / 2,  # y
-    CENTER_ZONE_SIZE * render_config.SCALE,  # width
-    CENTER_ZONE_SIZE * render_config.SCALE   # height
-)
+# 启动区
+RED_START_ZONE_VERTICES = [
+    (0.0, 0.0),  # 左上
+    (1.5, 0),  # 右上
+    (1.5, 2.0),  # 右下
+    (0.0, 2.0),  # 左下
+]
+BLUE_START_ZONE_VERTICES = [
+    opposite_position(v, FIELD_WIDTH, FIELD_HEIGHT) for v in RED_START_ZONE_VERTICES
+]
+# 中心增益区
+CENTER_ZONE_VERTICES = [
+    (FIELD_WIDTH / 2 - 2.0 / 2, FIELD_HEIGHT / 2 - 2.0 / 2),  # 左上
+    (FIELD_WIDTH / 2 + 2.0 / 2, FIELD_HEIGHT / 2 - 2.0 / 2),  # 右上
+    (FIELD_WIDTH / 2 + 2.0 / 2, FIELD_HEIGHT / 2 + 2.0 / 2),  # 右下
+    (FIELD_WIDTH / 2 - 2.0 / 2, FIELD_HEIGHT / 2 + 2.0 / 2),  # 左下
+]
 
 # 障碍物
 OBSTACLES = [
     # 四周围墙
-    {"x1": 0.0, "y1": 0.0, "x2": FIELD_WIDTH, "y2": 0.0, "thickness": 0.0},  # 上
-    {"x1": 0.0, "y1": FIELD_HEIGHT, "x2": FIELD_WIDTH, "y2": FIELD_HEIGHT, "thickness": 0.0},  # 下
-    {"x1": 0.0, "y1": 0.0, "x2": 0.0, "y2": FIELD_HEIGHT, "thickness": 0.0},  # 左
-    {"x1": FIELD_WIDTH, "y1": 0.0, "x2": FIELD_WIDTH, "y2": FIELD_HEIGHT, "thickness": 0.0},  # 右
-    # 左侧45度墙（大致从左下到中间偏左）
-    {"x1": 4.0, "y1": 2.0, "x2": 2.0, "y2": 4.0, "thickness": 0.5},
-    # 右侧45度墙（大致从右上到中间偏右）
-    {"x1": 8.0, "y1": 6.0, "x2": 10.0, "y2": 4.0, "thickness": 0.5},
+    {"p1": (0.0, 0.0), "p2": (FIELD_WIDTH, 0.0), "thickness": 0.0},  # 上
+    {"p1": (0.0, FIELD_HEIGHT), "p2": (FIELD_WIDTH, FIELD_HEIGHT), "thickness": 0.0},  # 下
+    {"p1": (0.0, 0.0), "p2": (0.0, FIELD_HEIGHT), "thickness": 0.0},  # 左
+    {"p1": (FIELD_WIDTH, 0.0), "p2": (FIELD_WIDTH, FIELD_HEIGHT), "thickness": 0.0},  # 右
 ]
+
+# 红方障碍物
+red_obstacles = [
+    {"p1": (2.808, 3.780), "p2": (3.014, 3.780), "thickness": 0.2},
+    {"p1": (2.964, 3.830), "p2": (4.638, 1.950), "thickness": 0.15},
+    {"p1": (4.588, 2.000), "p2": (4.794, 2.000), "thickness": 0.2},
+]
+# 蓝方障碍物
+blue_obstacles = [
+    get_reverse_obstacle_config(v, FIELD_WIDTH, FIELD_HEIGHT) for v in red_obstacles
+]
+
+OBSTACLES.extend(red_obstacles)
+OBSTACLES.extend(blue_obstacles)
 
 GAME_TIME_LIMIT = 300  # 游戏时间限制（秒）
 OCCUPATION_TARGET = 30  # 占领目标进度

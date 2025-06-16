@@ -6,7 +6,6 @@ from base.config.env_config import GAME_TIME_LIMIT
 class GameStateManager:
     def __init__(self):
         self.state = GameState.PLAYING
-        self.center_zone_progress = {GameTeam.RED: 0, GameTeam.BLUE: 0}  # 红蓝队的进度
         self.total_time = GAME_TIME_LIMIT  # 游戏总时长
         self.remaining_time = GAME_TIME_LIMIT  # 剩余时间
 
@@ -42,7 +41,6 @@ class GameStateManager:
     def reset(self):
         """重置游戏状态"""
         self.state = GameState.PLAYING
-        self.center_zone_progress = {GameTeam.RED: 0, GameTeam.BLUE: 0}
         self.remaining_time = self.total_time
 
     def get_remaining_time(self):

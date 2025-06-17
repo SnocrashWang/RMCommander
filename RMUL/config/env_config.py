@@ -10,14 +10,14 @@ FIELD_WIDTH = 12.0
 FIELD_HEIGHT = 8.0
 
 # 启动区
-RED_START_ZONE_VERTICES = [
+BOOT_ZONE_RED_VERTICES = [
     (0.0, 0.0),  # 左上
     (1.5, 0),  # 右上
     (1.5, 2.0),  # 右下
     (0.0, 2.0),  # 左下
 ]
-BLUE_START_ZONE_VERTICES = [
-    opposite_position(v, FIELD_WIDTH, FIELD_HEIGHT) for v in RED_START_ZONE_VERTICES
+BOOT_ZONE_BLUE_VERTICES = [
+    opposite_position(v, FIELD_WIDTH, FIELD_HEIGHT) for v in BOOT_ZONE_RED_VERTICES
 ]
 # 中心增益区
 CENTER_ZONE_VERTICES = [

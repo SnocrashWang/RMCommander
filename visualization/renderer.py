@@ -49,7 +49,7 @@ class Renderer:
 
         # 绘制所有机器人
         for robot in env.robots.values():
-            self._draw_tank(robot)
+            self._draw_robot(robot)
 
         # 绘制攻击线
         for robot in env.robots.values():
@@ -121,7 +121,7 @@ class Renderer:
 
             pygame.draw.polygon(self.screen_field, render_config.COLOR_OBSTACLE, [v1, v2, v3, v4])
 
-    def _draw_tank(self, robot):
+    def _draw_robot(self, robot):
         """绘制机器人"""
         position = robot.get_position()
         x = meters_to_pixels(position[0])
@@ -215,7 +215,6 @@ class Renderer:
 
     def _draw_top_bar(self, game_state, env_name):
         """绘制顶部信息条"""
-
         # 倒计时
         min, sec = second2minute(game_state.get_remaining_time())
         time_text = self.font_medium.render(f"Time: {min:02d}:{sec:02d}", True, render_config.COLOR_TEXT)
@@ -254,9 +253,9 @@ class Renderer:
             blue_economics_text = self.font_small.render(f"{game_state.get_economics(GameTeam.BLUE):<4d}", True, render_config.COLOR_TEXT)
             self.screen_note.blit(blue_economics_text, (self.screen_width // 2 + bar_height, bar_height * 3 - blue_economics_text.get_height() // 2))
 
-    def _draw_control_info(self, control_state, env_name="Base"):
-        """Draw game info and controls (English)"""
-        # 绘制控制提示
+    def _draw_control_info(self, control_state, env_name):
+        """绘制控制提示"""
+        # 绘制控制键位提示
         controls = [
             "Controls:",
             "ESC: Quit",
@@ -266,7 +265,7 @@ class Renderer:
             "W/S: Switch robot",
             "A/D: Switch target",
             "Q: Attack once",
-            "E: Purchase 10 ammo",
+            "E: Purchase ammo",
             f"Movable Grid: {'ON' if control_state.get('show_grid', False) else 'OFF'}",
         ]
         select = {
@@ -280,7 +279,7 @@ class Renderer:
             text_control = self.font_medium.render(text, True, render_config.COLOR_TEXT)
             self.screen_note.blit(text_control, (10, meters_to_pixels(self.env_config.FIELD_HEIGHT) - (len(controls_displayed) - i) * 30))
 
-        # 绘制状态提示
+        # 绘制控制目标提示
         if env_name == "base_game":
             return
         
@@ -293,7 +292,7 @@ class Renderer:
             self.screen_note.blit(text_control, (self.screen_width / 2 + 10, meters_to_pixels(self.env_config.FIELD_HEIGHT) - (len(states) - i) * 30))
 
     def _draw_game_over(self, game_state):
-        # Show game over info
+        # 绘制游戏结束信息
         if game_state.state == GameState.RED_TEAM_WIN:
             win_text = self.font_large.render("Team Red Wins!", True, render_config.TEAM_COLORS[GameTeam.RED])
             text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.FIELD_WIDTH) // 2, 
@@ -313,7 +312,7 @@ class Renderer:
     def _draw_grid(self, grid_map):
         """绘制可移动栅格"""
         # 检查栅格状态是否改变
-        current_state = (grid_map.grid_cols, grid_map.grid_rows, grid_map.cell_size)
+        current_state = (grid_map.grid_cols, grid_map.grid_rows, grid_map.grid_blocked)
         if self.last_grid_state == current_state:
             # 如果状态没变，直接返回
             return

@@ -42,8 +42,8 @@ class EnvironmentRMUL(Environment):
         # 创建增益区
         self.buff_zone = {}
         self.buff_zone["center"] = env_config.CENTER_ZONE_VERTICES
-        self.buff_zone["red_start"] = env_config.RED_START_ZONE_VERTICES
-        self.buff_zone["blue_start"] = env_config.BLUE_START_ZONE_VERTICES
+        self.buff_zone["boot_red"] = env_config.BOOT_ZONE_RED_VERTICES
+        self.buff_zone["boot_blue"] = env_config.BOOT_ZONE_BLUE_VERTICES
         self.robots_in_zone = {GameTeam.RED: False, GameTeam.BLUE: False}
 
         # 创建机器人
@@ -84,8 +84,8 @@ class EnvironmentRMUL(Environment):
         
         # 检查补给区占领情况
         for robot in self.robots.values():
-            if robot.team == GameTeam.RED and point_in_polygon(robot.get_position(), self.buff_zone["red_start"]) or \
-                robot.team == GameTeam.BLUE and point_in_polygon(robot.get_position(), self.buff_zone["blue_start"]):
+            if robot.team == GameTeam.RED and point_in_polygon(robot.get_position(), self.buff_zone["boot_red"]) or \
+                robot.team == GameTeam.BLUE and point_in_polygon(robot.get_position(), self.buff_zone["boot_blue"]):
                 # 解锁发射机构
                 robot.gun_locked = False
                 # 为防止血量计算中出现小数，仅在整数秒时一次性回复血量
@@ -99,6 +99,7 @@ class EnvironmentRMUL(Environment):
         """重置环境"""
         super().reset()
 
+    # TODO: 状态编码
     def _state_encoder(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """编码状态"""
         # 全局状态向量
@@ -164,16 +165,17 @@ class EnvironmentRMUL(Environment):
                             else:
                                 kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
                                 robot.update_exp(int(kill_exp))
-                            # 结算占领进度
+                            # 结算胜利进度
                             self.game_state_manager.gain_victory_progress(team, 20)
 
             # 购买允许发弹量
             if robot_action.purchase and robot.robot_type != RobotType.SENTRY:
                 if self.game_state_manager.get_economics(team) >= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM:
-                    if point_in_polygon(robot.get_position(), self.buff_zone["red_start"] if team == GameTeam.RED else self.buff_zone["blue_start"]):
+                    if point_in_polygon(robot.get_position(), self.buff_zone["boot_red"] if team == GameTeam.RED else self.buff_zone["boot_blue"]):
                         robot.ammo_allowed += robot.bullet.PURCHASE_NUM
                         self.game_state_manager.cost_economics(team, robot.bullet.PRICE * robot.bullet.PURCHASE_NUM)
 
+    # TODO: 奖励函数
     def _calculate_reward(self) -> float:
         """计算奖励"""
         reward = 0.0

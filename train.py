@@ -144,7 +144,7 @@ def train(
                 
                 # 可视化模式
                 if visualize:
-                    renderer.render(env, show_grid=False)
+                    renderer.render(env, {"show_grid": False})
                     pygame.display.flip()
                     time.sleep(0.5)  # 控制渲染速度
         

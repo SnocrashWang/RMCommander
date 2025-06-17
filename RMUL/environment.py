@@ -155,10 +155,11 @@ class EnvironmentRMUL(Environment):
                         robot.attack(target_robot)
 
             # 购买允许发弹量
-            if robot_action.purchase:
-                if self.game_state_manager.get_economics(team) >= 10:
-                    robot.ammo_allowed += 10
-                    self.game_state_manager.cost_economics(team, 10)
+            if robot_action.purchase and robot.robot_type != RobotType.SENTRY:
+                if self.game_state_manager.get_economics(team) >= robot.price_per_bullet * robot.purchase_num:
+                    if point_in_polygon(robot.get_position(), self.buff_zone["red_start"] if team == GameTeam.RED else self.buff_zone["blue_start"]):
+                        robot.ammo_allowed += robot.purchase_num
+                        self.game_state_manager.cost_economics(team, robot.price_per_bullet * robot.purchase_num)
 
     def _calculate_reward(self) -> float:
         """计算奖励"""

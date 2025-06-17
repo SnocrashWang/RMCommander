@@ -12,12 +12,15 @@ from visualization.renderer import Renderer
 if CURRENT_GAME == GameType.BASE:
     from base.environment import Environment, Action
     from base.config import env_config
+    from base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 elif CURRENT_GAME == GameType.RMUL:
     from RMUL.environment import EnvironmentRMUL as Environment, ActionRMUL as Action
     from RMUL.config import env_config
+    from RMUL.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 # elif CURRENT_GAME == GameType.RMUC:
 #     from RMUC.environment import EnvironmentRMUC, Action
 #     from RMUC.config import env_config
+#     from RMUC.config.robot_config import RMUC_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 
 def main():
     # 初始化pygame
@@ -27,7 +30,13 @@ def main():
     env = Environment()
     renderer = Renderer(env_config)
 
-    show_grid = False  # 控制是否显示可移动栅格
+    robot_id_list = list(env.robots.keys())
+    target_id_list = ROBOT_TYPE_LIST
+    control_state = {
+        "robot_id": robot_id_list[0],
+        "target_id": target_id_list[0],
+        "show_grid": False,
+    }
 
     running = True
     while running:
@@ -42,9 +51,9 @@ def main():
             robot_id: Action() for robot_id, robot in env.robots.items() if robot.team == GameTeam.BLUE
         }
 
-        blue_action["BLUE_3_STANDARD"].navigation = (6.0, 4.0)
-        blue_action["BLUE_3_STANDARD"].target = RobotType.STANDARD_3
-        blue_action["BLUE_3_STANDARD"].attack = True if random.random() < 0.05 else False
+        # blue_action["BLUE_3_STANDARD"].navigation = (6.0, 4.0)
+        # blue_action["BLUE_3_STANDARD"].target = RobotType.STANDARD_3
+        # blue_action["BLUE_3_STANDARD"].attack = True if random.random() < 0.05 else False
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -56,8 +65,10 @@ def main():
                 # 转换为世界坐标
                 world_x = mouse_pos[0] / render_config.SCALE
                 world_y = mouse_pos[1] / render_config.SCALE
-                if env.robots:  # 兼容机器人列表
-                    red_action["RED_3_STANDARD"].navigation = (world_x, world_y)
+                if env.robots[control_state["robot_id"]].team == GameTeam.RED:
+                    red_action[control_state["robot_id"]].navigation = (world_x, world_y)
+                else:
+                    blue_action[control_state["robot_id"]].navigation = (world_x, world_y)
 
             # 按键事件
             elif event.type == pygame.KEYDOWN:
@@ -66,19 +77,34 @@ def main():
                     print("Environment reset")
                 elif event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_g:  # 切换显示栅格
-                    show_grid = not show_grid
-                elif event.key == pygame.K_a:  # A键攻击
-                    red_action["RED_3_STANDARD"].attack = True
-                    red_action["RED_3_STANDARD"].target = RobotType.STANDARD_3
-                elif event.key == pygame.K_s:  # S键购物
-                    red_action["RED_3_STANDARD"].purchase = True
+                elif event.key == pygame.K_TAB:  # 切换显示栅格
+                    control_state["show_grid"] = not control_state["show_grid"]
+                elif event.key == pygame.K_q:  # Q键攻击
+                    if env.robots[control_state["robot_id"]].team == GameTeam.RED:
+                        red_action[control_state["robot_id"]].attack = True
+                        red_action[control_state["robot_id"]].target = control_state["target_id"]
+                    else:
+                        blue_action[control_state["robot_id"]].attack = True
+                        blue_action[control_state["robot_id"]].target = control_state["target_id"]
+                elif event.key == pygame.K_e:  # E键购买子弹
+                    if env.robots[control_state["robot_id"]].team == GameTeam.RED:
+                        red_action[control_state["robot_id"]].purchase = True
+                    else:
+                        blue_action[control_state["robot_id"]].purchase = True
+                elif event.key == pygame.K_w:  # W键切换机器人
+                    control_state["robot_id"] = robot_id_list[(robot_id_list.index(control_state["robot_id"]) + 1) % len(robot_id_list)]
+                elif event.key == pygame.K_s:  # S键切换机器人
+                    control_state["robot_id"] = robot_id_list[(robot_id_list.index(control_state["robot_id"]) - 1) % len(robot_id_list)]
+                elif event.key == pygame.K_a:  # A键切换目标
+                    control_state["target_id"] = target_id_list[(target_id_list.index(control_state["target_id"]) + 1) % len(target_id_list)]
+                elif event.key == pygame.K_d:  # D键切换目标
+                    control_state["target_id"] = target_id_list[(target_id_list.index(control_state["target_id"]) - 1) % len(target_id_list)]
 
         # 更新环境
         env.step(dt, red_action, blue_action)
 
         # 渲染环境
-        renderer.render(env, show_grid=show_grid, show_control=True)
+        renderer.render(env, control_state)
 
         # 更新显示
         pygame.display.flip()

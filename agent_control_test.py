@@ -42,7 +42,7 @@ def main():
     if args.video:
         os.makedirs(args.video_dir, exist_ok=True)
         # 获取第一帧来确定视频尺寸
-        renderer.render(env, show_grid=False)
+        renderer.render(env, {"show_grid": False})
         pygame.display.flip()
         frame = pygame.surfarray.array3d(pygame.display.get_surface())
         frame = frame.transpose([1, 0, 2])  # 转置以匹配cv2的格式
@@ -120,7 +120,7 @@ def main():
         env.step(args.delay, red_action, blue_action)
 
         # 渲染环境
-        renderer.render(env, show_grid=show_grid)
+        renderer.render(env, {"show_grid": show_grid})
 
         # 如果保存视频，保存当前帧
         if video_writer:

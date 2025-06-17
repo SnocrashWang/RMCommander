@@ -48,4 +48,5 @@ class RobotConfig:
     forward_speed_efficiency: float = 0.02
     rotation_speed_efficiency: float = 2.0
     radius: float = 0.25
-    max_ammo: int = 400
+    max_ammo: int = 200
+    ammo_allowed: int = 0

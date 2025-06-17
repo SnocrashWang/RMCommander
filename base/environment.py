@@ -63,15 +63,7 @@ class Environment:
         for config in self.robot_configs:
             robot = Robot(
                 self.physics_engine,
-                team=config.team,
-                robot_type=config.robot_type,
-                init_pos=config.init_pos,
-                chassis_property_type=config.chassis_property_type,
-                gimbal_property_type=config.gimbal_property_type,
-                forward_speed_efficiency=config.forward_speed_efficiency,
-                rotation_speed_efficiency=config.rotation_speed_efficiency,
-                radius=config.radius,
-                max_ammo=config.max_ammo
+                **config.__dict__,
             )
             self.robots[robot.id] = robot
 

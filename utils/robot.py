@@ -5,7 +5,7 @@ import time
 from typing import List, Dict, Tuple
 from utils.config.exp_prop_config import *
 from utils.config.robot_config import ROBOT_ID, RobotType
-from utils.config.game_config import GameTeam, HEAT_PER_17, DAMAGE_PER_17
+from utils.config.game_config import *
 from utils.grid_map import GridMap, a_star, world_to_grid, grid_to_world, simplify_path
 
 class Robot:
@@ -20,7 +20,8 @@ class Robot:
         forward_speed_efficiency: float,
         rotation_speed_efficiency: float,
         radius: float,
-        max_ammo: int
+        max_ammo: int,
+        ammo_allowed: int,
     ):
         # 全局属性
         self.team : GameTeam = team
@@ -37,16 +38,28 @@ class Robot:
         if self.robot_type == RobotType.HERO:
             self.chassis_property = CHASSIS_PROPERTY_HERO[self.chassis_property_type]
             self.gimbal_property = GIMBAL_PROPERTY_42[GIMBAL_PROPERTY_TYPE.DEFAULT]
+            self.damage_per_bullet = DAMAGE_PER_42
+            self.heat_per_bullet = HEAT_PER_42
+            self.price_per_bullet = PRICE_PER_42
+            self.purchase_num = PURCHASE_NUM_42
         # 步兵
         elif self.robot_type in [RobotType.STANDARD_3, RobotType.STANDARD_4, RobotType.STANDARD_5]:
             self.chassis_property = CHASSIS_PROPERTY_STANDARD[self.chassis_property_type]
             self.gimbal_property = GIMBAL_PROPERTY_17[self.gimbal_property_type]
+            self.damage_per_bullet = DAMAGE_PER_17
+            self.heat_per_bullet = HEAT_PER_17
+            self.price_per_bullet = PRICE_PER_17
+            self.purchase_num = PURCHASE_NUM_17
         # 哨兵
         elif self.robot_type == RobotType.SENTRY:
             self.level = 10
             self.exp = LEVEL_NEED_EXP[self.level]
-            self.chassis_property = CHASSIS_PROPERTY_STANDARD[self.chassis_property_type]
+            self.chassis_property = CHASSIS_PROPERTY_STANDARD[CHASSIS_PROPERTY_TYPE.HP]
             self.gimbal_property = GIMBAL_PROPERTY_17[GIMBAL_PROPERTY_TYPE.COOL_DOWN]
+            self.damage_per_bullet = DAMAGE_PER_17
+            self.heat_per_bullet = HEAT_PER_17
+            self.price_per_bullet = PRICE_PER_17
+            self.purchase_num = PURCHASE_NUM_17
 
         # 更新性能
         self.update_property()
@@ -78,7 +91,7 @@ class Robot:
         # 弹丸相关
         self.max_ammo : int = max_ammo      # 最大弹药量
         self.ammo : int = self.max_ammo     # 当前弹药量
-        self.ammo_allowed : int = 100       # 允许发弹量
+        self.ammo_allowed : int = ammo_allowed # 允许发弹量
 
         # 攻击相关
         self.gun_locked : bool = False      # 发射机构锁定
@@ -125,9 +138,9 @@ class Robot:
 
     def update_exp(self, exp):
         """更新经验"""
-        self.exp = min(self.exp + exp, LEVEL_NEED_EXP[10])
+        self.exp = min(self.exp + exp, LEVEL_NEED_EXP[len(LEVEL_NEED_EXP)])
         # 升级
-        if self.exp >= LEVEL_NEED_EXP[self.level + 1]:
+        if self.exp >= LEVEL_NEED_EXP[min(self.level + 1, len(LEVEL_NEED_EXP))] and self.level < len(LEVEL_NEED_EXP):
             self.level += 1
             max_hp_before_upgrade = self.max_hp
             self.update_property()
@@ -239,14 +252,14 @@ class Robot:
         self.angle = math.degrees(math.atan2(dy, dx))
 
         # 检查是否可以攻击
-        if self.ammo <= 0 or self.ammo_allowed <= 0 or self.heat + HEAT_PER_17 > self.max_heat:
+        if self.ammo <= 0 or self.ammo_allowed <= 0 or self.heat + self.heat_per_bullet > self.max_heat:
             self.attack_target = None
             return
         
         # 造成伤害
-        damage = self.attack_target.take_damage(DAMAGE_PER_17 * (1 + self.damage_buff))
+        damage = self.attack_target.take_damage(self.damage_per_bullet * (1 + self.damage_buff))
         # 增加热量
-        self.heat += HEAT_PER_17
+        self.heat += self.heat_per_bullet
         # 减少子弹
         self.ammo -= 1
         self.ammo_allowed -= 1

@@ -104,8 +104,8 @@ class EnvironmentRMUL(Environment):
         # 全局状态向量
         game_state = [
             self.game_state_manager.get_remaining_time() / env_config.GAME_TIME_LIMIT,
-            self.game_state_manager.get_center_zone_progress(GameTeam.RED) / env_config.OCCUPATION_TARGET,
-            self.game_state_manager.get_center_zone_progress(GameTeam.BLUE) / env_config.OCCUPATION_TARGET,
+            self.game_state_manager.get_victory_progress(GameTeam.RED) / env_config.OCCUPATION_TARGET,
+            self.game_state_manager.get_victory_progress(GameTeam.BLUE) / env_config.OCCUPATION_TARGET,
         ]
         
         # 机器人状态向量
@@ -152,14 +152,27 @@ class EnvironmentRMUL(Environment):
                 target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][robot_action.target])
                 if target_robot is not None:
                     if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
-                        robot.attack(target_robot)
+                        if robot.attack(target_robot) and not target_robot.is_alive:
+                            # 结算击杀经验
+                            if robot.robot_type == RobotType.SENTRY:
+                                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
+                                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - killer_level)))
+                                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
+                                # 经验分享
+                                for robot in robot_alive:
+                                    robot.update_exp(int(kill_exp / len(robot_alive)))
+                            else:
+                                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
+                                robot.update_exp(int(kill_exp))
+                            # 结算占领进度
+                            self.game_state_manager.gain_victory_progress(team, 20)
 
             # 购买允许发弹量
             if robot_action.purchase and robot.robot_type != RobotType.SENTRY:
-                if self.game_state_manager.get_economics(team) >= robot.price_per_bullet * robot.purchase_num:
+                if self.game_state_manager.get_economics(team) >= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM:
                     if point_in_polygon(robot.get_position(), self.buff_zone["red_start"] if team == GameTeam.RED else self.buff_zone["blue_start"]):
-                        robot.ammo_allowed += robot.purchase_num
-                        self.game_state_manager.cost_economics(team, robot.price_per_bullet * robot.purchase_num)
+                        robot.ammo_allowed += robot.bullet.PURCHASE_NUM
+                        self.game_state_manager.cost_economics(team, robot.bullet.PRICE * robot.bullet.PURCHASE_NUM)
 
     def _calculate_reward(self) -> float:
         """计算奖励"""

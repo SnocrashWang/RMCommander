@@ -15,6 +15,7 @@ BASE_ROBOT_CONFIGS: List[RobotConfig] = [
         init_pos=(0.5, 0.5),
         chassis_property_type=CHASSIS_PROPERTY_TYPE.POWER,
         gimbal_property_type=GIMBAL_PROPERTY_TYPE.COOL_DOWN,
+        ammo_allowed=200,
     ),
     RobotConfig(
         team=GameTeam.BLUE,
@@ -22,5 +23,6 @@ BASE_ROBOT_CONFIGS: List[RobotConfig] = [
         init_pos=(4.5, 4.5),
         chassis_property_type=CHASSIS_PROPERTY_TYPE.POWER,
         gimbal_property_type=GIMBAL_PROPERTY_TYPE.COOL_DOWN,
+        ammo_allowed=200,
     ),
 ]

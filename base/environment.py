@@ -119,12 +119,6 @@ class Environment:
                 robot.id: robot.hp for robot in self.robots.values()
             }
             self.game_state_manager.update(robot_hp, dt)
-        
-        # for key, times in self.time_stats.items():
-        #     if times:
-        #         avg_time = sum(times)
-        #         print(f"{key}: {avg_time * 1000:.3f}ms")
-        # print('-' * 50)
     
     def _encode_state(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """编码状态"""
@@ -207,20 +201,23 @@ class Environment:
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
             if robot_action.navigation is not None:
-                with timer(self.time_stats, 'set_target'):
-                    robot.set_target(robot_action.navigation)
+                robot.set_target(robot_action.navigation)
             if robot_action.attack and robot_action.target != RobotType.NONE:
                 target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][robot_action.target])
                 if target_robot is not None:
-                    with timer(self.time_stats, 'has_line_of_sight'):
-                        if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
-                            with timer(self.time_stats, 'attack'):
-                                robot.attack(target_robot)
-        # for key, times in self.time_stats.items():
-        #     if times:
-        #         avg_time = sum(times)
-        #         print(f"{key}: {avg_time * 1000:.3f}ms")
-        # print('-' * 50)
+                    if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
+                        if robot.attack(target_robot) and not target_robot.is_alive:
+                            # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
+                            if robot.robot_type == RobotType.SENTRY:
+                                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
+                                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - killer_level)))
+                                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
+                                # 经验分享
+                                for robot in robot_alive:
+                                    robot.update_exp(int(kill_exp / len(robot_alive)))
+                            else:
+                                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
+                                robot.update_exp(int(kill_exp))
 
     def calculate_reward(self, team: GameTeam, action: Dict[str, Action]) -> float:
         """计算奖励

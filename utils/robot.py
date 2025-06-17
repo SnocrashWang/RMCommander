@@ -4,8 +4,9 @@ import math
 import time
 from typing import List, Dict, Tuple
 from utils.config.exp_prop_config import *
+from utils.config.bullet_config import *
 from utils.config.robot_config import ROBOT_ID, RobotType
-from utils.config.game_config import *
+from utils.config.game_config import GameTeam
 from utils.grid_map import GridMap, a_star, world_to_grid, grid_to_world, simplify_path
 
 class Robot:
@@ -38,28 +39,19 @@ class Robot:
         if self.robot_type == RobotType.HERO:
             self.chassis_property = CHASSIS_PROPERTY_HERO[self.chassis_property_type]
             self.gimbal_property = GIMBAL_PROPERTY_42[GIMBAL_PROPERTY_TYPE.DEFAULT]
-            self.damage_per_bullet = DAMAGE_PER_42
-            self.heat_per_bullet = HEAT_PER_42
-            self.price_per_bullet = PRICE_PER_42
-            self.purchase_num = PURCHASE_NUM_42
+            self.bullet = LargeBullet()
         # 步兵
         elif self.robot_type in [RobotType.STANDARD_3, RobotType.STANDARD_4, RobotType.STANDARD_5]:
             self.chassis_property = CHASSIS_PROPERTY_STANDARD[self.chassis_property_type]
             self.gimbal_property = GIMBAL_PROPERTY_17[self.gimbal_property_type]
-            self.damage_per_bullet = DAMAGE_PER_17
-            self.heat_per_bullet = HEAT_PER_17
-            self.price_per_bullet = PRICE_PER_17
-            self.purchase_num = PURCHASE_NUM_17
+            self.bullet = SmallBullet()
         # 哨兵
         elif self.robot_type == RobotType.SENTRY:
             self.level = 10
             self.exp = LEVEL_NEED_EXP[self.level]
             self.chassis_property = CHASSIS_PROPERTY_STANDARD[CHASSIS_PROPERTY_TYPE.HP]
             self.gimbal_property = GIMBAL_PROPERTY_17[GIMBAL_PROPERTY_TYPE.COOL_DOWN]
-            self.damage_per_bullet = DAMAGE_PER_17
-            self.heat_per_bullet = HEAT_PER_17
-            self.price_per_bullet = PRICE_PER_17
-            self.purchase_num = PURCHASE_NUM_17
+            self.bullet = SmallBullet()
 
         # 更新性能
         self.update_property()
@@ -110,8 +102,8 @@ class Robot:
         self.damage_buff : float = 0.0
         self.defense_buff_dict : Dict[str, float] = {}     # 防御增益
         self.defense_buff : float = 0.0
-        self.defence_debuff_dict : Dict[str, float] = {}     # 防御减益
-        self.defence_debuff : float = 0.0
+        self.defense_debuff_dict : Dict[str, float] = {}     # 防御减益
+        self.defense_debuff : float = 0.0
         self.cool_down_buff_dict : Dict[str, float] = {}   # 冷却缩减增益
         self.cool_down_buff : float = 1.0
         self.power_buff_dict : Dict[str, float] = {}       # 功率增益
@@ -136,7 +128,7 @@ class Robot:
             print(f"{key}: {value}")
         print("-" * 50)
 
-    def update_exp(self, exp):
+    def update_exp(self, exp: int):
         """更新经验"""
         self.exp = min(self.exp + exp, LEVEL_NEED_EXP[len(LEVEL_NEED_EXP)])
         # 升级
@@ -225,19 +217,21 @@ class Robot:
         # 计算最高增益
         self.damage_buff = max(self.damage_buff_dict.values(), default=0.0)
         self.defense_buff = max(self.defense_buff_dict.values(), default=0.0)
-        self.defence_debuff = max(self.defence_debuff_dict.values(), default=0.0)
+        self.defense_debuff = max(self.defense_debuff_dict.values(), default=0.0)
         self.cool_down_buff = min(self.cool_down_buff_dict.values(), default=1.0)
         self.power_buff = max(self.power_buff_dict.values(), default=1.0)
 
-    def attack(self, target_robot):
+    def attack(self, target_robot) -> bool:
         """攻击目标机器人
         Args:
             target_robot: 目标机器人对象
             num: 攻击次数
+        Returns:
+            bool: 是否成功攻击
         """
         # 检查是否可以攻击
         if not self.is_alive or self.gun_locked or not target_robot or not target_robot.is_alive:
-            return
+            return False
 
         # 刷新战斗状态
         self.attack_target = target_robot
@@ -252,25 +246,22 @@ class Robot:
         self.angle = math.degrees(math.atan2(dy, dx))
 
         # 检查是否可以攻击
-        if self.ammo <= 0 or self.ammo_allowed <= 0 or self.heat + self.heat_per_bullet > self.max_heat:
+        if self.ammo <= 0 or self.ammo_allowed <= 0 or self.heat + self.bullet.HEAT > self.max_heat:
             self.attack_target = None
-            return
+            return False
         
         # 造成伤害
-        damage = self.attack_target.take_damage(self.damage_per_bullet * (1 + self.damage_buff))
+        damage = self.attack_target.take_damage(self.bullet.DAMAGE * (1 + self.damage_buff))
         # 增加热量
-        self.heat += self.heat_per_bullet
+        self.heat += self.bullet.HEAT
         # 减少子弹
         self.ammo -= 1
         self.ammo_allowed -= 1
         # 结算经验
-        self.update_exp(1) # 每发射1次增加1点经验
-        self.update_exp(damage * 4) # 每造成1点伤害增加4点经验
-        if not self.attack_target.is_alive:
-            # 击杀经验
-            # TODO: 经验分享
-            kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - self.level)))
-            self.update_exp(kill_exp)
+        self.update_exp(self.bullet.EXP)
+        self.update_exp(damage * 4)
+
+        return True
 
     def get_attack_line(self):
         """获取攻击线段的起点和终点
@@ -297,7 +288,7 @@ class Robot:
         self.last_in_combat_time = time.time()
 
         # TODO: 考虑命中
-        damage = int(min(damage * max(0, 1 - self.defense_buff + self.defence_debuff), self.hp))
+        damage = int(min(damage * max(0, 1 - self.defense_buff + self.defense_debuff), self.hp))
         self.hp = self.hp - damage
         if self.hp <= 0:
             self.is_alive = False

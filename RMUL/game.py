@@ -9,7 +9,15 @@ class GameStateManagerRMUL(GameStateManager):
         self._remaining_time = GAME_TIME_LIMIT  # 剩余时间
 
         self._economics = {GameTeam.RED: 0, GameTeam.BLUE: 0}  # 经济
-        self._center_zone_progress = {GameTeam.RED: 0, GameTeam.BLUE: 0}  # 中心增益点占领进度
+        self._victory_progress = {GameTeam.RED: 0, GameTeam.BLUE: 0}  # 胜利进度
+
+        # 落后奖励
+        self.laggard_bonus_taken = {
+            "red_lag_70": False,
+            "red_lag_140": False,
+            "blue_lag_70": False,
+            "blue_lag_140": False,
+        }
 
     def update(self, robots_in_zone, dt):
         """更新游戏状态
@@ -43,12 +51,26 @@ class GameStateManagerRMUL(GameStateManager):
         # 更新中心区域进度
         for team, has_robot in robots_in_zone.items():
             if has_robot:  # 如果该队伍有机器人在中心区域
-                self._center_zone_progress[team] += dt  # 只要有一个机器人在区域中就增加进度
+                self._victory_progress[team] += dt  # 只要有一个机器人在区域中就增加进度
 
         # 检查胜利条件
-        red_progress = self._center_zone_progress[GameTeam.RED]
-        blue_progress = self._center_zone_progress[GameTeam.BLUE]
+        red_progress = self._victory_progress[GameTeam.RED]
+        blue_progress = self._victory_progress[GameTeam.BLUE]
         target = OCCUPATION_TARGET
+
+        # 结算落后奖励
+        if blue_progress - red_progress >= 70 and not self.laggard_bonus_taken["red_lag_70"]:
+            self.gain_economics(GameTeam.RED, 200)
+            self.laggard_bonus_taken["red_lag_70"] = True
+        elif blue_progress - red_progress >= 140 and not self.laggard_bonus_taken["red_lag_140"]:
+            self.gain_economics(GameTeam.RED, 200)
+            self.laggard_bonus_taken["red_lag_140"] = True
+        elif red_progress - blue_progress >= 70 and not self.laggard_bonus_taken["blue_lag_70"]:
+            self.gain_economics(GameTeam.BLUE, 200)
+            self.laggard_bonus_taken["blue_lag_70"] = True
+        elif red_progress - blue_progress >= 140 and not self.laggard_bonus_taken["blue_lag_140"]:
+            self.gain_economics(GameTeam.BLUE, 200)
+            self.laggard_bonus_taken["blue_lag_140"] = True
 
         # 1. 有一方率先积满
         if red_progress >= target > blue_progress:
@@ -76,5 +98,8 @@ class GameStateManagerRMUL(GameStateManager):
     def get_economics(self, team: GameTeam):
         return self._economics[team]
 
-    def get_center_zone_progress(self, team: GameTeam):
-        return self._center_zone_progress[team]
+    def get_victory_progress(self, team: GameTeam):
+        return self._victory_progress[team]
+
+    def gain_victory_progress(self, team: GameTeam, amount):
+        self._victory_progress[team] += amount

@@ -227,22 +227,22 @@ class Renderer:
 
             # 红队进度条
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (game_state.get_center_zone_progress(GameTeam.RED) / self.env_config.OCCUPATION_TARGET))
+            progress_width = int(bar_width * (game_state.get_victory_progress(GameTeam.RED) / self.env_config.OCCUPATION_TARGET))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.RED],
                             (10, 10, progress_width, bar_height))
             red_progress_text = self.font_medium.render(
-                f"Team RED: {int(game_state.get_center_zone_progress(GameTeam.RED) / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
+                f"Team RED: {int(game_state.get_victory_progress(GameTeam.RED)):>3d} / {self.env_config.OCCUPATION_TARGET:>3d}",
                 True, render_config.COLOR_TEXT
             )
             self.screen_note.blit(red_progress_text, (bar_width - red_progress_text.get_width(), red_progress_text.get_height() // 2))
 
             # 蓝队进度条
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (self.screen_width - bar_width - 10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (game_state.get_center_zone_progress(GameTeam.BLUE) / self.env_config.OCCUPATION_TARGET))
+            progress_width = int(bar_width * (game_state.get_victory_progress(GameTeam.BLUE) / self.env_config.OCCUPATION_TARGET))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.BLUE], 
                             (self.screen_width - bar_width - 10 + (bar_width - progress_width), 10, progress_width, bar_height))
             blue_progress_text = self.font_medium.render(
-                f"Team BLUE: {int(game_state.get_center_zone_progress(GameTeam.BLUE) / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
+                f"Team BLUE: {int(game_state.get_victory_progress(GameTeam.BLUE)):>3d} / {self.env_config.OCCUPATION_TARGET:>3d}",
                 True, render_config.COLOR_TEXT
             )
             self.screen_note.blit(blue_progress_text, (self.screen_width - bar_width, blue_progress_text.get_height() // 2))

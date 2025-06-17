@@ -13,7 +13,7 @@ if CURRENT_GAME == GameType.BASE:
     from base.environment import Environment, Action
     from base.config import env_config
 elif CURRENT_GAME == GameType.RMUL:
-    from RMUL.environment import EnvironmentRMUL as Environment, Action
+    from RMUL.environment import EnvironmentRMUL as Environment, ActionRMUL as Action
     from RMUL.config import env_config
 # elif CURRENT_GAME == GameType.RMUC:
 #     from RMUC.environment import EnvironmentRMUC, Action
@@ -36,18 +36,10 @@ def main():
         dt = env.dt
 
         red_action = {
-            robot_id: Action(
-                navigation=None,
-                attack=False,
-                target=None,
-            ) for robot_id, robot in env.robots.items() if robot.team == GameTeam.RED
+            robot_id: Action() for robot_id, robot in env.robots.items() if robot.team == GameTeam.RED
         }
         blue_action = {
-            robot_id: Action(
-                navigation=None,
-                attack=False,
-                target=None,
-            ) for robot_id, robot in env.robots.items() if robot.team == GameTeam.BLUE
+            robot_id: Action() for robot_id, robot in env.robots.items() if robot.team == GameTeam.BLUE
         }
 
         blue_action["BLUE_3_STANDARD"].navigation = (6.0, 4.0)
@@ -79,6 +71,8 @@ def main():
                 elif event.key == pygame.K_a:  # A键攻击
                     red_action["RED_3_STANDARD"].attack = True
                     red_action["RED_3_STANDARD"].target = RobotType.STANDARD_3
+                elif event.key == pygame.K_s:  # S键购物
+                    red_action["RED_3_STANDARD"].purchase = True
 
         # 更新环境
         env.step(dt, red_action, blue_action)

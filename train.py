@@ -172,7 +172,7 @@ def train(
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")
         tqdm.write(f"总奖励: {episode_reward:.2f}")
         tqdm.write(f"回合长度: {episode_length}")
-        tqdm.write(f"剩余时间: {env.game_state_manager.remaining_time:.2f}")
+        tqdm.write(f"剩余时间: {env.game_state_manager.get_remaining_time()}")
         tqdm.write(f"比赛结果: {env.game_state_manager.state}")
         
         # 打印性能统计

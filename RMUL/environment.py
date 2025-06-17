@@ -18,10 +18,10 @@ from RMUL.game import GameStateManagerRMUL
 
 @dataclass
 class ActionRMUL(Action):
-    navigation: Tuple[float, float]
-    attack: bool
-    target: RobotType
-    purchase: int   # TODO: 购买弹药
+    navigation: Tuple[float, float] = None
+    attack: bool = False
+    target: RobotType = None
+    purchase: bool = False
 
 class EnvironmentRMUL(Environment):
     def __init__(
@@ -79,17 +79,16 @@ class EnvironmentRMUL(Environment):
         # 检查中心区域占领情况
         self.robots_in_zone = {GameTeam.RED: False, GameTeam.BLUE: False}
         for robot in self.robots.values():
-            if robot.is_alive:
-                # 检查是否在中心区域
-                pos = robot.get_position()
-                if point_in_polygon(pos, self.buff_zone["center"]):
-                    self.robots_in_zone[robot.team] = True
+            if robot.is_alive and point_in_polygon(robot.get_position(), self.buff_zone["center"]):
+                self.robots_in_zone[robot.team] = True
         
         # 检查补给区占领情况
         for robot in self.robots.values():
             if robot.team == GameTeam.RED and point_in_polygon(robot.get_position(), self.buff_zone["red_start"]) or \
                 robot.team == GameTeam.BLUE and point_in_polygon(robot.get_position(), self.buff_zone["blue_start"]):
+                # 解锁发射机构
                 robot.gun_locked = False
+                # 为防止血量计算中出现小数，仅在整数秒时一次性回复血量
                 if 0 < math.modf(time.time())[0] < dt:
                     robot.heal(int(robot.max_hp * 0.25))
 
@@ -104,9 +103,9 @@ class EnvironmentRMUL(Environment):
         """编码状态"""
         # 全局状态向量
         game_state = [
-            self.game_state_manager.remaining_time / env_config.GAME_TIME_LIMIT,
-            self.game_state_manager.center_zone_progress[GameTeam.RED] / env_config.OCCUPATION_TARGET,
-            self.game_state_manager.center_zone_progress[GameTeam.BLUE] / env_config.OCCUPATION_TARGET,
+            self.game_state_manager.get_remaining_time() / env_config.GAME_TIME_LIMIT,
+            self.game_state_manager.get_center_zone_progress(GameTeam.RED) / env_config.OCCUPATION_TARGET,
+            self.game_state_manager.get_center_zone_progress(GameTeam.BLUE) / env_config.OCCUPATION_TARGET,
         ]
         
         # 机器人状态向量
@@ -143,13 +142,23 @@ class EnvironmentRMUL(Environment):
         """应用本方动作"""
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
+
+            # 导航
             if robot_action.navigation is not None:
                 robot.set_target(robot_action.navigation)
+
+            # 攻击
             if robot_action.attack and robot_action.target != RobotType.NONE:
                 target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][robot_action.target])
                 if target_robot is not None:
                     if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
                         robot.attack(target_robot)
+
+            # 购买允许发弹量
+            if robot_action.purchase:
+                if self.game_state_manager.get_economics(team) >= 10:
+                    robot.ammo_allowed += 10
+                    self.game_state_manager.cost_economics(team, 10)
 
     def _calculate_reward(self) -> float:
         """计算奖励"""

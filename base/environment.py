@@ -18,9 +18,9 @@ from base.game import GameStateManager
 
 @dataclass
 class Action():
-    navigation: Tuple[float, float]
-    attack: bool
-    target: RobotType
+    navigation: Tuple[float, float] = None
+    attack: bool = False
+    target: RobotType = None
 
 class Environment:
     def __init__(
@@ -138,7 +138,7 @@ class Environment:
         """编码状态"""
         # 全局状态向量
         game_state = [
-            self.game_state_manager.remaining_time / env_config.GAME_TIME_LIMIT,
+            self.game_state_manager.get_remaining_time() / env_config.GAME_TIME_LIMIT,
         ]
         
         # 机器人状态向量
@@ -242,7 +242,7 @@ class Environment:
         reward_weight = []
 
         # 时间消耗惩罚
-        reward_time = (self.game_state_manager.remaining_time - game_state_dict["remaining_time"]) * 1
+        reward_time = (self.game_state_manager.get_remaining_time() - game_state_dict["remaining_time"]) * 1
         reward_list.append(reward_time)
         reward_weight.append(0)
 

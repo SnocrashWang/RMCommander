@@ -76,15 +76,15 @@ class Robot:
         self.is_alive : bool = True  # 机器人是否存活
 
         # 弹丸相关
-        self.max_ammo : int = max_ammo
-        self.ammo : int = self.max_ammo
-        self.ammo_allowed : int = 100
+        self.max_ammo : int = max_ammo      # 最大弹药量
+        self.ammo : int = self.max_ammo     # 当前弹药量
+        self.ammo_allowed : int = 100       # 允许发弹量
 
         # 攻击相关
-        self.gun_locked : bool = False
-        self.attack_target : Robot = None  # 攻击目标
-        self.last_attack_time : float = 0  # 上次攻击的时间（秒）
-        self.last_in_combat_time : float = 0  # 上次进入战斗的时间（秒）
+        self.gun_locked : bool = False      # 发射机构锁定
+        self.attack_target : Robot = None   # 攻击目标
+        self.last_attack_time : float = 0   # 上次攻击的时间（秒）
+        self.last_in_combat_time : float = 0 # 上次进入战斗的时间（秒）
 
         # 复活相关
         self.revive_progress : float = 0    # 复活进度

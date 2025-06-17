@@ -23,10 +23,10 @@ class Renderer:
         # 创建栅格缓存
         self.last_grid_state = None  # 用于跟踪栅格状态
 
-        self.large_font = pygame.font.SysFont(None, 48)
-        self.font = pygame.font.Font(None, 36)
-        self.small_font = pygame.font.Font(None, 24)
-        self.tiny_font = pygame.font.Font(None, 12)
+        self.font_large = pygame.font.SysFont("consolas", 36, bold=True)
+        self.font_medium = pygame.font.SysFont("consolas", 24, bold=True)
+        self.font_small = pygame.font.SysFont("consolas", 16, bold=True)
+        self.font_tiny = pygame.font.SysFont("consolas", 9, bold=True)
 
     def render(self, env, show_grid=False, show_control=False):
         """渲染环境"""
@@ -59,7 +59,7 @@ class Renderer:
 
         # 绘制控制提示信息
         if show_control:
-            self._draw_control_info(show_grid)
+            self._draw_control_info(show_grid, self.env_config.ENV_NAME)
 
         # 绘制游戏结束信息
         self._draw_game_over(env.game_state_manager)
@@ -146,7 +146,7 @@ class Renderer:
         pygame.draw.line(self.screen_robot, (30, 30, 30), (x, y), (end_x, end_y), int(2))
 
         # 绘制机器人标识（使用小字体）
-        team_text = self.tiny_font.render(f"{robot.id}", True, render_config.COLOR_TEXT)
+        team_text = self.font_tiny.render(f"{robot.id}", True, render_config.COLOR_TEXT)
         self.screen_note.blit(team_text, (x - team_text.get_width() / 2, y + scale * 1.5))
 
         # 绘制数据条
@@ -161,7 +161,7 @@ class Renderer:
                             (hp_bar_x, hp_bar_y, current_hp_width, bar_height))
             # FIXME: 有一个特殊情况会导致hp为小数，暂时还没有复现到
             try:
-                hp_text = self.tiny_font.render(f"{robot.hp:>3d}/{robot.max_hp:>3d}", True, render_config.COLOR_TEXT)
+                hp_text = self.font_tiny.render(f"{robot.hp:>3d}/{robot.max_hp:>3d}", True, render_config.COLOR_TEXT)
                 self.screen_note.blit(hp_text, (hp_bar_x + bar_width / 2 - hp_text.get_width() / 2, hp_bar_y + bar_height / 2 - hp_text.get_height() / 2))
             except:
                 print(robot.id, robot.hp, robot.max_hp)
@@ -172,7 +172,7 @@ class Renderer:
             current_revive_width = int(bar_width * robot.revive_progress / robot.revive_target)
             pygame.draw.rect(self.screen_note, render_config.COLOR_REVIVE_BAR,
                             (revive_bar_x, revive_bar_y, current_revive_width, bar_height))
-            revive_text = self.tiny_font.render(f"{int(robot.revive_progress):>3d}/{robot.revive_target:>3d}", True, render_config.COLOR_TEXT)
+            revive_text = self.font_tiny.render(f"{int(robot.revive_progress):>3d}/{robot.revive_target:>3d}", True, render_config.COLOR_TEXT)
             self.screen_note.blit(revive_text, (revive_bar_x + bar_width / 2 - revive_text.get_width() / 2, revive_bar_y + bar_height / 2 - revive_text.get_height() / 2))
 
         # 热量条
@@ -181,10 +181,10 @@ class Renderer:
         current_heat_width = int(bar_width * robot.heat / robot.max_heat)
         pygame.draw.rect(self.screen_note, render_config.COLOR_HEAT_BAR,
                         (heat_bar_x, heat_bar_y, current_heat_width, bar_height))
-        heat_text = self.tiny_font.render(f"{int(robot.heat)}/{int(robot.max_heat)}", True, render_config.COLOR_TEXT)
+        heat_text = self.font_tiny.render(f"{int(robot.heat)}/{int(robot.max_heat)}", True, render_config.COLOR_TEXT)
         self.screen_note.blit(heat_text, (heat_bar_x + bar_width / 2 - heat_text.get_width() / 2, heat_bar_y + bar_height / 2 - heat_text.get_height() / 2))
         # 子弹
-        ammo_text = self.tiny_font.render(f"{robot.ammo_allowed}", True, render_config.COLOR_TEXT if not robot.gun_locked else render_config.COLOR_SILVER_GRAY)
+        ammo_text = self.font_tiny.render(f"{robot.ammo_allowed}", True, render_config.COLOR_TEXT if not robot.gun_locked else render_config.COLOR_SILVER_GRAY)
         self.screen_note.blit(ammo_text, (heat_bar_x - ammo_text.get_width(), heat_bar_y + bar_height / 2 - ammo_text.get_height() / 2))
 
         # 经验条
@@ -197,10 +197,10 @@ class Renderer:
         current_exp_width = int(bar_width * min(1, (robot.exp - LEVEL_NEED_EXP[min(robot.level, len(LEVEL_NEED_EXP) - 1)]) / exp_need_to_level_up))
         pygame.draw.rect(self.screen_note, render_config.COLOR_EXP_BAR,
                         (exp_bar_x, exp_bar_y, current_exp_width, bar_height))
-        exp_text = self.tiny_font.render(f"{robot.exp - LEVEL_NEED_EXP[min(robot.level, len(LEVEL_NEED_EXP) - 1)]:>3d}/{exp_need_to_level_up:>3d}", True, render_config.COLOR_TEXT)
+        exp_text = self.font_tiny.render(f"{robot.exp - LEVEL_NEED_EXP[min(robot.level, len(LEVEL_NEED_EXP) - 1)]:>3d}/{exp_need_to_level_up:>3d}", True, render_config.COLOR_TEXT)
         self.screen_note.blit(exp_text, (exp_bar_x + bar_width / 2 - exp_text.get_width() / 2, exp_bar_y + bar_height / 2 - exp_text.get_height() / 2))
         # 等级
-        level_text = self.tiny_font.render(f"Lv.{robot.level:>2d}", True, render_config.COLOR_TEXT)
+        level_text = self.font_tiny.render(f"Lv.{robot.level:>2d}", True, render_config.COLOR_TEXT)
         self.screen_note.blit(level_text, (exp_bar_x - level_text.get_width(), exp_bar_y + bar_height / 2 - level_text.get_height() / 2))
 
     def _draw_attack_line(self, attack_line):
@@ -220,8 +220,8 @@ class Renderer:
 
         # 倒计时
         min, sec = second2minute(game_state.get_remaining_time())
-        text3 = self.font.render(f"Time: {min:02d}:{sec:02d}", True, render_config.COLOR_TEXT)
-        self.screen_note.blit(text3, ((screen_width - text3.get_width()) // 2, text3.get_height() // 2))
+        time_text = self.font_medium.render(f"Time: {min:02d}:{sec:02d}", True, render_config.COLOR_TEXT)
+        self.screen_note.blit(time_text, ((screen_width - time_text.get_width()) // 2, time_text.get_height() // 2))
 
         if env_name == "RMUL":
             bar_height = render_config.SCALE * self.env_config.FIELD_HEIGHT * 0.02
@@ -229,58 +229,67 @@ class Renderer:
 
             # 红队进度条
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (game_state.center_zone_progress[GameTeam.RED] / self.env_config.OCCUPATION_TARGET))
+            progress_width = int(bar_width * (game_state.get_center_zone_progress(GameTeam.RED) / self.env_config.OCCUPATION_TARGET))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.RED],
                             (10, 10, progress_width, bar_height))
+            red_progress_text = self.font_medium.render(
+                f"Team RED: {int(game_state.get_center_zone_progress(GameTeam.RED) / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
+                True, render_config.COLOR_TEXT
+            )
+            self.screen_note.blit(red_progress_text, (bar_width - red_progress_text.get_width(), red_progress_text.get_height() // 2))
 
             # 蓝队进度条
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (screen_width - bar_width - 10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (game_state.center_zone_progress[GameTeam.BLUE] / self.env_config.OCCUPATION_TARGET))
+            progress_width = int(bar_width * (game_state.get_center_zone_progress(GameTeam.BLUE) / self.env_config.OCCUPATION_TARGET))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.BLUE], 
                             (screen_width - bar_width - 10 + (bar_width - progress_width), 10, progress_width, bar_height))
-
-            # 进度文本
-            text1 = self.font.render(
-                f"Team {GameTeam.RED.value}: {int(game_state.center_zone_progress[GameTeam.RED] / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
+            blue_progress_text = self.font_medium.render(
+                f"Team BLUE: {int(game_state.get_center_zone_progress(GameTeam.BLUE) / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
                 True, render_config.COLOR_TEXT
             )
-            text2 = self.font.render(
-                f"Team {GameTeam.BLUE.value}: {int(game_state.center_zone_progress[GameTeam.BLUE] / self.env_config.OCCUPATION_TARGET * 100):>3d}%",
-                True, render_config.COLOR_TEXT
-            )
-            self.screen_note.blit(text1, (bar_width - text1.get_width(), text1.get_height() // 2))
-            self.screen_note.blit(text2, (screen_width - bar_width, text2.get_height() // 2))
+            self.screen_note.blit(blue_progress_text, (screen_width - bar_width, blue_progress_text.get_height() // 2))
 
-    def _draw_control_info(self, show_grid=False):
+            # 经济
+            pygame.draw.circle(self.screen_note, render_config.COLOR_YELLOW, (screen_width // 2, bar_height * 3), bar_height * 0.5)
+            red_economics_text = self.font_small.render(f"{game_state.get_economics(GameTeam.RED):>4d}", True, render_config.COLOR_TEXT)
+            self.screen_note.blit(red_economics_text, (screen_width // 2 - bar_height - red_economics_text.get_width(), bar_height * 3 - red_economics_text.get_height() // 2))
+            blue_economics_text = self.font_small.render(f"{game_state.get_economics(GameTeam.BLUE):<4d}", True, render_config.COLOR_TEXT)
+            self.screen_note.blit(blue_economics_text, (screen_width // 2 + bar_height, bar_height * 3 - blue_economics_text.get_height() // 2))
+
+    def _draw_control_info(self, show_grid=False, env_name="Base"):
         """Draw game info and controls (English)"""
         controls = [
             "Controls:",
-            "Left Mouse Button: Set target",
-            "R: Reset Game",
-            "G: Toggle movable grid display",
-            "A: Attack once",
             "ESC: Quit",
-            f"Movable Grid: {'ON' if show_grid else 'OFF'}",
+            "Left Mouse Button: Set target",
+            "G: Toggle movable grid display",
+            "R: Reset Game",
+            "A: Attack once",
         ]
 
+        if env_name == "RMUL":
+            controls.append("S: Purchase 10 ammo")
+        
+        controls.append(f"Movable Grid: {'ON' if show_grid else 'OFF'}")
+
         for i, text in enumerate(controls):
-            text_control = self.font.render(text, True, render_config.COLOR_TEXT)
+            text_control = self.font_medium.render(text, True, render_config.COLOR_TEXT)
             self.screen_note.blit(text_control, (10, render_config.SCALE * self.env_config.FIELD_HEIGHT - (len(controls) - i) * 30))
 
     def _draw_game_over(self, game_state):
         # Show game over info
         if game_state.state == GameState.RED_TEAM_WIN:
-            win_text = self.large_font.render("Team Red Wins!", True, render_config.TEAM_COLORS[GameTeam.RED])
+            win_text = self.font_large.render("Team Red Wins!", True, render_config.TEAM_COLORS[GameTeam.RED])
             text_rect = win_text.get_rect(center=(render_config.SCALE * self.env_config.FIELD_WIDTH // 2, 
                                                  render_config.SCALE * self.env_config.FIELD_HEIGHT // 2))
             self.screen_note.blit(win_text, text_rect)
         elif game_state.state == GameState.BLUE_TEAM_WIN:
-            win_text = self.large_font.render("Team Blue Wins!", True, render_config.TEAM_COLORS[GameTeam.BLUE])
+            win_text = self.font_large.render("Team Blue Wins!", True, render_config.TEAM_COLORS[GameTeam.BLUE])
             text_rect = win_text.get_rect(center=(render_config.SCALE * self.env_config.FIELD_WIDTH // 2, 
                                                  render_config.SCALE * self.env_config.FIELD_HEIGHT // 2))
             self.screen_note.blit(win_text, text_rect)
         elif game_state.state == GameState.DRAW:
-            win_text = self.large_font.render("Draw!", True, render_config.COLOR_TEXT)  # 灰色字体
+            win_text = self.font_large.render("Draw!", True, render_config.COLOR_TEXT)  # 灰色字体
             text_rect = win_text.get_rect(center=(render_config.SCALE * self.env_config.FIELD_WIDTH // 2, 
                                                  render_config.SCALE * self.env_config.FIELD_HEIGHT // 2))
             self.screen_note.blit(win_text, text_rect)

@@ -145,9 +145,10 @@ class Environment:
         red_robot_state = []
         blue_robot_state = []
         for robot in self.robots.values():
+            x, y = robot.get_position()
             robot_state = [
-                robot.body.position.x / env_config.FIELD_WIDTH,
-                robot.body.position.y / env_config.FIELD_HEIGHT,
+                x / env_config.FIELD_WIDTH,
+                y / env_config.FIELD_HEIGHT,
                 # robot.angle / 360,
                 robot.chassis_property_type.value,
                 robot.gimbal_property_type.value,

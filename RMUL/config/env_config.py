@@ -51,5 +51,5 @@ OBSTACLES.extend(red_obstacles)
 OBSTACLES.extend(blue_obstacles)
 
 GAME_TIME_LIMIT = 300  # 游戏时间限制（秒）
-OCCUPATION_TARGET = 30  # 占领目标进度
+OCCUPATION_TARGET = 200  # 占领目标进度
 

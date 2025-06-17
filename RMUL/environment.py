@@ -1,6 +1,7 @@
 import pymunk
 import numpy as np
 import math
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional, Tuple
 
@@ -67,27 +68,30 @@ class EnvironmentRMUL(Environment):
         # 更新物理引擎
         self.physics_engine.step(dt)
 
-        # 应用动作
-        self._apply_team_action(GameTeam.RED, red_action)
-        self._apply_team_action(GameTeam.BLUE, blue_action)
-
         # 更新机器人状态
         for robot in self.robots.values():
             robot.step(dt)
+
+        # 应用动作
+        self._apply_team_action(GameTeam.RED, red_action)
+        self._apply_team_action(GameTeam.BLUE, blue_action)
 
         # 检查中心区域占领情况
         self.robots_in_zone = {GameTeam.RED: False, GameTeam.BLUE: False}
         for robot in self.robots.values():
             if robot.is_alive:
                 # 检查是否在中心区域
-                pos = robot.body.position
+                pos = robot.get_position()
                 if point_in_polygon(pos, self.buff_zone["center"]):
                     self.robots_in_zone[robot.team] = True
         
-        # TODO: 检查补给区占领情况
-        # for robot in self.robots.values():
-        #     if point_in_polygon(robot.body.position, self.buff_zone["red_start"]):
-        #         robot.gun_locked = False
+        # 检查补给区占领情况
+        for robot in self.robots.values():
+            if robot.team == GameTeam.RED and point_in_polygon(robot.get_position(), self.buff_zone["red_start"]) or \
+                robot.team == GameTeam.BLUE and point_in_polygon(robot.get_position(), self.buff_zone["blue_start"]):
+                robot.gun_locked = False
+                if 0 < math.modf(time.time())[0] < dt:
+                    robot.heal(int(robot.max_hp * 0.25))
 
         # 更新游戏状态
         self.game_state_manager.update(self.robots_in_zone, dt)
@@ -95,29 +99,7 @@ class EnvironmentRMUL(Environment):
     def reset(self):
         """重置环境"""
         super().reset()
-    
-    # def step(self, dt: float) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
-    #     """执行动作并返回下一个状态、奖励、是否结束和额外信息"""
-    #     # 应用红方动作
-    #     self._apply_team_action(GameTeam.RED, action)
-        
-    #     # 推进环境仿真
-    #     super().step(1 / env_config.FPS)
-        
-    #     # 获取新状态
-    #     next_state = self._get_team_state(GameTeam.RED)
-        
-    #     # 计算奖励
-    #     reward = self._calculate_reward()
-        
-    #     # 检查是否结束
-    #     done = self.game_state_manager.state != GameState.PLAYING
-        
-    #     # 获取额外信息
-    #     info = self.get_game_state()
-        
-    #     return next_state, reward, done, info
-    
+
     def _state_encoder(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """编码状态"""
         # 全局状态向量
@@ -131,9 +113,10 @@ class EnvironmentRMUL(Environment):
         red_robot_state = []
         blue_robot_state = []
         for robot in self.robots.values():
+            x, y = robot.get_position()
             robot_state = [
-                robot.body.position.x / env_config.FIELD_WIDTH,
-                robot.body.position.y / env_config.FIELD_HEIGHT,
+                x / env_config.FIELD_WIDTH,
+                y / env_config.FIELD_HEIGHT,
                 # robot.angle / 360,
                 robot.chassis_property_type.value,
                 robot.gimbal_property_type.value,

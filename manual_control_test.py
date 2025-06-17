@@ -1,6 +1,7 @@
 import pygame
 import sys
 import time
+import random
 
 from config import CURRENT_GAME
 from utils.config.game_config import GameTeam, GameType
@@ -48,6 +49,10 @@ def main():
                 target=None,
             ) for robot_id, robot in env.robots.items() if robot.team == GameTeam.BLUE
         }
+
+        blue_action["BLUE_3_STANDARD"].navigation = (6.0, 4.0)
+        blue_action["BLUE_3_STANDARD"].target = RobotType.STANDARD_3
+        blue_action["BLUE_3_STANDARD"].attack = True if random.random() < 0.05 else False
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:

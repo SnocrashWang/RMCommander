@@ -2,7 +2,7 @@ import pygame
 import pymunk
 import math
 import time
-from typing import Tuple
+from typing import List, Dict, Tuple
 from utils.config.exp_prop_config import *
 from utils.config.robot_config import ROBOT_ID, RobotType
 from utils.config.game_config import GameTeam, HEAT_PER_17, DAMAGE_PER_17
@@ -23,16 +23,15 @@ class Robot:
         max_ammo: int
     ):
         # 全局属性
-        self.physics_engine = physics_engine
-        self.team = team
-        self.robot_type = robot_type
-        self.id = ROBOT_ID[team][robot_type]
+        self.team : GameTeam = team
+        self.robot_type : RobotType = robot_type
+        self.id : str = ROBOT_ID[team][robot_type]
 
         # 规则性能
-        self.level = 1
-        self.exp = 0
-        self.chassis_property_type = chassis_property_type
-        self.gimbal_property_type = gimbal_property_type
+        self.level : int = 1
+        self.exp : int = 0
+        self.chassis_property_type : CHASSIS_PROPERTY_TYPE = chassis_property_type
+        self.gimbal_property_type : GIMBAL_PROPERTY_TYPE = gimbal_property_type
 
         # 英雄
         if self.robot_type == RobotType.HERO:
@@ -51,48 +50,62 @@ class Robot:
 
         # 更新性能
         self.update_property()
-        self.hp = self.max_hp
-        self.heat = 0
+        self.hp : int = self.max_hp
+        self.heat : float = 0
         
         # 物理属性
-        self.radius = radius
-        self.forward_speed = self.power * forward_speed_efficiency
-        self.rotation_speed = self.power * rotation_speed_efficiency
+        self.radius : float = radius
+        self.forward_speed : float = self.power * forward_speed_efficiency
+        self.rotation_speed : float = self.power * rotation_speed_efficiency
 
         # 创建物理实体
-        self.body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, radius))
-        self.body.position = init_pos
+        self._body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, radius))
+        self._body.position = init_pos
 
-        self.shape = pymunk.Circle(self.body, radius)
-        self.shape.elasticity = 0.8
-        self.shape.friction = 0.7
+        self._shape = pymunk.Circle(self._body, radius)
+        self._shape.elasticity = 0.8
+        self._shape.friction = 0.7
 
-        self.physics_engine.add(self.body, self.shape)
+        self._physics_engine = physics_engine
+        self._physics_engine.add(self._body, self._shape)
 
-        self.angle = 0  # 角度（度）
-        self.target_pos = None
-        self.path_points = []
-        self.current_path_idx = 0
-        self.is_alive = True  # 机器人是否存活
+        self.angle : float = 0  # 角度（度）
+        self.target_pos : Tuple[float, float] = None
+        self.path_points : List[Tuple[float, float]] = []
+        self.current_path_idx : int = 0
+        self.is_alive : bool = True  # 机器人是否存活
 
         # 弹丸相关
-        self.max_ammo = max_ammo
-        self.ammo = self.max_ammo
-        self.ammo_allowed = 10
+        self.max_ammo : int = max_ammo
+        self.ammo : int = self.max_ammo
+        self.ammo_allowed : int = 100
 
         # 攻击相关
-        self.gun_locked = False
-        self.attack_target = None  # 攻击目标
-        self.last_attack_time = 0  # 上次攻击的时间（秒）
-        self.last_in_combat_time = 0  # 上次进入战斗的时间（秒）
+        self.gun_locked : bool = False
+        self.attack_target : Robot = None  # 攻击目标
+        self.last_attack_time : float = 0  # 上次攻击的时间（秒）
+        self.last_in_combat_time : float = 0  # 上次进入战斗的时间（秒）
 
         # 复活相关
-        self.revive_progress = 0    # 复活进度
-        self.revive_target = 10     # 复活所需进度
-        self.revive_efficiency = 2  # 复活效率（每秒增加的进度）
+        self.revive_progress : float = 0    # 复活进度
+        self.revive_target : float = 10     # 复活所需进度
+        self.revive_efficiency : float = 2  # 复活效率（每秒增加的进度）
+        self.last_revive_time : float = 0.0 # 上次复活时间
+
+        # TODO: 增益相关
+        self.damage_buff_dict : Dict[str, float] = {}      # 伤害增益
+        self.damage_buff : float = 0.0
+        self.defense_buff_dict : Dict[str, float] = {}     # 防御增益
+        self.defense_buff : float = 0.0
+        self.defence_debuff_dict : Dict[str, float] = {}     # 防御减益
+        self.defence_debuff : float = 0.0
+        self.cool_down_buff_dict : Dict[str, float] = {}   # 冷却缩减增益
+        self.cool_down_buff : float = 1.0
+        self.power_buff_dict : Dict[str, float] = {}       # 功率增益
+        self.power_buff : float = 1.0
 
         # GridMap相关
-        self.grid_map = None
+        self.grid_map : GridMap = None
 
     def print_info(self):
         info = {
@@ -122,18 +135,18 @@ class Robot:
 
     def update_property(self):
         """更新机器人属性"""
-        self.max_hp = self.chassis_property[self.level]["HP"]
-        self.power = self.chassis_property[self.level]["POWER"]
-        self.max_heat = self.gimbal_property[self.level]["HEAT"]
-        self.cool_down = self.gimbal_property[self.level]["COOL_DOWN"]
+        self.max_hp : int = self.chassis_property[self.level]["HP"]
+        self.power : int = self.chassis_property[self.level]["POWER"]
+        self.max_heat : int = self.gimbal_property[self.level]["HEAT"]
+        self.cool_down : int = self.gimbal_property[self.level]["COOL_DOWN"]
 
     def destroy(self, physics_engine):
         """销毁物理体"""
-        physics_engine.remove(self.shape, self.body)
+        physics_engine.remove(self._shape, self._body)
 
     def get_position(self):
         """获取位置"""
-        return self.body.position.x, self.body.position.y
+        return self._body.position.x, self._body.position.y
 
     def set_target(self, target_pos):
         """设置目标位置并计算路径"""
@@ -155,30 +168,38 @@ class Robot:
 
     def step(self, dt):
         """沿路径点导航"""
+        # 若非存活
         if not self.is_alive:
-            self.body.velocity = (0, 0)
-            
+            self._body.velocity = (0, 0)
+            # 结算复活进度
             self.revive_progress = min(self.revive_progress + self.revive_efficiency * dt, self.revive_target)
             if self.revive_progress >= self.revive_target:
                 self.is_alive = True
-                self.hp = self.max_hp
+                self.last_revive_time = time.time()
+                self.hp = int(self.max_hp * 0.2)
                 self.heat = 0
                 self.revive_progress = 0
                 self.revive_target += 10
             return
 
+        # 结算复活无敌时间
+        if time.time() - self.last_revive_time < 10:
+            self.defense_buff_dict["revive"] = 2.0
+        else:
+            self.defense_buff_dict.pop("revive", None)
+
         # 沿路径移动
         if self.path_points and self.current_path_idx < len(self.path_points):
             next_point = self.path_points[self.current_path_idx]
-            current_pos = pygame.math.Vector2(self.body.position)
+            current_pos = pygame.math.Vector2(self.get_position())
             direction = pygame.math.Vector2(next_point) - current_pos
             if direction.length() < 0.05:
                 self.current_path_idx += 1
             else:
                 direction = direction.normalize() * self.forward_speed
-                self.body.velocity = (direction.x, direction.y)
+                self._body.velocity = (direction.x, direction.y)
         else:
-            self.body.velocity = (0, 0)
+            self._body.velocity = (0, 0)
             self.target_pos = None
 
         # 结算热量冷却
@@ -188,14 +209,21 @@ class Robot:
         if time.time() - self.last_in_combat_time > 6:
             self.attack_target = None
 
-    def attack(self, target_robot, num=1):
+        # 计算最高增益
+        self.damage_buff = max(self.damage_buff_dict.values(), default=0.0)
+        self.defense_buff = max(self.defense_buff_dict.values(), default=0.0)
+        self.defence_debuff = max(self.defence_debuff_dict.values(), default=0.0)
+        self.cool_down_buff = min(self.cool_down_buff_dict.values(), default=1.0)
+        self.power_buff = max(self.power_buff_dict.values(), default=1.0)
+
+    def attack(self, target_robot):
         """攻击目标机器人
         Args:
             target_robot: 目标机器人对象
             num: 攻击次数
         """
         # 检查是否可以攻击
-        if not self.is_alive or not target_robot or not target_robot.is_alive:
+        if not self.is_alive or self.gun_locked or not target_robot or not target_robot.is_alive:
             return
 
         # 刷新战斗状态
@@ -210,21 +238,20 @@ class Robot:
         dy = target_pos[1] - current_pos[1]
         self.angle = math.degrees(math.atan2(dy, dx))
 
-        # 计算可以攻击的次数
-        num = int(min(num, self.ammo, self.ammo_allowed, (self.max_heat - self.heat) // HEAT_PER_17))
-        if num <= 0:
+        # 检查是否可以攻击
+        if self.ammo <= 0 or self.ammo_allowed <= 0 or self.heat + HEAT_PER_17 > self.max_heat:
             self.attack_target = None
             return
         
         # 造成伤害
-        damage = self.attack_target.take_damage(DAMAGE_PER_17, num)
+        damage = self.attack_target.take_damage(DAMAGE_PER_17 * (1 + self.damage_buff))
         # 增加热量
-        self.heat += HEAT_PER_17 * num
+        self.heat += HEAT_PER_17
         # 减少子弹
-        self.ammo -= num
-        self.ammo_allowed -= num
+        self.ammo -= 1
+        self.ammo_allowed -= 1
         # 结算经验
-        self.update_exp(1 * num) # 每发射1次增加1点经验
+        self.update_exp(1) # 每发射1次增加1点经验
         self.update_exp(damage * 4) # 每造成1点伤害增加4点经验
         if not self.attack_target.is_alive:
             # 击杀经验
@@ -243,11 +270,10 @@ class Robot:
             return None
         return (self.get_position(), self.attack_target.get_position())
 
-    def take_damage(self, base_damage, num) -> int:
+    def take_damage(self, damage) -> int:
         """受到伤害
         Args:
-            base_damage: 基础伤害值
-            num: 攻击次数
+            damage: 伤害值
         Returns:
             int: 实际受到的伤害值
         """
@@ -258,16 +284,16 @@ class Robot:
         self.last_in_combat_time = time.time()
 
         # TODO: 考虑命中
-        damage = min(base_damage * num, self.hp)
+        damage = int(min(damage * max(0, 1 - self.defense_buff + self.defence_debuff), self.hp))
         self.hp = self.hp - damage
         if self.hp <= 0:
             self.is_alive = False
             self.gun_locked = True
         return damage
 
-    def heal(self, amount):
+    def heal(self, amount: int):
         """恢复血量"""
-        self.hp = min(self.max_hp, self.hp + amount)
+        self.hp = int(min(self.max_hp, self.hp + amount))
 
     def set_grid_map(self, grid_map: GridMap):
         """设置机器人的网格地图"""

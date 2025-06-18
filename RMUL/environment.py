@@ -10,7 +10,7 @@ from utils.config.game_config import GameTeam
 from utils.config.robot_config import RobotConfig, RobotType, ROBOT_ID
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.robot import Robot
-from utils.utils import point_in_polygon, opposite_team, has_line_of_sight
+from utils.utils import point_in_polygon, opposite_team, has_line_of_sight, attack_sight_clear
 
 from RMUL.config import env_config
 from RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
@@ -152,7 +152,11 @@ class EnvironmentRMUL(Environment):
             if robot_action.attack and robot_action.target != RobotType.NONE:
                 target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][robot_action.target])
                 if target_robot is not None:
-                    if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
+                    # TODO: 后续还需要加更复杂的条件，例如是否陀螺等
+                    # 仅判断直线视野
+                    # if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
+                    # 判断完整视野
+                    if attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
                         if robot.attack(target_robot) and not target_robot.is_alive:
                             # 结算击杀经验
                             if robot.robot_type == RobotType.SENTRY:

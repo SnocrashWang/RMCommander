@@ -236,3 +236,88 @@ def has_line_of_sight(p1: Tuple[float, float], p2: Tuple[float, float], obstacle
         if line_intersects_obstacle(p1, p2, obstacle):
             return False
     return True
+
+def get_tangent_points(A: Tuple[float, float], B: Tuple[float, float], r: float) -> List[Tuple[float, float]]:
+    """获取圆的切线点
+    
+    Args:
+        A: 圆心坐标 (x1, y1)
+        B: 被切圆心坐标 (x2, y2)
+        r: 半径
+    Returns:
+        List[Tuple[float, float]]: 切线点列表
+    """
+    x1, y1 = A
+    x2, y2 = B
+    dx, dy = x2 - x1, y2 - y1
+    d_sq = dx**2 + dy**2
+    d = math.hypot(dx, dy)
+    if d <= r:
+        return []  # 无切线
+    # 单位向量
+    vx, vy = dx / d, dy / d
+    # 垂直单位向量
+    perp_vx, perp_vy = -vy, vx
+    # 切线长度
+    l = math.sqrt(d_sq - r**2)
+    # 切点
+    mx, my = x2 + r**2 * (x1 - x2) / d_sq, y2 + r**2 * (y1 - y2) / d_sq
+    factor = r * l / d_sq
+    tx1 = mx + factor * (y1 - y2)
+    ty1 = my - factor * (x1 - x2)
+    tx2 = mx - factor * (y1 - y2)
+    ty2 = my + factor * (x1 - x2)
+    return [(tx1, ty1), (tx2, ty2)]
+
+def attack_sight_clear(
+    attacker_pos: Tuple[float, float],
+    target_pos: Tuple[float, float],
+    target_radius: float,
+    obstacles: List[Obstacle],
+    robots: List,
+    ignore_robot_blocked: bool = False, # 是否忽略被机器人遮挡
+) -> bool:
+    """
+    判断攻击路径是否无遮挡（障碍物/机器人）
+    返回：视野是否无遮挡
+    """
+    # 1. 计算两条切线
+    tangents = get_tangent_points(attacker_pos, target_pos, target_radius)
+    if len(tangents) < 2:
+        return True
+
+    cut1, cut2 = tangents
+    quad = [attacker_pos, cut1, target_pos, cut2]
+
+    # 2. 判断切线是否被障碍物遮挡
+    for tp in tangents:
+        if not has_line_of_sight(attacker_pos, tp, obstacles):
+            print(f"Blocked tangents by obstacle")
+            return False
+
+    # 3. 判断障碍物端点是否在四边形内
+    for obs in obstacles:
+        for pt in [obs.p1, obs.p2]:
+            if point_in_polygon(pt, quad):
+                print(f"Blocked by obstacle endpoint")
+                return False
+    
+    if ignore_robot_blocked:
+        return True
+    
+    # 4. 判断切线是否被机器人遮挡
+    for tp in tangents:
+        for robot in robots:
+            if robot.get_position() == attacker_pos or robot.get_position() == target_pos:
+                continue
+            if point_to_line_segment_distance(robot.get_position(), attacker_pos, tp) < robot.radius:
+                print(f"Blocked tangents by robot: {robot.id}")
+                return False
+
+    # 5. 判断机器人坐标是否在四边形内
+    for robot in robots:
+        if point_in_polygon(robot.get_position(), quad):
+            print(f"Blocked by robot: {robot.id}")
+            return False
+
+    return True

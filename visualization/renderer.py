@@ -1,9 +1,10 @@
 import math
 import pygame
 from visualization.config import render_config
-from utils.config.game_config import GameState, GameTeam
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
-from utils.utils import meters_to_pixels, draw_dashed_line, second2minute
+from utils.config.game_config import GameState, GameTeam
+from utils.config.robot_config import ROBOT_ID
+from utils.utils import meters_to_pixels, draw_dashed_line, second2minute, get_tangent_points, opposite_team
 
 class Renderer:
     def __init__(self, env_config):
@@ -63,8 +64,10 @@ class Renderer:
             self._draw_control_info(control_state, self.env_config.ENV_NAME)
             # 绘制可移动栅格
             if control_state.get("show_grid", False) and "robot_id" in control_state:
-                self._draw_grid(env.robots[control_state["robot_id"]].grid_map)
-                self._draw_path(env.robots[control_state["robot_id"]])
+                robot = env.robots[control_state["robot_id"]]
+                self._draw_grid(robot.grid_map)
+                self._draw_path(robot)
+                self._draw_attack_sight_line(robot, env.get_robot(ROBOT_ID[opposite_team(robot.team)][control_state["target_id"]]))
 
         # 绘制游戏结束信息
         self._draw_game_over(env.game_state_manager)
@@ -211,6 +214,20 @@ class Renderer:
             draw_dashed_line(
                 self.screen_robot, (0, 255, 0), attack_line[0], attack_line[1],
                 int(render_config.SCALE * 0.02), int(render_config.SCALE * 0.05), int(render_config.SCALE * 0.1)
+            )
+
+    def _draw_attack_sight_line(self, robot, target_robot):
+        """绘制视野"""
+        p1 = robot.get_position()
+        p2 = target_robot.get_position()
+        r = robot.radius
+        tangents = get_tangent_points(p1, p2, r)
+        if len(tangents) < 2:
+            return
+        for tangent in tangents:
+            draw_dashed_line(
+                self.screen_note, render_config.COLOR_GREEN, p1, tangent,
+                int(render_config.SCALE * 0.01), int(render_config.SCALE * 0.02), int(render_config.SCALE * 0.05)
             )
 
     def _draw_top_bar(self, game_state, env_name):

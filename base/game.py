@@ -46,4 +46,4 @@ class GameStateManager:
         return 0 < target_time - self._remaining_time < dt
 
     def get_remaining_time(self):
-        return int(self._remaining_time)
+        return self._remaining_time

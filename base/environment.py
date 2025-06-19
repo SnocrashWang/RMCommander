@@ -10,7 +10,7 @@ from utils.config.robot_config import RobotConfig, ROBOT_ID, RobotType
 from utils.grid_map import GridMap, world_to_grid
 from utils.robot import Robot
 from utils.obstacle import Obstacle
-from utils.utils import has_line_of_sight, calc_distance, opposite_team, timer
+from utils.utils import attack_sight_clear, calc_distance, opposite_team, timer
 
 from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
@@ -50,9 +50,17 @@ class Environment:
         self.game_state_manager = GameStateManager()
 
         # 状态记录，仅用于计算奖励
-        self.last_team_state = {
+        self._last_team_state = {
             GameTeam.RED: self._get_team_state(GameTeam.RED),
             GameTeam.BLUE: self._get_team_state(GameTeam.BLUE)
+        }
+        self._last_team_action = {
+            GameTeam.RED: {
+                robot_id: Action() for robot_id in ROBOT_ID[GameTeam.RED].values()
+            },
+            GameTeam.BLUE: {
+                robot_id: Action() for robot_id in ROBOT_ID[GameTeam.BLUE].values()
+            },
         }
 
         # 性能统计
@@ -205,7 +213,8 @@ class Environment:
             if robot_action.attack and robot_action.target != RobotType.NONE:
                 target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][robot_action.target])
                 if target_robot is not None:
-                    if has_line_of_sight(robot.get_position(), target_robot.get_position(), self.obstacles):
+                    # 判断完整视野
+                    if attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
                         if robot.attack(target_robot) and not target_robot.is_alive:
                             # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
                             if robot.robot_type == RobotType.SENTRY:
@@ -226,41 +235,51 @@ class Environment:
         Returns:
             float: 奖励值
         """
-        game_state_dict, red_robot_state_dict, blue_robot_state_dict = self._decode_state(self.last_team_state[team], team)
+        last_game_state_dict, last_red_robot_state_dict, last_blue_robot_state_dict = self._decode_state(self._last_team_state[team], team)
         reward_list = []
         reward_weight = []
 
         # 时间消耗惩罚
-        reward_time = (self.game_state_manager.get_remaining_time() - game_state_dict["remaining_time"]) * 1
+        reward_time = (self.game_state_manager.get_remaining_time() - last_game_state_dict["remaining_time"]) * 1
         reward_list.append(reward_time)
         reward_weight.append(0)
 
-        # 导航点惩罚
+        # 不可行导航点惩罚
         col, row = world_to_grid(action["RED_3_STANDARD"].navigation)  
         if self.robots["RED_3_STANDARD"].grid_map.is_blocked(col, row):
-            reward_navigation = -1.0
+            reward_navigation_unmovable = -1.0
         else:
-            reward_navigation = 0.0
-        reward_list.append(reward_navigation)
+            reward_navigation_unmovable = 1.0
+        reward_list.append(reward_navigation_unmovable)
+        reward_weight.append(5)
+
+        # 导航点差异惩罚
+        last_navigation = self._last_team_action[team]["RED_3_STANDARD"].navigation
+        if last_navigation is None:
+            last_navigation = self.robots["RED_3_STANDARD"].get_position()
+        current_navigation = action["RED_3_STANDARD"].navigation
+        navigation_diff = calc_distance(last_navigation, current_navigation)
+        reward_navigation_diff = (1 - navigation_diff ** 2) / (1 + navigation_diff ** 2)
+        reward_list.append(reward_navigation_diff)
         reward_weight.append(10)
 
         # 获取当前血量
-        our_hp = sum([robot["hp"] for robot in red_robot_state_dict.values()])
-        our_last_hp = sum([robot["hp"] for robot in red_robot_state_dict.values()])
-        enemy_hp = sum([robot["hp"] for robot in blue_robot_state_dict.values()])
-        enemy_last_hp = sum([robot["hp"] for robot in blue_robot_state_dict.values()])
+        our_last_hp = sum([robot["hp"] for robot in last_red_robot_state_dict.values()])
+        our_hp = sum([robot.hp / robot.max_hp for robot in self.robots.values() if robot.team == team])
+        enemy_last_hp = sum([robot["hp"] for robot in last_blue_robot_state_dict.values()])
+        enemy_hp = sum([robot.hp / robot.max_hp for robot in self.robots.values() if robot.team == opposite_team(team)])
         
         # 血量奖励
-        reward_hp = np.tanh((enemy_last_hp - enemy_hp) * 0.05 - (our_last_hp - our_hp) * 0.05)
+        reward_hp = np.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
         reward_list.append(reward_hp)
-        reward_weight.append(2)
+        reward_weight.append(10)
 
         # 距离奖励
         our_robot = self.get_robot("RED_3_STANDARD")
         enemy_robot = self.get_robot("BLUE_3_STANDARD")
-        last_distance = calc_distance(red_robot_state_dict["RED_3_STANDARD"]["position"], blue_robot_state_dict["BLUE_3_STANDARD"]["position"])
+        last_distance = calc_distance(last_red_robot_state_dict["RED_3_STANDARD"]["position"], last_blue_robot_state_dict["BLUE_3_STANDARD"]["position"])
         current_distance = calc_distance(our_robot.get_position(), enemy_robot.get_position())
-        reward_distance = np.tanh((last_distance - current_distance) * 100)  # 距离减小给予正奖励，距离增加给予负奖励
+        reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
         reward_list.append(reward_distance)
         reward_weight.append(5)
         
@@ -272,15 +291,18 @@ class Environment:
         else:
             reward_win = 0.0
         reward_list.append(reward_win)
-        reward_weight.append(0)
+        reward_weight.append(20)
         
         # 更新状态记录
-        self.last_team_state = {
+        self._last_team_state = {
             GameTeam.RED: self._get_team_state(GameTeam.RED),
             GameTeam.BLUE: self._get_team_state(GameTeam.BLUE)
         }
+        self._last_team_action = {
+            GameTeam.RED: action,
+            GameTeam.BLUE: action,
+        }
 
-        # print(reward_time, reward_navigation, reward_hp, reward_distance, reward_win)
         reward = np.average(reward_list, weights=reward_weight)
         # print(reward_list, reward)
         return reward

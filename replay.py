@@ -79,7 +79,7 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
         env.step(env.dt, red_action, blue_action)
         
         # 渲染环境
-        renderer.render(env, show_grid=True)
+        renderer.render(env, {"show_grid": True, "robot_id": "RED_3_STANDARD", "target_id": RobotType.STANDARD_3})
         pygame.display.flip()
         
         # 如果保存视频，保存当前帧
@@ -125,7 +125,7 @@ def main():
         video_path = None
         if args.video:
             os.makedirs(args.video_dir, exist_ok=True)
-            video_path = os.path.join(args.video_dir, f'{args.log_file.replace('\\', '/').split("/")[-1].split(".")[0]}.mp4')
+            video_path = os.path.join(args.video_dir, args.log_file.replace('\\', '/').split("/")[-1].split('.')[0] + ".mp4")
             print(f"视频将保存到: {video_path}")
         
         replay_episode(episode_data, args.delay, args.video, video_path)

@@ -109,18 +109,31 @@ def point_in_polygon(point: Tuple[float, float], polygon: List[Tuple[float, floa
     """
     x, y = point
     n = len(polygon)
+    if n < 3:
+        return False  # 至少需要3个点才能形成多边形
+    
     inside = False
     p1x, p1y = polygon[0]
+    
     for i in range(n + 1):
         p2x, p2y = polygon[i % n]
-        if y > min(p1y, p2y):
-            if y <= max(p1y, p2y):
+        
+        # 处理水平边的情况
+        if p1y == p2y:
+            if y == p1y and x <= max(p1x, p2x) and x >= min(p1x, p2x):
+                return True  # 点在水平边上
+        else:
+            # 检查射线是否与边相交
+            if y > min(p1y, p2y) and y <= max(p1y, p2y):
                 if x <= max(p1x, p2x):
+                    # 计算交点的x坐标
                     if p1y != p2y:
                         xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                    if p1x == p2x or x <= xinters:
-                        inside = not inside
+                        if p1x == p2x or x <= xinters:
+                            inside = not inside
+        
         p1x, p1y = p2x, p2y
+    
     return inside
 
 def point_to_line_segment_distance(point, line_start, line_end):
@@ -292,32 +305,31 @@ def attack_sight_clear(
     # 2. 判断切线是否被障碍物遮挡
     for tp in tangents:
         if not has_line_of_sight(attacker_pos, tp, obstacles):
-            print(f"Blocked tangents by obstacle")
+            # print(f"Blocked tangents by obstacle")
             return False
 
     # 3. 判断障碍物端点是否在四边形内
     for obs in obstacles:
         for pt in [obs.p1, obs.p2]:
             if point_in_polygon(pt, quad):
-                print(f"Blocked by obstacle endpoint")
+                # print(f"Blocked by obstacle endpoint")
                 return False
     
     if ignore_robot_blocked:
         return True
+    robots = [robot for robot in robots if robot.get_position() != attacker_pos and robot.get_position() != target_pos]
     
     # 4. 判断切线是否被机器人遮挡
     for tp in tangents:
         for robot in robots:
-            if robot.get_position() == attacker_pos or robot.get_position() == target_pos:
-                continue
             if point_to_line_segment_distance(robot.get_position(), attacker_pos, tp) < robot.radius:
-                print(f"Blocked tangents by robot: {robot.id}")
+                # print(f"Blocked tangents by robot: {robot.id}")
                 return False
 
     # 5. 判断机器人坐标是否在四边形内
     for robot in robots:
         if point_in_polygon(robot.get_position(), quad):
-            print(f"Blocked by robot: {robot.id}")
+            # print(f"Blocked by robot: {robot.id}")
             return False
 
     return True

@@ -123,6 +123,8 @@ class Renderer:
             v4 = (meters_to_pixels(x2 + nx * half_t), meters_to_pixels(y2 + ny * half_t))
 
             pygame.draw.polygon(self.screen_field, render_config.COLOR_OBSTACLE, [v1, v2, v3, v4])
+            pygame.draw.circle(self.screen_field, render_config.COLOR_GREEN, (meters_to_pixels(obs.p1[0]), meters_to_pixels(obs.p1[1])), 5)
+            pygame.draw.circle(self.screen_field, render_config.COLOR_GREEN, (meters_to_pixels(obs.p2[0]), meters_to_pixels(obs.p2[1])), 5)
 
     def _draw_robot(self, robot):
         """绘制机器人"""
@@ -233,7 +235,7 @@ class Renderer:
     def _draw_top_bar(self, game_state, env_name):
         """绘制顶部信息条"""
         # 倒计时
-        min, sec = second2minute(game_state.get_remaining_time())
+        min, sec = second2minute(int(game_state.get_remaining_time()))
         time_text = self.font_medium.render(f"Time: {min:02d}:{sec:02d}", True, render_config.COLOR_TEXT)
         self.screen_note.blit(time_text, ((self.screen_width - time_text.get_width()) // 2, time_text.get_height() // 2))
 

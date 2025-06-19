@@ -62,7 +62,7 @@ def train(
     if load_model is not None:
         if os.path.exists(load_model):
             agent_train.load(load_model)
-            agent_test.load("models/ppo_agent_20250615_004153_episode_800.pt")
+            agent_test.load("models/ppo_agent_20250615_141137_episode_300.pt")
             print(f"已加载预训练模型: {load_model}")
         else:
             print(f"警告: 预训练模型 {load_model} 不存在，将从头开始训练")
@@ -172,7 +172,7 @@ def train(
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")
         tqdm.write(f"总奖励: {episode_reward:.2f}")
         tqdm.write(f"回合长度: {episode_length}")
-        tqdm.write(f"剩余时间: {env.game_state_manager.get_remaining_time()}")
+        tqdm.write(f"剩余时间: {env.game_state_manager.get_remaining_time():.2f}")
         tqdm.write(f"比赛结果: {env.game_state_manager.state}")
         
         # 打印性能统计
@@ -198,11 +198,11 @@ if __name__ == "__main__":
     VISUALIZE = False  # 设置为True启用可视化
     
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    LOAD_MODEL = "models/ppo_agent_20250615_004153_episode_800.pt"
+    LOAD_MODEL = "models/ppo_agent_20250615_141137_episode_300.pt"
     # LOAD_MODEL = None
     
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
-    DEVICE = 'cuda'
+    DEVICE = 'cpu'
     
     train(
         visualize=VISUALIZE,

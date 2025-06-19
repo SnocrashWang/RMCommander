@@ -5,11 +5,14 @@ import time
 import argparse
 import cv2
 import numpy as np
+import random
 
 from config import CURRENT_GAME
 from utils.config.game_config import GameTeam, GameType
 from visualization.renderer import Renderer
 from agents.ppo_agent import PPOAgent
+from utils.config.robot_config import RobotType
+from utils.grid_map import world_to_grid
 from utils.utils import opposite_position
 
 if CURRENT_GAME == GameType.BASE:
@@ -68,6 +71,11 @@ def main():
         field_height=env_config.FIELD_HEIGHT,
         device="cpu"
     )
+
+    blue_navigation = (random.randint(0, env_config.FIELD_WIDTH), random.randint(0, env_config.FIELD_HEIGHT))
+    while env.get_robot("BLUE_3_STANDARD").grid_map.is_blocked(*world_to_grid(blue_navigation)):
+        blue_navigation = (random.randint(0, env_config.FIELD_WIDTH), random.randint(0, env_config.FIELD_HEIGHT))
+    blue_action = {"BLUE_3_STANDARD": Action(navigation=blue_navigation, attack=True, target=RobotType.STANDARD_3)}
     
     # 加载训练好的模型
     try:
@@ -100,8 +108,8 @@ def main():
         #         target=None,
         #     ) for robot_id, robot in env.robots.items() if robot.team == GameTeam.BLUE
         # }
-        blue_action = agent_blue.act(state)
-        blue_action["BLUE_3_STANDARD"].navigation = opposite_position(blue_action["BLUE_3_STANDARD"].navigation, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+        # blue_action = agent_blue.act(state)
+        # blue_action["BLUE_3_STANDARD"].navigation = opposite_position(blue_action["BLUE_3_STANDARD"].navigation, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:

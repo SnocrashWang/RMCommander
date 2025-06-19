@@ -5,12 +5,15 @@ import json
 from datetime import datetime
 from tqdm import tqdm
 from collections import defaultdict
+import random
 
 from agents.ppo_agent import PPOAgent
 from base.config import env_config
 from base.environment import Environment, Action
 from visualization.renderer import Renderer
 from utils.config.game_config import GameTeam, GameState
+from utils.config.robot_config import RobotType
+from utils.grid_map import world_to_grid
 from utils.utils import timer, opposite_position
 
 def train(
@@ -62,7 +65,7 @@ def train(
     if load_model is not None:
         if os.path.exists(load_model):
             agent_train.load(load_model)
-            agent_test.load("models/ppo_agent_20250615_141137_episode_300.pt")
+            agent_test.load(load_model)
             print(f"已加载预训练模型: {load_model}")
         else:
             print(f"警告: 预训练模型 {load_model} 不存在，将从头开始训练")
@@ -89,6 +92,11 @@ def train(
         # 记录当前回合的动作序列
         episode_actions = []
         
+        blue_navigation = (random.randint(0, env_config.FIELD_WIDTH), random.randint(0, env_config.FIELD_HEIGHT))
+        while env.get_robot("BLUE_3_STANDARD").grid_map.is_blocked(*world_to_grid(blue_navigation)):
+            blue_navigation = (random.randint(0, env_config.FIELD_WIDTH), random.randint(0, env_config.FIELD_HEIGHT))
+        blue_action = {"BLUE_3_STANDARD": Action(navigation=blue_navigation, attack=True, target=RobotType.STANDARD_3)}
+
         for step in range(max_steps):
             with timer(time_stats, 'total_step'):
                 # 获取状态
@@ -98,8 +106,8 @@ def train(
                 # 选择动作
                 with timer(time_stats, 'act'):
                     red_action = agent_train.act(state)
-                    blue_action = agent_test.act(state)
-                    blue_action["BLUE_3_STANDARD"].navigation = opposite_position(blue_action["BLUE_3_STANDARD"].navigation, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                    # blue_action = agent_test.act(state)
+                    # blue_action["BLUE_3_STANDARD"].navigation = opposite_position(blue_action["BLUE_3_STANDARD"].navigation, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
                     # blue_action = {"BLUE_3_STANDARD": Action(navigation=None, attack=False, target=None)}
                 
                 # 记录动作
@@ -198,11 +206,11 @@ if __name__ == "__main__":
     VISUALIZE = False  # 设置为True启用可视化
     
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    LOAD_MODEL = "models/ppo_agent_20250615_141137_episode_300.pt"
+    LOAD_MODEL = "models/ppo_agent_20250619_105917_episode_1000.pt"
     # LOAD_MODEL = None
     
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
-    DEVICE = 'cpu'
+    DEVICE = None
     
     train(
         visualize=VISUALIZE,

@@ -31,7 +31,7 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
     video_writer = None
     if save_video and video_path:
         # 获取第一帧来确定视频尺寸
-        renderer.render(env, show_grid=True)
+        renderer.render(env, {"show_grid": True, "robot_id": "RED_3_STANDARD", "target_id": RobotType.STANDARD_3})
         pygame.display.flip()
         frame = pygame.surfarray.array3d(pygame.display.get_surface())
         frame = frame.transpose([1, 0, 2])  # 转置以匹配cv2的格式

@@ -123,8 +123,6 @@ class Renderer:
             v4 = (meters_to_pixels(x2 + nx * half_t), meters_to_pixels(y2 + ny * half_t))
 
             pygame.draw.polygon(self.screen_field, render_config.COLOR_OBSTACLE, [v1, v2, v3, v4])
-            pygame.draw.circle(self.screen_field, render_config.COLOR_GREEN, (meters_to_pixels(obs.p1[0]), meters_to_pixels(obs.p1[1])), 5)
-            pygame.draw.circle(self.screen_field, render_config.COLOR_GREEN, (meters_to_pixels(obs.p2[0]), meters_to_pixels(obs.p2[1])), 5)
 
     def _draw_robot(self, robot):
         """绘制机器人"""

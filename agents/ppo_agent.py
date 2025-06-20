@@ -125,13 +125,15 @@ class PPOAgent:
         # 存储轨迹
         self.states = []
         self.actions = []
+        self.raw_actions = []
         self.rewards = []
         self.values = []
         self.log_probs = []
         self.dones = []
+        self.old_dist_params = []  # 存储旧策略的分布参数
     
-    def _process_network_output(self, nav_mean, nav_std, attack_logits, target_logits) -> Dict[str, Action]:
-        """将网络输出转换为实际动作"""
+    def _process_network_output(self, nav_mean, nav_std, attack_logits, target_logits) -> Tuple[Dict[str, Action], torch.Tensor]:
+        """将网络输出转换为实际动作，并返回原始采样动作用于概率计算"""
         # 处理导航坐标
         nav_dist = Normal(nav_mean, nav_std)
         nav_action = nav_dist.sample()
@@ -150,20 +152,23 @@ class PPOAgent:
         target_action = target_dist.sample()
         target_id = self.target_robot_list[target_action.item()]
         
-        return {
+        actions = {
             ROBOT_ID[self.team][robot_type]: Action(
                 navigation=(x.item(), y.item()),
                 attack=should_attack,
                 target=target_id
             ) for robot_type in BASE_ROBOT_TYPE_LIST
         }
+        
+        # 返回动作和原始采样值
+        return actions, nav_action, attack_action, target_action
     
     def act(self, state: np.ndarray) -> Dict[str, Action]:
         """选择动作"""
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         with torch.no_grad():
             nav_mean, nav_std, attack_logits, target_logits, value = self.network(state_tensor)
-            action = self._process_network_output(nav_mean[0], nav_std[0], attack_logits[0], target_logits[0])
+            action, nav_action, attack_action, target_action = self._process_network_output(nav_mean[0], nav_std[0], attack_logits[0], target_logits[0])
             
             # 计算动作概率
             nav_dist = Normal(nav_mean[0], nav_std[0])
@@ -173,15 +178,14 @@ class PPOAgent:
             # 计算每个机器人的动作概率
             log_probs = []
             for robot_id, robot_action in action.items():
-                # 确保导航动作的维度正确
-                nav_action = torch.tensor([robot_action.navigation[0], robot_action.navigation[1]], dtype=torch.float32).to(self.device)
+                # 使用原始采样的导航动作计算log概率
                 nav_log_prob = nav_dist.log_prob(nav_action).sum()
                 
                 # 计算攻击动作的log概率
-                attack_log_prob = attack_dist.log_prob(torch.tensor(int(robot_action.attack), device=self.device))
+                attack_log_prob = attack_dist.log_prob(attack_action)
                 
                 # 计算目标选择的log概率
-                target_log_prob = target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target), device=self.device))
+                target_log_prob = target_dist.log_prob(target_action)
                 
                 # 合并所有log概率
                 robot_log_prob = nav_log_prob + attack_log_prob + target_log_prob
@@ -193,8 +197,17 @@ class PPOAgent:
         # 存储轨迹
         self.states.append(state)
         self.actions.append(action)
+        self.raw_actions.append((nav_action, attack_action, target_action))
         self.values.append(value.item())
         self.log_probs.append(log_prob.item())
+        
+        # 保存旧策略的分布参数（用于KL散度计算）
+        self.old_dist_params.append({
+            'nav_mean': nav_mean[0].detach().clone(),
+            'nav_std': nav_std[0].detach().clone(),
+            'attack_logits': attack_logits[0].detach().clone(),
+            'target_logits': target_logits[0].detach().clone()
+        })
         
         return action
     
@@ -239,7 +252,7 @@ class PPOAgent:
             indices = np.random.permutation(len(self.states))
             
             for start_idx in range(0, len(self.states), self.batch_size):
-                batch_indices = indices[start_idx:start_idx + self.batch_size]
+                batch_indices = indices[start_idx:min(start_idx + self.batch_size, len(indices))]
                 
                 # 获取批次数据
                 batch_states = states[batch_indices]
@@ -257,25 +270,43 @@ class PPOAgent:
                 
                 # 计算策略损失
                 batch_actions = [self.actions[i] for i in batch_indices]
+                batch_raw_actions = [self.raw_actions[i] for i in batch_indices]
+                batch_old_params = [self.old_dist_params[i] for i in batch_indices]
                 batch_log_probs = []
                 
-                for actions in batch_actions:
+                # 计算KL散度
+                kl_divs = []
+                
+                for actions, raw_actions, old_params in zip(batch_actions, batch_raw_actions, batch_old_params):
                     robot_log_probs = []
+                    nav_action, attack_action, target_action = raw_actions
+                    
                     for robot_id, robot_action in actions.items():
-                        # 确保导航动作的维度正确
-                        nav_action = torch.tensor([robot_action.navigation[0], robot_action.navigation[1]], dtype=torch.float32).to(self.device)
+                        # 使用存储的原始采样动作计算log概率
                         nav_log_prob = nav_dist.log_prob(nav_action).sum()
                         
                         # 计算攻击动作的log概率
-                        attack_log_prob = attack_dist.log_prob(torch.tensor(int(robot_action.attack), device=self.device))
+                        attack_log_prob = attack_dist.log_prob(attack_action)
                         
                         # 计算目标选择的log概率
-                        target_log_prob = target_dist.log_prob(torch.tensor(self.target_robot_list.index(robot_action.target), device=self.device))
+                        target_log_prob = target_dist.log_prob(target_action)
                         
                         # 合并所有log概率
                         robot_log_prob = nav_log_prob + attack_log_prob + target_log_prob
                         robot_log_probs.append(robot_log_prob)
+                    
                     batch_log_probs.append(torch.stack(robot_log_probs).mean())
+                    
+                    # 计算KL散度
+                    old_nav_dist = Normal(old_params['nav_mean'], old_params['nav_std'])
+                    old_attack_dist = Categorical(logits=old_params['attack_logits'])
+                    old_target_dist = Categorical(logits=old_params['target_logits'])
+                    
+                    nav_kl = torch.distributions.kl_divergence(old_nav_dist, nav_dist).mean()
+                    attack_kl = torch.distributions.kl_divergence(old_attack_dist, attack_dist).mean()
+                    target_kl = torch.distributions.kl_divergence(old_target_dist, target_dist).mean()
+                    
+                    kl_divs.append(nav_kl + attack_kl + target_kl)
                 
                 batch_log_probs = torch.stack(batch_log_probs)
                 ratio = torch.exp(batch_log_probs - batch_old_log_probs)
@@ -300,16 +331,29 @@ class PPOAgent:
                 # 优化
                 self.optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.network.parameters(), self.max_grad_norm)
+                
+                # 计算梯度范数（在裁剪之前）
+                total_norm = nn.utils.clip_grad_norm_(self.network.parameters(), self.max_grad_norm)
+                # if total_norm > self.max_grad_norm:
+                #     print(f"梯度被裁剪: {total_norm:.4f}")
+                
                 self.optimizer.step()
+                
+                # 检查KL散度早停
+                avg_kl_div = torch.stack(kl_divs).mean().item()
+                if avg_kl_div > self.target_kl:
+                    # print(f"KL散度早停: {avg_kl_div:.4f} > {self.target_kl}")
+                    break
         
         # 清空轨迹
         self.states = []
         self.actions = []
+        self.raw_actions = []
         self.rewards = []
         self.values = []
         self.log_probs = []
         self.dones = []
+        self.old_dist_params = []
     
     def save(self, path: str):
         """保存模型"""

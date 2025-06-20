@@ -178,7 +178,7 @@ def train(
         
         # 打印训练进度
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")
-        tqdm.write(f"总奖励: {episode_reward:.2f}")
+        tqdm.write(f"平均奖励: {episode_reward/episode_length:.3f}")
         tqdm.write(f"回合长度: {episode_length}")
         tqdm.write(f"剩余时间: {env.game_state_manager.get_remaining_time():.2f}")
         tqdm.write(f"比赛结果: {env.game_state_manager.state}")
@@ -206,8 +206,8 @@ if __name__ == "__main__":
     VISUALIZE = False  # 设置为True启用可视化
     
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    LOAD_MODEL = "models/ppo_agent_20250619_105917_episode_1000.pt"
-    # LOAD_MODEL = None
+    # LOAD_MODEL = "models/ppo_agent_20250619_105917_episode_1000.pt"
+    LOAD_MODEL = None
     
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
     DEVICE = None

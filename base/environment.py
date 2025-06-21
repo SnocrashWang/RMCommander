@@ -242,7 +242,7 @@ class Environment:
         # 时间消耗惩罚
         reward_time = (self.game_state_manager.get_remaining_time() - last_game_state_dict["remaining_time"]) * 1
         reward_list.append(reward_time)
-        reward_weight.append(0)
+        reward_weight.append(5)
 
         # 不可行导航点惩罚
         col, row = world_to_grid(action["RED_3_STANDARD"].navigation)  
@@ -259,7 +259,7 @@ class Environment:
             last_navigation = self.robots["RED_3_STANDARD"].get_position()
         current_navigation = action["RED_3_STANDARD"].navigation
         navigation_diff = calc_distance(last_navigation, current_navigation)
-        reward_navigation_diff = (1 - navigation_diff ** 2) / (1 + navigation_diff ** 2)
+        reward_navigation_diff = - (navigation_diff ** 2) / (1 + navigation_diff ** 2)
         reward_list.append(reward_navigation_diff)
         reward_weight.append(10)
 
@@ -272,7 +272,7 @@ class Environment:
         # 血量奖励
         reward_hp = np.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
         reward_list.append(reward_hp)
-        reward_weight.append(10)
+        reward_weight.append(20)
 
         # 距离奖励
         our_robot = self.get_robot("RED_3_STANDARD")
@@ -281,17 +281,15 @@ class Environment:
         current_distance = calc_distance(our_robot.get_position(), enemy_robot.get_position())
         reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
         reward_list.append(reward_distance)
-        reward_weight.append(5)
+        reward_weight.append(10)
         
         # 游戏结束奖励
         if self.game_state_manager.state == GameState.RED_TEAM_WIN:
-            reward_win = 1.0
+            reward_win = 10.0
         elif self.game_state_manager.state == GameState.BLUE_TEAM_WIN:
-            reward_win = -1.0
+            reward_win = -10.0
         else:
             reward_win = 0.0
-        reward_list.append(reward_win)
-        reward_weight.append(20)
         
         # 更新状态记录
         self._last_team_state = {
@@ -304,8 +302,8 @@ class Environment:
         }
 
         reward = np.average(reward_list, weights=reward_weight)
-        # print(reward_list, reward)
-        return reward
+        # print(reward_list, reward_win reward)
+        return reward + reward_win
     
     def get_robot(self, id: str) -> Robot:
         if id not in self.robots:

@@ -72,9 +72,9 @@ def main():
         device="cpu"
     )
 
-    blue_navigation = (random.randint(0, env_config.FIELD_WIDTH), random.randint(0, env_config.FIELD_HEIGHT))
+    blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
     while env.get_robot("BLUE_3_STANDARD").grid_map.is_blocked(*world_to_grid(blue_navigation)):
-        blue_navigation = (random.randint(0, env_config.FIELD_WIDTH), random.randint(0, env_config.FIELD_HEIGHT))
+        blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
     blue_action = {"BLUE_3_STANDARD": Action(navigation=blue_navigation, attack=True, target=RobotType.STANDARD_3)}
     
     # 加载训练好的模型
@@ -125,7 +125,7 @@ def main():
                     show_grid = not show_grid
 
         # 更新环境
-        env.step(args.delay, red_action, blue_action)
+        env.step(env.dt, red_action, blue_action)
 
         # 渲染环境
         renderer.render(env, {"show_grid": show_grid})

@@ -17,9 +17,9 @@ from utils.grid_map import world_to_grid
 from utils.utils import timer, opposite_position
 
 def train(
-    num_episodes: int = 1000,
+    num_episodes: int = 3000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 100,
+    save_interval: int = 20,
     model_dir: str = "models",
     log_dir: str = "logs",
     visualize: bool = False,
@@ -92,9 +92,9 @@ def train(
         # 记录当前回合的动作序列
         episode_actions = []
         
-        blue_navigation = (random.randint(0, env_config.FIELD_WIDTH), random.randint(0, env_config.FIELD_HEIGHT))
+        blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
         while env.get_robot("BLUE_3_STANDARD").grid_map.is_blocked(*world_to_grid(blue_navigation)):
-            blue_navigation = (random.randint(0, env_config.FIELD_WIDTH), random.randint(0, env_config.FIELD_HEIGHT))
+            blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
         blue_action = {"BLUE_3_STANDARD": Action(navigation=blue_navigation, attack=True, target=RobotType.STANDARD_3)}
 
         for step in range(max_steps):
@@ -195,9 +195,6 @@ def train(
         if (episode + 1) % save_interval == 0:
             agent_train.save(os.path.join(model_dir, f"ppo_agent_{time_tag}_episode_{episode+1}.pt"))
     
-    # 保存最终模型
-    agent_train.save(os.path.join(model_dir, "ppo_agent_final.pt"))
-    
     if visualize:
         pygame.quit()
 
@@ -206,7 +203,7 @@ if __name__ == "__main__":
     VISUALIZE = False  # 设置为True启用可视化
     
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    # LOAD_MODEL = "models/ppo_agent_20250619_105917_episode_1000.pt"
+    # LOAD_MODEL = "models/ppo_agent_20250621_004342_episode_1800.pt"
     LOAD_MODEL = None
     
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）

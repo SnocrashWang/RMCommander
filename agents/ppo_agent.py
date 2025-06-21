@@ -63,7 +63,10 @@ class PPONetwork(nn.Module):
         
         # 导航动作（连续）
         nav_mean = self.navigation_mean(features)
-        nav_std = self.navigation_std(features) + 1e-6  # 添加小值确保标准差为正
+        nav_std = self.navigation_std(features)
+        
+        # # 添加标准差的最小值约束，防止过早收敛
+        # nav_std = torch.clamp(nav_std, min=0.1, max=2.0)
         
         # 攻击动作（离散）
         attack_logits = self.attack_network(features)
@@ -83,7 +86,7 @@ class PPOAgent:
         state_size: int,
         field_width: float,
         field_height: float,
-        learning_rate: float = 3e-4,
+        learning_rate: float = 5e-4,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
         clip_ratio: float = 0.2,
@@ -137,10 +140,17 @@ class PPOAgent:
         # 处理导航坐标
         nav_dist = Normal(nav_mean, nav_std)
         nav_action = nav_dist.sample()
+        
+        # 将tanh空间的输出映射到场地范围内
+        # nav_mean已经是tanh输出，nav_action是采样结果
+        x = (nav_action[0] + 1) * self.field_width / 2
+        y = (nav_action[1] + 1) * self.field_height / 2
+        
+        print(nav_mean, nav_std, nav_action, x, y)
 
-        # 将输出映射到场地范围内
-        x = (torch.tanh(nav_action[0]) + 1) * self.field_width / 2
-        y = (torch.tanh(nav_action[1]) + 1) * self.field_height / 2
+        # 确保坐标在场地范围内
+        x = torch.clamp(x, 0, self.field_width)
+        y = torch.clamp(y, 0, self.field_height)
         
         # 处理攻击决策
         attack_dist = Categorical(logits=attack_logits)
@@ -368,3 +378,4 @@ class PPOAgent:
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
         self.network.load_state_dict(checkpoint['network_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+

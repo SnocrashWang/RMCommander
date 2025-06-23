@@ -14,13 +14,13 @@ class Renderer:
         self.screen_width = meters_to_pixels(self.env_config.FIELD_WIDTH)
         self.screen_height = meters_to_pixels(self.env_config.FIELD_HEIGHT)
 
-        self.screen_main = pygame.display.set_mode((self.screen_width, self.screen_height))
+        # self.screen_main = pygame.display.set_mode((self.screen_width, self.screen_height))
         self.screen_field = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
         self.screen_robot = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
         self.screen_grid = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
         self.screen_grid.set_alpha(render_config.ALPHA_GRID)
         self.screen_note = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
-        pygame.display.set_caption("Robot Battle Environment")
+        # pygame.display.set_caption("Robot Battle Environment")
 
         # 创建栅格缓存
         self.last_grid_state = None  # 用于跟踪栅格状态
@@ -30,10 +30,11 @@ class Renderer:
         self.font_small = pygame.font.SysFont("consolas", 16, bold=True)
         self.font_tiny = pygame.font.SysFont("consolas", 9, bold=True)
 
-    def render(self, env, control_state=None):
+    def render(self, env, control_state={}) -> pygame.Surface:
         """渲染环境"""
         # 清空屏幕
-        self.screen_main.fill(render_config.COLOR_BACKGROUND)
+        screen = pygame.Surface((self.screen_width, self.screen_height))
+        screen.fill(render_config.COLOR_BACKGROUND)
         self.screen_field.fill((0, 0, 0, 0))
         self.screen_robot.fill((0, 0, 0, 0))
         self.screen_note.fill((0, 0, 0, 0))
@@ -73,11 +74,13 @@ class Renderer:
         self._draw_game_over(env.game_state_manager)
 
         # 叠加图层
-        self.screen_main.blit(self.screen_field, (0, 0))
-        self.screen_main.blit(self.screen_robot, (0, 0))
+        screen.blit(self.screen_field, (0, 0))
+        screen.blit(self.screen_robot, (0, 0))
         if control_state.get("show_grid", False):
-            self.screen_main.blit(self.screen_grid, (0, 0))
-        self.screen_main.blit(self.screen_note, (0, 0))
+            screen.blit(self.screen_grid, (0, 0))
+        screen.blit(self.screen_note, (0, 0))
+
+        return screen
 
     def _draw_buff_zone(self, env):
         """绘制增益区域"""

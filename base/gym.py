@@ -151,8 +151,8 @@ class RoboMasterGym(gym.Env):
         
         # 信息
         info = {
-            'game_state': self.env.game_state_manager.state,
-            'remaining_time': self.env.game_state_manager.get_remaining_time(),
+            'game_state': self.env.game_state,
+            'remaining_time': self.env._remaining_time,
             'red_hp': {robot_id: robot.hp for robot_id, robot in self.env.robots.items() if robot.team == GameTeam.RED},
             'blue_hp': {robot_id: robot.hp for robot_id, robot in self.env.robots.items() if robot.team == GameTeam.BLUE},
         }
@@ -169,11 +169,11 @@ class RoboMasterGym(gym.Env):
     
     def _is_terminated(self) -> bool:
         """判断是否自然结束"""
-        return self.env.game_state_manager.get_remaining_time() <= 0
+        return self.env._remaining_time <= 0
     
     def _is_truncated(self) -> bool:
         """判断是否被截断"""
-        return self.env.game_state_manager.state in [GameState.RED_TEAM_WIN, GameState.BLUE_TEAM_WIN, GameState.DRAW]
+        return self.env.game_state in [GameState.RED_TEAM_WIN, GameState.BLUE_TEAM_WIN, GameState.DRAW]
     
     def _init_render(self):
         if self.screen is None:

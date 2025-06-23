@@ -59,7 +59,7 @@ class Renderer:
             self._draw_attack_line(robot.get_attack_line())
 
         # 绘制顶部信息
-        self._draw_top_bar(env.game_state_manager, self.env_config.ENV_NAME)
+        self._draw_top_bar(env.get_top_bar_info(), self.env_config.ENV_NAME)
 
         # 绘制控制提示信息
         if self.control_state:
@@ -72,7 +72,7 @@ class Renderer:
                 self._draw_attack_sight_line(robot, env.get_robot(ROBOT_ID[opposite_team(robot.team)][self.control_state["target_id"]]))
 
         # 绘制游戏结束信息
-        self._draw_game_over(env.game_state_manager)
+        self._draw_game_over(env.game_state)
 
         # 叠加图层
         screen.blit(self.screen_field, (0, 0))
@@ -234,12 +234,13 @@ class Renderer:
                 int(render_config.SCALE * 0.01), int(render_config.SCALE * 0.02), int(render_config.SCALE * 0.05)
             )
 
-    def _draw_top_bar(self, game_state, env_name):
+    def _draw_top_bar(self, top_bar_info, env_name):
         """绘制顶部信息条"""
         # 倒计时
-        min, sec = second2minute(int(game_state.get_remaining_time()))
+        min, sec = second2minute(int(top_bar_info["remaining_time"]))
         time_text = self.font_medium.render(f"Time: {min:02d}:{sec:02d}", True, render_config.COLOR_TEXT)
         self.screen_note.blit(time_text, ((self.screen_width - time_text.get_width()) // 2, time_text.get_height() // 2))
+        return
 
         if env_name == "RMUL":
             bar_height = meters_to_pixels(self.env_config.FIELD_HEIGHT * 0.02)
@@ -314,17 +315,17 @@ class Renderer:
 
     def _draw_game_over(self, game_state):
         # 绘制游戏结束信息
-        if game_state.state == GameState.RED_TEAM_WIN:
+        if game_state == GameState.RED_TEAM_WIN:
             win_text = self.font_large.render("Team Red Wins!", True, render_config.TEAM_COLORS[GameTeam.RED])
             text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.FIELD_WIDTH) // 2, 
                                                  meters_to_pixels(self.env_config.FIELD_HEIGHT) // 2))
             self.screen_note.blit(win_text, text_rect)
-        elif game_state.state == GameState.BLUE_TEAM_WIN:
+        elif game_state == GameState.BLUE_TEAM_WIN:
             win_text = self.font_large.render("Team Blue Wins!", True, render_config.TEAM_COLORS[GameTeam.BLUE])
             text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.FIELD_WIDTH) // 2, 
                                                  meters_to_pixels(self.env_config.FIELD_HEIGHT) // 2))
             self.screen_note.blit(win_text, text_rect)
-        elif game_state.state == GameState.DRAW:
+        elif game_state == GameState.DRAW:
             win_text = self.font_large.render("Draw!", True, render_config.COLOR_TEXT)  # 灰色字体
             text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.FIELD_WIDTH) // 2, 
                                                  meters_to_pixels(self.env_config.FIELD_HEIGHT) // 2))

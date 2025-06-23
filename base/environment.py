@@ -1,7 +1,6 @@
 import pymunk
 import numpy as np
 from collections import defaultdict
-from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple, Any
 
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
@@ -13,8 +12,7 @@ from utils.obstacle import Obstacle
 from utils.utils import attack_sight_clear, calc_distance, opposite_team, timer
 
 from base.config import env_config
-from base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
-from base.game import GameStateManager
+from base.config.robot_config import BASE_ROBOT_CONFIGS
 
 class Environment:
     def __init__(
@@ -28,6 +26,11 @@ class Environment:
         self.physics_engine.gravity = (0, 0)  # 无重力
         self.dt = 1 / env_config.FPS
 
+        # 游戏状态
+        self.game_state = GameState.PLAYING
+        self.total_time = env_config.GAME_TIME_LIMIT       # 总时长
+        self._remaining_time = env_config.GAME_TIME_LIMIT  # 剩余时间
+
         # 创建障碍物
         self.obstacles = []
         self._create_obstacles(obstacle_configs)
@@ -39,9 +42,6 @@ class Environment:
         
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(env_config)
-
-        # 创建游戏状态管理器
-        self.game_state_manager = GameStateManager()
 
         # 状态记录，仅用于计算奖励
         self._last_team_state = {
@@ -96,15 +96,13 @@ class Environment:
         self._create_robots()
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(env_config)
-        # 重置游戏状态
-        self.game_state_manager.reset()
 
     def step(self, dt: float, red_action: Dict[str, Dict[str, Any]], blue_action: Dict[str, Dict[str, Any]]):
         """推进环境仿真"""
         # 更新物理引擎
         with timer(self.time_stats, 'physics_engine_step'):
             self.physics_engine.step(dt)
-
+        
         # 应用动作
         with timer(self.time_stats, 'apply_team_action'):
             self._apply_team_action(GameTeam.RED, red_action)
@@ -117,16 +115,30 @@ class Environment:
 
         # 更新游戏状态
         with timer(self.time_stats, 'game_state_manager_update'):
-            robot_hp = {
-                robot.id: robot.hp for robot in self.robots.values()
-            }
-            self.game_state_manager.update(robot_hp, dt)
+            # 倒计时减少
+            self._remaining_time = max(0, self._remaining_time - dt)
+            # 检查胜利条件
+            red_hp = self.robots["RED_3_STANDARD"].hp
+            blue_hp = self.robots["BLUE_3_STANDARD"].hp
+            # 1. 有一方率先阵亡
+            if red_hp <= 0:
+                self.game_state = GameState.BLUE_TEAM_WIN
+            elif blue_hp <= 0:
+                self.game_state = GameState.RED_TEAM_WIN
+            # 2. 时间到
+            elif self._remaining_time <= 0:
+                if red_hp > blue_hp:
+                    self.game_state = GameState.RED_TEAM_WIN
+                elif blue_hp > red_hp:
+                    self.game_state = GameState.BLUE_TEAM_WIN
+                else:
+                    self.game_state = GameState.DRAW
     
     def _encode_state(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """编码状态"""
         # 全局状态向量
         game_state = [
-            self.game_state_manager.get_remaining_time() / env_config.GAME_TIME_LIMIT,
+            self._remaining_time / env_config.GAME_TIME_LIMIT,
         ]
         
         # 机器人状态向量
@@ -235,7 +247,7 @@ class Environment:
         reward_weight = []
 
         # 时间消耗惩罚
-        reward_time = (self.game_state_manager.get_remaining_time() - last_game_state_dict["remaining_time"]) * 1
+        reward_time = (self._remaining_time - last_game_state_dict["remaining_time"]) * 1
         reward_list.append(reward_time)
         reward_weight.append(5)
 
@@ -280,9 +292,9 @@ class Environment:
         reward_weight.append(10)
         
         # 游戏结束奖励
-        if self.game_state_manager.state == GameState.RED_TEAM_WIN:
+        if self.game_state == GameState.RED_TEAM_WIN:
             reward_win = 10.0
-        elif self.game_state_manager.state == GameState.BLUE_TEAM_WIN:
+        elif self.game_state == GameState.BLUE_TEAM_WIN:
             reward_win = -10.0
         else:
             reward_win = 0.0
@@ -301,6 +313,12 @@ class Environment:
         # print(reward_list, reward_win reward)
         return reward + reward_win
     
+    def get_top_bar_info(self) -> Dict[str, Any]:
+        """获取渲染顶部信息"""
+        return {
+            "remaining_time": self._remaining_time,
+        }
+
     def get_robot(self, id: str) -> Robot:
         if id not in self.robots:
             return None

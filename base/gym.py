@@ -1,4 +1,5 @@
 import pygame
+import time
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -13,12 +14,6 @@ from visualization.renderer import Renderer
 from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 from base.environment import Environment
-
-@dataclass
-class Action():
-    navigation: Tuple[float, float] = None
-    attack: bool = False
-    target: RobotType = None
 
 class RoboMasterGym(gym.Env):
    
@@ -44,6 +39,7 @@ class RoboMasterGym(gym.Env):
         self.render_mode = render_mode
         self.screen = None
         self.clock = None
+        self.frame_start_time = None
         self.renderer = None
         self._init_render()
         
@@ -60,23 +56,23 @@ class RoboMasterGym(gym.Env):
         
         for robot_id, robot in self.env.robots.items():
             # 导航动作：x, y坐标
-            navigation_space = spaces.Box(
+            navigation_target_space = spaces.Box(
                 low=np.array([0.0, 0.0], dtype=np.float32),
                 high=np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT], dtype=np.float32),
                 dtype=np.float32
             )
             
-            # 攻击动作：是否攻击
-            attack_space = spaces.Discrete(2)  # 0: 不攻击, 1: 攻击
+            # 导航动作：是否导航
+            navigation_move_space = spaces.Discrete(2)  # 0: 不导航, 1: 导航
             
             # 目标动作：攻击目标类型
-            target_space = spaces.Discrete(len(RobotType))  # 所有机器人类型
+            attack_target_space = spaces.Discrete(len(RobotType))  # 所有机器人类型
             
             # 组合动作空间
             robot_action_spaces[robot_id] = spaces.Dict({
-                'navigation': navigation_space,
-                'attack': attack_space,
-                'target': target_space
+                'navigation_target': navigation_target_space,
+                'navigation_move': navigation_move_space,
+                'attack_target': attack_target_space,
             })
         
         self.action_space = spaces.Dict(robot_action_spaces)
@@ -136,38 +132,10 @@ class RoboMasterGym(gym.Env):
         
         return observation, info
     
-    def step(self, action: Dict[str, Dict[str, Any]]):
+    def step(self, red_action: Dict[str, Dict[str, Any]], blue_action: Dict[str, Dict[str, Any]]):
         """执行一步动作"""
-        # 转换动作格式
-        red_action = {}
-        blue_action = {}
-        
-        for robot_id, robot_action in action.items():
-            robot = self.env.get_robot(robot_id)
-            if robot is None:
-                continue
-                
-            # 转换动作格式
-            converted_action = Action()
-            
-            # 导航动作
-            if 'navigation' in robot_action:
-                converted_action.navigation = tuple(robot_action['navigation'])
-            
-            # 攻击动作
-            if 'attack' in robot_action:
-                converted_action.attack = bool(robot_action['attack'])
-            
-            # 目标动作
-            if 'target' in robot_action:
-                converted_action.target = RobotType(robot_action['target'])
-            
-            # 按队伍分类
-            if robot.team == GameTeam.RED:
-                red_action[robot_id] = converted_action
-            else:
-                blue_action[robot_id] = converted_action
-        
+        self.frame_start_time = time.perf_counter()
+
         # 执行环境步进
         self.env.step(self.env.dt, red_action, blue_action)
         
@@ -224,6 +192,9 @@ class RoboMasterGym(gym.Env):
         if self.renderer is None:
             self.renderer = Renderer(env_config)
 
+    def set_render(self, control_state):
+        self.renderer.control_state = control_state
+
     def render(self):
         """渲染环境"""
         if self.render_mode is None:
@@ -241,6 +212,10 @@ class RoboMasterGym(gym.Env):
         if self.render_mode == "human":
             # 使用自定义渲染器
             self.screen.blit(screen, (0, 0))
+            time_cost = time.perf_counter() - self.frame_start_time
+            wait_time = max(0, 1 / env_config.FPS - time_cost)
+            if wait_time > 0:
+                time.sleep(wait_time)
             pygame.display.flip()
             return None
         elif self.render_mode == "rgb_array":

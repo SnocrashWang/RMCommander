@@ -9,6 +9,7 @@ from utils.utils import meters_to_pixels, draw_dashed_line, second2minute, get_t
 class Renderer:
     def __init__(self, env_config):
         self.env_config = env_config
+        self.control_state = {}
 
         # 计算屏幕尺寸
         self.screen_width = meters_to_pixels(self.env_config.FIELD_WIDTH)
@@ -30,7 +31,7 @@ class Renderer:
         self.font_small = pygame.font.SysFont("consolas", 16, bold=True)
         self.font_tiny = pygame.font.SysFont("consolas", 9, bold=True)
 
-    def render(self, env, control_state={}) -> pygame.Surface:
+    def render(self, env) -> pygame.Surface:
         """渲染环境"""
         # 清空屏幕
         screen = pygame.Surface((self.screen_width, self.screen_height))
@@ -61,14 +62,14 @@ class Renderer:
         self._draw_top_bar(env.game_state_manager, self.env_config.ENV_NAME)
 
         # 绘制控制提示信息
-        if control_state:
-            self._draw_control_info(control_state, self.env_config.ENV_NAME)
+        if self.control_state:
+            self._draw_control_info(self.control_state, self.env_config.ENV_NAME)
             # 绘制可移动栅格
-            if control_state.get("show_grid", False) and "robot_id" in control_state:
-                robot = env.robots[control_state["robot_id"]]
+            if self.control_state.get("show_grid", False) and "robot_id" in self.control_state:
+                robot = env.robots[self.control_state["robot_id"]]
                 self._draw_grid(robot.grid_map)
                 self._draw_path(robot)
-                self._draw_attack_sight_line(robot, env.get_robot(ROBOT_ID[opposite_team(robot.team)][control_state["target_id"]]))
+                self._draw_attack_sight_line(robot, env.get_robot(ROBOT_ID[opposite_team(robot.team)][self.control_state["target_id"]]))
 
         # 绘制游戏结束信息
         self._draw_game_over(env.game_state_manager)
@@ -76,7 +77,7 @@ class Renderer:
         # 叠加图层
         screen.blit(self.screen_field, (0, 0))
         screen.blit(self.screen_robot, (0, 0))
-        if control_state.get("show_grid", False):
+        if self.control_state.get("show_grid", False):
             screen.blit(self.screen_grid, (0, 0))
         screen.blit(self.screen_note, (0, 0))
 

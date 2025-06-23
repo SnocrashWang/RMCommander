@@ -16,12 +16,6 @@ from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 from base.game import GameStateManager
 
-@dataclass
-class Action():
-    navigation: Tuple[float, float] = None
-    attack: bool = False
-    target: RobotType = None
-
 class Environment:
     def __init__(
             self,
@@ -56,10 +50,10 @@ class Environment:
         }
         self._last_team_action = {
             GameTeam.RED: {
-                robot_id: Action() for robot_id in ROBOT_ID[GameTeam.RED].values()
+                robot_id: None for robot_id in ROBOT_ID[GameTeam.RED].values()
             },
             GameTeam.BLUE: {
-                robot_id: Action() for robot_id in ROBOT_ID[GameTeam.BLUE].values()
+                robot_id: None for robot_id in ROBOT_ID[GameTeam.BLUE].values()
             },
         }
 
@@ -105,7 +99,7 @@ class Environment:
         # 重置游戏状态
         self.game_state_manager.reset()
 
-    def step(self, dt: float, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
+    def step(self, dt: float, red_action: Dict[str, Dict[str, Any]], blue_action: Dict[str, Dict[str, Any]]):
         """推进环境仿真"""
         # 更新物理引擎
         with timer(self.time_stats, 'physics_engine_step'):
@@ -204,14 +198,15 @@ class Environment:
         else:
             return np.concatenate((game_state, blue_robot_state, red_robot_state))
 
-    def _apply_team_action(self, team: GameTeam, action: Dict[str, Action]):
+    def _apply_team_action(self, team: GameTeam, action: Dict[str, Dict[str, Any]]):
         """应用动作"""
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
-            if robot_action.navigation is not None:
-                robot.set_target(robot_action.navigation)
-            if robot_action.attack and robot_action.target != RobotType.NONE:
-                target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][robot_action.target])
+            if robot_action["navigation_move"]:
+                robot.set_target(robot_action["navigation_target"])
+            target_type = RobotType(robot_action["attack_target"])
+            if target_type != RobotType.NONE:
+                target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
                 if target_robot is not None:
                     # 判断完整视野
                     if attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
@@ -228,7 +223,7 @@ class Environment:
                                 kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
                                 robot.update_exp(int(kill_exp))
 
-    def calculate_reward(self, team: GameTeam, action: Dict[str, Action]) -> float:
+    def calculate_reward(self, team: GameTeam, action: Dict[str, Dict[str, Any]]) -> float:
         """计算奖励
         Args:
             team: 队伍
@@ -245,7 +240,7 @@ class Environment:
         reward_weight.append(5)
 
         # 不可行导航点惩罚
-        col, row = world_to_grid(action["RED_3_STANDARD"].navigation)  
+        col, row = world_to_grid(action["RED_3_STANDARD"]["navigation_target"])  
         if self.robots["RED_3_STANDARD"].grid_map.is_blocked(col, row):
             reward_navigation_unmovable = -1.0
         else:
@@ -254,10 +249,11 @@ class Environment:
         reward_weight.append(5)
 
         # 导航点差异惩罚
-        last_navigation = self._last_team_action[team]["RED_3_STANDARD"].navigation
-        if last_navigation is None:
+        try:
+            last_navigation = self._last_team_action[team]["RED_3_STANDARD"]["navigation_target"]
+        except:
             last_navigation = self.robots["RED_3_STANDARD"].get_position()
-        current_navigation = action["RED_3_STANDARD"].navigation
+        current_navigation = action["RED_3_STANDARD"]["navigation_target"]
         navigation_diff = calc_distance(last_navigation, current_navigation)
         reward_navigation_diff = - (navigation_diff ** 2) / (1 + navigation_diff ** 2)
         reward_list.append(reward_navigation_diff)

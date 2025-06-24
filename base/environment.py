@@ -43,20 +43,6 @@ class Environment:
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(env_config)
 
-        # 状态记录，仅用于计算奖励
-        self._last_team_state = {
-            GameTeam.RED: self._get_team_state(GameTeam.RED),
-            GameTeam.BLUE: self._get_team_state(GameTeam.BLUE)
-        }
-        self._last_team_action = {
-            GameTeam.RED: {
-                robot_id: None for robot_id in ROBOT_ID[GameTeam.RED].values()
-            },
-            GameTeam.BLUE: {
-                robot_id: None for robot_id in ROBOT_ID[GameTeam.BLUE].values()
-            },
-        }
-
         # 性能统计
         self.time_stats = defaultdict(list)
 
@@ -134,81 +120,44 @@ class Environment:
                 else:
                     self.game_state = GameState.DRAW
     
-    def _encode_state(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """编码状态"""
-        # 全局状态向量
-        game_state = [
-            self._remaining_time / env_config.GAME_TIME_LIMIT,
-        ]
-        
-        # 机器人状态向量
-        red_robot_state = []
-        blue_robot_state = []
-        for robot in self.robots.values():
-            x, y = robot.get_position()
-            robot_state = [
-                x / env_config.FIELD_WIDTH,
-                y / env_config.FIELD_HEIGHT,
-                # robot.angle / 360,
-                robot.chassis_property_type.value,
-                robot.gimbal_property_type.value,
-                robot.level,
-                robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1,
-                robot.hp / robot.max_hp,
-                robot.heat / robot.max_heat,
-            ]
-            if robot.team == GameTeam.RED:
-                red_robot_state.extend(robot_state)
-            else:
-                blue_robot_state.extend(robot_state)
-        return np.array(game_state), np.array(red_robot_state), np.array(blue_robot_state)
-    
-    def _decode_state(self, state: np.ndarray, team: GameTeam) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """解码状态"""
-        game_state = state[:1]
-        red_robots = [robot for robot in self.robots.values() if robot.team == GameTeam.RED]
-        blue_robots = [robot for robot in self.robots.values() if robot.team == GameTeam.BLUE]
-        if team == GameTeam.RED:
-            red_robot_state = state[1:1+8*len(red_robots)]
-            blue_robot_state = state[1+8*len(red_robots):]
-        else:
-            blue_robot_state = state[1:1+8*len(blue_robots)]
-            red_robot_state = state[1+8*len(blue_robots):]
+    # def _decode_state(self, state: np.ndarray, team: GameTeam) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    #     """解码状态"""
+    #     game_state = state[:1]
+    #     red_robots = [robot for robot in self.robots.values() if robot.team == GameTeam.RED]
+    #     blue_robots = [robot for robot in self.robots.values() if robot.team == GameTeam.BLUE]
+    #     if team == GameTeam.RED:
+    #         red_robot_state = state[1:1+8*len(red_robots)]
+    #         blue_robot_state = state[1+8*len(red_robots):]
+    #     else:
+    #         blue_robot_state = state[1:1+8*len(blue_robots)]
+    #         red_robot_state = state[1+8*len(blue_robots):]
 
-        game_state_dict = {
-            "remaining_time": game_state[0] * env_config.GAME_TIME_LIMIT,
-        }
-        red_robot_state_dict = {
-            robot.id: {
-                "position": (red_robot_state[i * 8 + 0] * env_config.FIELD_WIDTH, red_robot_state[i * 8 + 1] * env_config.FIELD_HEIGHT),
-                "chassis_property_type": red_robot_state[i * 8 + 2],
-                "gimbal_property_type": red_robot_state[i * 8 + 3],
-                "level": red_robot_state[i * 8 + 4],
-                "exp": red_robot_state[i * 8 + 5],
-                "hp": red_robot_state[i * 8 + 6],
-                "heat": red_robot_state[i * 8 + 7],
-            } for i, robot in enumerate(red_robots)
-        }
-        blue_robot_state_dict = {
-            robot.id: {
-                "position": (blue_robot_state[i * 8 + 0] * env_config.FIELD_WIDTH, blue_robot_state[i * 8 + 1] * env_config.FIELD_HEIGHT),
-                "chassis_property_type": blue_robot_state[i * 8 + 2],
-                "gimbal_property_type": blue_robot_state[i * 8 + 3],
-                "level": blue_robot_state[i * 8 + 4],
-                "exp": blue_robot_state[i * 8 + 5],
-                "hp": blue_robot_state[i * 8 + 6],
-                "heat": blue_robot_state[i * 8 + 7],
-            } for i, robot in enumerate(blue_robots)
-        }
-        return game_state_dict, red_robot_state_dict, blue_robot_state_dict
-
-    def _get_team_state(self, team: GameTeam) -> np.ndarray:
-        """获取当前状态"""
-        game_state, red_robot_state, blue_robot_state = self._encode_state()
-        if team == GameTeam.RED:
-            return np.concatenate((game_state, red_robot_state, blue_robot_state))
-        else:
-            return np.concatenate((game_state, blue_robot_state, red_robot_state))
+    #     game_state_dict = {
+    #         "remaining_time": game_state[0] * env_config.GAME_TIME_LIMIT,
+    #     }
+    #     red_robot_state_dict = {
+    #         robot.id: {
+    #             "position": (red_robot_state[i * 8 + 0] * env_config.FIELD_WIDTH, red_robot_state[i * 8 + 1] * env_config.FIELD_HEIGHT),
+    #             "chassis_property_type": red_robot_state[i * 8 + 2],
+    #             "gimbal_property_type": red_robot_state[i * 8 + 3],
+    #             "level": red_robot_state[i * 8 + 4],
+    #             "exp": red_robot_state[i * 8 + 5],
+    #             "hp": red_robot_state[i * 8 + 6],
+    #             "heat": red_robot_state[i * 8 + 7],
+    #         } for i, robot in enumerate(red_robots)
+    #     }
+    #     blue_robot_state_dict = {
+    #         robot.id: {
+    #             "position": (blue_robot_state[i * 8 + 0] * env_config.FIELD_WIDTH, blue_robot_state[i * 8 + 1] * env_config.FIELD_HEIGHT),
+    #             "chassis_property_type": blue_robot_state[i * 8 + 2],
+    #             "gimbal_property_type": blue_robot_state[i * 8 + 3],
+    #             "level": blue_robot_state[i * 8 + 4],
+    #             "exp": blue_robot_state[i * 8 + 5],
+    #             "hp": blue_robot_state[i * 8 + 6],
+    #             "heat": blue_robot_state[i * 8 + 7],
+    #         } for i, robot in enumerate(blue_robots)
+    #     }
+    #     return game_state_dict, red_robot_state_dict, blue_robot_state_dict
 
     def _apply_team_action(self, team: GameTeam, action: Dict[str, Dict[str, Any]]):
         """应用动作"""
@@ -234,84 +183,6 @@ class Environment:
                             else:
                                 kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
                                 robot.update_exp(int(kill_exp))
-
-    def calculate_reward(self, team: GameTeam, action: Dict[str, Dict[str, Any]]) -> float:
-        """计算奖励
-        Args:
-            team: 队伍
-        Returns:
-            float: 奖励值
-        """
-        last_game_state_dict, last_red_robot_state_dict, last_blue_robot_state_dict = self._decode_state(self._last_team_state[team], team)
-        reward_list = []
-        reward_weight = []
-
-        # 时间消耗惩罚
-        reward_time = (self._remaining_time - last_game_state_dict["remaining_time"]) * 1
-        reward_list.append(reward_time)
-        reward_weight.append(5)
-
-        # 不可行导航点惩罚
-        col, row = world_to_grid(action["RED_3_STANDARD"]["navigation_target"])  
-        if self.robots["RED_3_STANDARD"].grid_map.is_blocked(col, row):
-            reward_navigation_unmovable = -1.0
-        else:
-            reward_navigation_unmovable = 1.0
-        reward_list.append(reward_navigation_unmovable)
-        reward_weight.append(5)
-
-        # 导航点差异惩罚
-        try:
-            last_navigation = self._last_team_action[team]["RED_3_STANDARD"]["navigation_target"]
-        except:
-            last_navigation = self.robots["RED_3_STANDARD"].get_position()
-        current_navigation = action["RED_3_STANDARD"]["navigation_target"]
-        navigation_diff = calc_distance(last_navigation, current_navigation)
-        reward_navigation_diff = - (navigation_diff ** 2) / (1 + navigation_diff ** 2)
-        reward_list.append(reward_navigation_diff)
-        reward_weight.append(10)
-
-        # 获取当前血量
-        our_last_hp = sum([robot["hp"] for robot in last_red_robot_state_dict.values()])
-        our_hp = sum([robot.hp / robot.max_hp for robot in self.robots.values() if robot.team == team])
-        enemy_last_hp = sum([robot["hp"] for robot in last_blue_robot_state_dict.values()])
-        enemy_hp = sum([robot.hp / robot.max_hp for robot in self.robots.values() if robot.team == opposite_team(team)])
-        
-        # 血量奖励
-        reward_hp = np.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
-        reward_list.append(reward_hp)
-        reward_weight.append(20)
-
-        # 距离奖励
-        our_robot = self.get_robot("RED_3_STANDARD")
-        enemy_robot = self.get_robot("BLUE_3_STANDARD")
-        last_distance = calc_distance(last_red_robot_state_dict["RED_3_STANDARD"]["position"], last_blue_robot_state_dict["BLUE_3_STANDARD"]["position"])
-        current_distance = calc_distance(our_robot.get_position(), enemy_robot.get_position())
-        reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
-        reward_list.append(reward_distance)
-        reward_weight.append(10)
-        
-        # 游戏结束奖励
-        if self.game_state == GameState.RED_TEAM_WIN:
-            reward_win = 10.0
-        elif self.game_state == GameState.BLUE_TEAM_WIN:
-            reward_win = -10.0
-        else:
-            reward_win = 0.0
-        
-        # 更新状态记录
-        self._last_team_state = {
-            GameTeam.RED: self._get_team_state(GameTeam.RED),
-            GameTeam.BLUE: self._get_team_state(GameTeam.BLUE)
-        }
-        self._last_team_action = {
-            GameTeam.RED: action,
-            GameTeam.BLUE: action,
-        }
-
-        reward = np.average(reward_list, weights=reward_weight)
-        # print(reward_list, reward_win reward)
-        return reward + reward_win
     
     def get_top_bar_info(self) -> Dict[str, Any]:
         """获取渲染顶部信息"""

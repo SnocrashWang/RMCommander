@@ -6,9 +6,11 @@ from gymnasium import spaces
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple, Any
 
+from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType
-from utils.utils import meters_to_pixels
+from utils.grid_map import world_to_grid
+from utils.utils import meters_to_pixels, calc_distance, opposite_team
 from visualization.renderer import Renderer
 
 from base.config import env_config
@@ -34,6 +36,8 @@ class RoboMasterGym(gym.Env):
             obstacle_configs=env_config.OBSTACLES,
             robot_configs=BASE_ROBOT_CONFIGS
         )
+
+        self.dt = 1 / env_config.FPS
         
         # 渲染
         self.render_mode = render_mode
@@ -48,6 +52,10 @@ class RoboMasterGym(gym.Env):
         
         # 定义观察空间
         self._setup_observation_space()
+
+        # 状态记录
+        self._last_observation = self._get_obs()
+        self._last_action = None
     
     def _setup_action_space(self):
         """设置动作空间"""
@@ -89,7 +97,7 @@ class RoboMasterGym(gym.Env):
         # 机器人状态：位置(2) + 属性(2) + 等级(1) + 经验(1) + 血量(1) + 热量(1) = 8维
         robot_state_space = spaces.Box(
             low=np.array([0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 3, 3, 10, 1.0, 1.0, 1.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
         
@@ -143,7 +151,7 @@ class RoboMasterGym(gym.Env):
         observation = self._get_obs()
         
         # 计算奖励（以红队视角）
-        reward = self.env.calculate_reward(GameTeam.RED, red_action)
+        reward = self._get_reward(GameTeam.RED, red_action)
         
         # 判断是否结束
         terminated = self._is_terminated()
@@ -164,9 +172,104 @@ class RoboMasterGym(gym.Env):
     
     def _get_obs(self) -> np.ndarray:
         """获取观察"""
-        # 使用底层环境的编码方法
-        return self.env._get_team_state(GameTeam.RED)
+        # 全局状态向量
+        game_state = [
+            self.env._remaining_time / env_config.GAME_TIME_LIMIT,
+        ]
+        
+        # 机器人状态向量
+        red_robot_state = []
+        blue_robot_state = []
+        for robot in self.env.robots.values():
+            x, y = robot.get_position()
+            robot_state = [
+                x / env_config.FIELD_WIDTH,
+                y / env_config.FIELD_HEIGHT,
+                # robot.angle / 360,
+                robot.chassis_property_type.value,
+                robot.gimbal_property_type.value,
+                robot.level,
+                robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1,
+                robot.hp / robot.max_hp,
+                robot.heat / robot.max_heat,
+            ]
+            if robot.team == GameTeam.RED:
+                red_robot_state.extend(robot_state)
+            else:
+                blue_robot_state.extend(robot_state)
+        return np.array(game_state + red_robot_state + blue_robot_state)
     
+    def _get_reward(self, team: GameTeam, action: Dict[str, Dict[str, Any]]) -> float:
+        """获取奖励"""
+        reward_list = []
+        reward_weight = []
+
+        # 时间消耗惩罚
+        reward_time = - self.dt * 1
+        reward_list.append(reward_time)
+        reward_weight.append(5)
+
+        # 不可行导航点惩罚
+        if action["RED_3_STANDARD"]["navigation_move"] == 1:
+            col, row = world_to_grid(action["RED_3_STANDARD"]["navigation_target"])
+            if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
+                reward_navigation_unmovable = -1.0
+            else:
+                reward_navigation_unmovable = 1.0
+        else:
+            reward_navigation_unmovable = 0.0
+        reward_list.append(reward_navigation_unmovable)
+        reward_weight.append(5)
+
+        # # 导航点差异惩罚
+        # try:
+        #     last_navigation = self._last_action["RED_3_STANDARD"]["navigation_target"]
+        # except:
+        #     last_navigation = self.env.robots["RED_3_STANDARD"].get_position()
+        # current_navigation = action["RED_3_STANDARD"]["navigation_target"]
+        # navigation_diff = calc_distance(last_navigation, current_navigation)
+        # reward_navigation_diff = - (navigation_diff ** 2) / (1 + navigation_diff ** 2)
+        # reward_list.append(reward_navigation_diff)
+        # reward_weight.append(10)
+
+        # 血量奖励
+        our_last_hp = sum([self._last_observation[7]])
+        our_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == team])
+        enemy_last_hp = sum([self._last_observation[15]])
+        enemy_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == opposite_team(team)])        
+        reward_hp = np.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
+        reward_list.append(reward_hp)
+        reward_weight.append(20)
+
+        # 距离奖励
+        last_distance = calc_distance(
+            self._last_observation[1:3] * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]),
+            self._last_observation[9:11] * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        )
+        current_distance = calc_distance(
+            self.env.get_robot("RED_3_STANDARD").get_position(),
+            self.env.get_robot("BLUE_3_STANDARD").get_position()
+        )
+        reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
+        reward_list.append(reward_distance)
+        reward_weight.append(10)
+        
+        # 游戏结束奖励
+        if self.env.game_state == GameState.RED_TEAM_WIN:
+            reward_win = 10.0
+        elif self.env.game_state == GameState.BLUE_TEAM_WIN:
+            reward_win = -10.0
+        else:
+            reward_win = 0.0
+        
+        # 更新状态记录
+        self._last_observation = self._get_obs()
+        self._last_action = action
+
+        reward = np.average(reward_list, weights=reward_weight)
+        # print(reward_list, reward_win, reward)
+        return reward + reward_win
+
     def _is_terminated(self) -> bool:
         """判断是否自然结束"""
         return self.env._remaining_time <= 0
@@ -213,7 +316,7 @@ class RoboMasterGym(gym.Env):
             # 使用自定义渲染器
             self.screen.blit(screen, (0, 0))
             time_cost = time.perf_counter() - self.frame_start_time
-            wait_time = max(0, 1 / env_config.FPS - time_cost)
+            wait_time = max(0, self.dt - time_cost)
             if wait_time > 0:
                 time.sleep(wait_time)
             pygame.display.flip()

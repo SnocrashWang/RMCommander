@@ -291,7 +291,7 @@ class Renderer:
             f"Movable Grid: {'ON' if control_state.get('show_grid', False) else 'OFF'}",
         ]
         select = {
-            "base_game": [0, 1, 2, 3, 4, 7, 9],
+            "solo": [0, 1, 2, 3, 4, 7, 9],
             "RMUL": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         }
 
@@ -302,7 +302,7 @@ class Renderer:
             self.screen_note.blit(text_control, (10, meters_to_pixels(self.env_config.FIELD_HEIGHT) - (len(controls_displayed) - i) * 30))
 
         # 绘制控制目标提示
-        if env_name == "base_game":
+        if env_name == "solo":
             return
         
         states = [

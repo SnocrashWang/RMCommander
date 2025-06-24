@@ -1,6 +1,6 @@
 from utils.utils import get_reverse_obstacle_config
 
-ENV_NAME = "base_game"
+ENV_NAME = "solo"
 
 # 仿真配置
 FPS = 60

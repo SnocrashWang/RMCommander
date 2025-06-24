@@ -2,7 +2,7 @@ import pygame
 import pymunk
 import math
 import time
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from utils.config.exp_prop_config import *
 from utils.config.bullet_config import *
 from utils.config.robot_config import ROBOT_ID, RobotType
@@ -12,7 +12,6 @@ from utils.grid_map import GridMap, a_star, world_to_grid, grid_to_world, simpli
 class Robot:
     def __init__(
         self,
-        physics_engine: pymunk.Space,
         team: GameTeam,
         robot_type: RobotType,
         init_pos: Tuple[float, float],
@@ -23,6 +22,7 @@ class Robot:
         radius: float,
         max_ammo: int,
         ammo_allowed: int,
+        physics_engine: Optional[pymunk.Space] = None,
     ):
         # 全局属性
         self.team : GameTeam = team
@@ -71,8 +71,8 @@ class Robot:
         self._shape.elasticity = 0.8
         self._shape.friction = 0.7
 
-        self._physics_engine = physics_engine
-        self._physics_engine.add(self._body, self._shape)
+        if physics_engine:
+            physics_engine.add(self._body, self._shape)
 
         self.angle : float = 0  # 角度（度）
         self.target_pos : Tuple[float, float] = None
@@ -112,6 +112,11 @@ class Robot:
         # GridMap相关
         self.grid_map : GridMap = None
 
+    def destroy_physics_body(self, physics_engine: pymunk.Space):
+        """从物理引擎中移除物理体"""
+        if self._body is not None and self._shape is not None:
+            physics_engine.remove(self._shape, self._body)
+
     def print_info(self):
         info = {
             "id": self.id,
@@ -145,12 +150,10 @@ class Robot:
         self.max_heat : int = self.gimbal_property[self.level]["HEAT"]
         self.cool_down : int = self.gimbal_property[self.level]["COOL_DOWN"]
 
-    def destroy(self, physics_engine):
-        """销毁物理体"""
-        physics_engine.remove(self._shape, self._body)
-
     def get_position(self):
         """获取位置"""
+        if self._body is None:
+            return self._init_pos
         return self._body.position.x, self._body.position.y
 
     def set_target(self, target_pos):
@@ -175,7 +178,8 @@ class Robot:
         """沿路径点导航"""
         # 若非存活
         if not self.is_alive:
-            self._body.velocity = (0, 0)
+            if self._body is not None:
+                self._body.velocity = (0, 0)
             # 结算复活进度
             self.revive_progress = min(self.revive_progress + self.revive_efficiency * dt, self.revive_target)
             if self.revive_progress >= self.revive_target:
@@ -297,8 +301,9 @@ class Robot:
 
     def heal(self, amount: int):
         """恢复血量"""
-        self.hp = int(min(self.max_hp, self.hp + amount))
+        if self.is_alive:
+            self.hp = int(min(self.max_hp, self.hp + amount))
 
     def set_grid_map(self, grid_map: GridMap):
-        """设置机器人的网格地图"""
+        """设置网格地图"""
         self.grid_map = grid_map

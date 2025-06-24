@@ -76,7 +76,6 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
                     env.reset()
-                    print("Environment reset")
                 elif event.key == pygame.K_ESCAPE:
                     env.close()
                     sys.exit()

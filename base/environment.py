@@ -50,8 +50,8 @@ class Environment:
         """根据配置创建机器人"""
         for config in self.robot_configs:
             robot = Robot(
-                self.physics_engine,
                 **config.__dict__,
+                physics_engine=self.physics_engine,
             )
             self.robots[robot.id] = robot
 
@@ -70,18 +70,24 @@ class Environment:
 
     def _create_obstacles(self, obstacles: List[Dict[str, Any]]):
         for obstacle_config in obstacles:
-            self.obstacles.append(Obstacle(self.physics_engine, obstacle_config))
+            self.obstacles.append(Obstacle(obstacle_config, self.physics_engine))
 
     def reset(self):
         """重置环境"""
         # 销毁现有机器人
         for robot in self.robots.values():
-            robot.destroy(self.physics_engine)
+            robot.destroy_physics_body(self.physics_engine)
         self.robots.clear()
+        
         # 创建新机器人
         self._create_robots()
+        
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(env_config)
+        
+        # 重置游戏状态
+        self.game_state = GameState.PLAYING
+        self._remaining_time = env_config.GAME_TIME_LIMIT
 
     def step(self, dt: float, red_action: Dict[str, Dict[str, Any]], blue_action: Dict[str, Dict[str, Any]]):
         """推进环境仿真"""

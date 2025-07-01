@@ -6,6 +6,7 @@ from utils.config.game_config import GameState, GameTeam
 from utils.config.robot_config import ROBOT_ID
 from utils.utils import meters_to_pixels, draw_dashed_line, second2minute, get_tangent_points, opposite_team
 
+
 class Renderer:
     def __init__(self, env_config):
         self.env_config = env_config
@@ -59,7 +60,7 @@ class Renderer:
             self._draw_attack_line(robot.get_attack_line())
 
         # 绘制顶部信息
-        self._draw_top_bar(env.get_top_bar_info(), self.env_config.ENV_NAME)
+        self._draw_top_bar(env.get_top_bar_info())
 
         # 绘制控制提示信息
         if self.control_state:
@@ -234,45 +235,50 @@ class Renderer:
                 int(render_config.SCALE * 0.01), int(render_config.SCALE * 0.02), int(render_config.SCALE * 0.05)
             )
 
-    def _draw_top_bar(self, top_bar_info, env_name):
+    def _draw_top_bar(self, top_bar_info):
         """绘制顶部信息条"""
         # 倒计时
-        min, sec = second2minute(int(top_bar_info["remaining_time"]))
-        time_text = self.font_medium.render(f"Time: {min:02d}:{sec:02d}", True, render_config.COLOR_TEXT)
-        self.screen_note.blit(time_text, ((self.screen_width - time_text.get_width()) // 2, time_text.get_height() // 2))
-        return
+        if "remaining_time" in top_bar_info:
+            min, sec = second2minute(int(top_bar_info["remaining_time"]))
+            time_text = self.font_medium.render(f"Time: {min:02d}:{sec:02d}", True, render_config.COLOR_TEXT)
+            self.screen_note.blit(time_text, ((self.screen_width - time_text.get_width()) // 2, time_text.get_height() // 2))
 
-        if env_name == "RMUL":
+        # 胜利进度
+        if "victory_progress" in top_bar_info:
             bar_height = meters_to_pixels(self.env_config.FIELD_HEIGHT * 0.02)
             bar_width = self.screen_width * 0.4
 
             # 红队进度条
+            victory_progress_red = top_bar_info['victory_progress'][GameTeam.RED]
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (game_state.get_victory_progress(GameTeam.RED) / self.env_config.OCCUPATION_TARGET))
+            progress_width = int(bar_width * (victory_progress_red / self.env_config.OCCUPATION_TARGET))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.RED],
                             (10, 10, progress_width, bar_height))
             red_progress_text = self.font_medium.render(
-                f"Team RED: {int(game_state.get_victory_progress(GameTeam.RED)):>3d} / {self.env_config.OCCUPATION_TARGET:>3d}",
+                f"Team RED: {int(victory_progress_red):>3d} / {self.env_config.OCCUPATION_TARGET:>3d}",
                 True, render_config.COLOR_TEXT
             )
             self.screen_note.blit(red_progress_text, (bar_width - red_progress_text.get_width(), red_progress_text.get_height() // 2))
 
             # 蓝队进度条
+            victory_progress_blue = top_bar_info['victory_progress'][GameTeam.BLUE]
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (self.screen_width - bar_width - 10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (game_state.get_victory_progress(GameTeam.BLUE) / self.env_config.OCCUPATION_TARGET))
+            progress_width = int(bar_width * (victory_progress_blue / self.env_config.OCCUPATION_TARGET))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.BLUE], 
                             (self.screen_width - bar_width - 10 + (bar_width - progress_width), 10, progress_width, bar_height))
             blue_progress_text = self.font_medium.render(
-                f"Team BLUE: {int(game_state.get_victory_progress(GameTeam.BLUE)):>3d} / {self.env_config.OCCUPATION_TARGET:>3d}",
+                f"Team BLUE: {int(victory_progress_blue):>3d} / {self.env_config.OCCUPATION_TARGET:>3d}",
                 True, render_config.COLOR_TEXT
             )
             self.screen_note.blit(blue_progress_text, (self.screen_width - bar_width, blue_progress_text.get_height() // 2))
 
-            # 经济
+        # 经济
+        if "economics" in top_bar_info:
+            bar_height = meters_to_pixels(self.env_config.FIELD_HEIGHT * 0.02)
             pygame.draw.circle(self.screen_note, render_config.COLOR_YELLOW, (self.screen_width // 2, bar_height * 3), bar_height * 0.5)
-            red_economics_text = self.font_small.render(f"{game_state.get_economics(GameTeam.RED):>4d}", True, render_config.COLOR_TEXT)
+            red_economics_text = self.font_small.render(f"{top_bar_info['economics'][GameTeam.RED]:>4d}", True, render_config.COLOR_TEXT)
             self.screen_note.blit(red_economics_text, (self.screen_width // 2 - bar_height - red_economics_text.get_width(), bar_height * 3 - red_economics_text.get_height() // 2))
-            blue_economics_text = self.font_small.render(f"{game_state.get_economics(GameTeam.BLUE):<4d}", True, render_config.COLOR_TEXT)
+            blue_economics_text = self.font_small.render(f"{top_bar_info['economics'][GameTeam.BLUE]:<4d}", True, render_config.COLOR_TEXT)
             self.screen_note.blit(blue_economics_text, (self.screen_width // 2 + bar_height, bar_height * 3 - blue_economics_text.get_height() // 2))
 
     def _draw_control_info(self, control_state, env_name):

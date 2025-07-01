@@ -14,6 +14,7 @@ from utils.utils import attack_sight_clear, calc_distance, opposite_team, timer
 from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_CONFIGS
 
+
 class Environment:
     def __init__(
             self,

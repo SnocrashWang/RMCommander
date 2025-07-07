@@ -11,9 +11,11 @@ from visualization.config import render_config
 
 if CURRENT_GAME == GameType.BASE:
     from base.game import Game
+    from base.environment import Action
     from base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 elif CURRENT_GAME == GameType.RMUL:
     from RMUL.game import GameRMUL as Game
+    from RMUL.environment import ActionRMUL as Action
     from RMUL.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 # elif CURRENT_GAME == GameType.RMUC:
     # from RMUC.game import GameRMUC as Game
@@ -35,10 +37,10 @@ def main():
 
     while True:
         red_action = {
-            robot_id: game.robot_default_action.copy() for robot_id, robot in game.env.robots.items() if robot.team == GameTeam.RED
+            robot_id: Action() for robot_id, robot in game.env.robots.items() if robot.team == GameTeam.RED
         }
         blue_action = {
-            robot_id: game.robot_default_action.copy() for robot_id, robot in game.env.robots.items() if robot.team == GameTeam.BLUE
+            robot_id: Action() for robot_id, robot in game.env.robots.items() if robot.team == GameTeam.BLUE
         }
 
         # blue_action["BLUE_3_STANDARD"].navigation = (6.0, 4.0)
@@ -57,11 +59,11 @@ def main():
                 world_x = mouse_pos[0] / render_config.SCALE
                 world_y = mouse_pos[1] / render_config.SCALE
                 if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
-                    red_action[control_state["robot_id"]]["navigation_target"] = (world_x, world_y)
-                    red_action[control_state["robot_id"]]["navigation_move"] = 1
+                    red_action[control_state["robot_id"]].navigation_target = (world_x, world_y)
+                    red_action[control_state["robot_id"]].navigation_set = 1
                 else:
-                    blue_action[control_state["robot_id"]]["navigation_target"] = (world_x, world_y)
-                    blue_action[control_state["robot_id"]]["navigation_move"] = 1
+                    blue_action[control_state["robot_id"]].navigation_target = (world_x, world_y)
+                    blue_action[control_state["robot_id"]].navigation_set = 1
 
             # 按键事件
             elif event.type == pygame.KEYDOWN:
@@ -74,15 +76,15 @@ def main():
                     control_state["show_grid"] = not control_state["show_grid"]
                 elif event.key == pygame.K_q:  # Q键攻击
                     if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
-                        red_action[control_state["robot_id"]]["attack_target"] = control_state["target_id"]
+                        red_action[control_state["robot_id"]].attack_target = control_state["target_id"]
                     else:
-                        blue_action[control_state["robot_id"]]["attack_target"] = control_state["target_id"]
+                        blue_action[control_state["robot_id"]].attack_target = control_state["target_id"]
                 elif event.key == pygame.K_e:  # E键购买子弹
-                    if "purchase" in game.robot_default_action:
+                    if "purchase" in Action.__dict__:
                         if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
-                            red_action[control_state["robot_id"]]["purchase"] = 1
+                            red_action[control_state["robot_id"]].purchase = 1
                         else:
-                            blue_action[control_state["robot_id"]]["purchase"] = 1
+                            blue_action[control_state["robot_id"]].purchase = 1
                 elif event.key == pygame.K_w:  # W键切换机器人
                     control_state["robot_id"] = robot_id_list[(robot_id_list.index(control_state["robot_id"]) + 1) % len(robot_id_list)]
                 elif event.key == pygame.K_s:  # S键切换机器人
@@ -92,6 +94,7 @@ def main():
                 elif event.key == pygame.K_d:  # D键切换目标
                     control_state["target_id"] = target_id_list[(target_id_list.index(control_state["target_id"]) - 1) % len(target_id_list)]
 
+        print(red_action)
         # 更新环境
         game.set_render(control_state)
         observation, reward, terminated, truncated, info = game.step(red_action, blue_action)

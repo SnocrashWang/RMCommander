@@ -16,6 +16,13 @@ from RMUL.config import env_config
 from RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
 
 
+@dataclass
+class ActionRMUL:
+    navigation_target: Tuple[float, float] = (0.0, 0.0)
+    navigation_set: int = 0
+    attack_target: int = 0
+    purchase: int = 0
+
 class EnvironmentRMUL(Environment):
     def __init__(
             self,
@@ -61,7 +68,7 @@ class EnvironmentRMUL(Environment):
             "blue_lag_140": False,
         }
 
-    def step(self, dt: float, red_action: Dict[str, Dict[str, Any]], blue_action: Dict[str, Dict[str, Any]]):
+    def step(self, dt: float, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL]):
         """推进环境仿真"""
         # 更新物理引擎
         self.physics_engine.step(dt)
@@ -151,17 +158,17 @@ class EnvironmentRMUL(Environment):
             else:
                 self.game_state = GameState.DRAW
     
-    def _apply_team_action(self, team: GameTeam, action: Dict[str, Any]):
+    def _apply_team_action(self, team: GameTeam, action: Dict[str, ActionRMUL]):
         """应用本方动作"""
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
 
             # 导航
-            if robot_action["navigation_move"]:
-                robot.set_target(robot_action["navigation_target"])
+            if robot_action.navigation_set:
+                robot.set_target(robot_action.navigation_target)
 
             # 攻击
-            target_type = RobotType(robot_action["attack_target"])
+            target_type = RobotType(robot_action.attack_target)
             if target_type != RobotType.NONE:
                 target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
                 if target_robot is not None:
@@ -183,7 +190,7 @@ class EnvironmentRMUL(Environment):
                             self._victory_progress[team] += 20
 
             # 购买允许发弹量
-            if robot_action["purchase"] and robot.robot_type != RobotType.SENTRY:
+            if robot_action.purchase and robot.robot_type != RobotType.SENTRY:
                 if self._economics[team] >= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM:
                     if point_in_polygon(robot.get_position(), self.buff_zone["boot_red"] if team == GameTeam.RED else self.buff_zone["boot_blue"]):
                         robot.ammo_allowed += robot.bullet.PURCHASE_NUM

@@ -1,6 +1,4 @@
-import pygame
 import os
-import time
 import json
 from datetime import datetime
 from tqdm import tqdm
@@ -9,35 +7,33 @@ import random
 
 from agents.ppo_agent import PPOAgent
 from base.config import env_config
-from base.environment import Environment, Action
-from visualization.renderer import Renderer
-from utils.config.game_config import GameTeam, GameState
+from base.environment import Action
+from base.game import Game
+from utils.config.game_config import GameTeam
 from utils.config.robot_config import RobotType
 from utils.grid_map import world_to_grid
 from utils.utils import timer, opposite_position
 
 def train(
-    num_episodes: int = 3000,
-    max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 20,
+    load_model: str = None,
+    device: str = None,
     model_dir: str = "models",
     log_dir: str = "logs",
-    visualize: bool = False,
-    load_model: str = None,  # 预训练模型路径，None表示从头开始训练
-    device: str = None,  # 训练设备，None表示自动选择
+    num_episodes: int = 1000,
+    max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
+    save_interval: int = 20,
 ):
     """
     训练PPO智能体
     
     Args:
+        load_model: 预训练模型路径，None表示从头开始训练
+        device: 训练设备，None表示自动选择
+        model_dir: 模型保存目录
+        log_dir: 日志保存目录
         num_episodes: 训练回合数
         max_steps: 每回合最大步数
         save_interval: 模型保存间隔
-        model_dir: 模型保存目录
-        log_dir: 日志保存目录
-        visualize: 是否启用可视化模式
-        load_model: 预训练模型路径，None表示从头开始训练
-        device: 训练设备，None表示自动选择
     """
     # 创建保存目录
     os.makedirs(model_dir, exist_ok=True)
@@ -45,21 +41,17 @@ def train(
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # 创建环境和智能体
-    env = Environment()
-    state_size = len(env._get_team_state(GameTeam.RED))
+    env = Game()
+    state_size = env.observation_space.shape[0]
     agent_train = PPOAgent(
         team=GameTeam.RED,
-        state_size=state_size,
-        field_width=env_config.FIELD_WIDTH,
-        field_height=env_config.FIELD_HEIGHT,
-        device=device  # 传入设备参数
+        state_dim=state_size,
+        device=device
     )
     agent_test = PPOAgent(
         team=GameTeam.BLUE,
-        state_size=state_size,
-        field_width=env_config.FIELD_WIDTH,
-        field_height=env_config.FIELD_HEIGHT,
-        device=device  # 传入设备参数
+        state_dim=state_size,
+        device=device
     )
     # 如果指定了预训练模型，则加载它
     if load_model is not None:
@@ -70,99 +62,77 @@ def train(
         else:
             print(f"警告: 预训练模型 {load_model} 不存在，将从头开始训练")
     
-    if visualize:
-        # 初始化pygame
-        pygame.init()
-        renderer = Renderer(env_config)
-    
-    # 训练记录
-    episode_rewards = []
-    episode_lengths = []
-    
     # 训练循环
     for episode in tqdm(range(num_episodes), dynamic_ncols=True):
         # 性能统计
         time_stats = defaultdict(list)
 
-        with timer(time_stats, 'env_reset'):
-            env.reset()
+        state, info = env.reset()
+
         episode_reward = 0
         episode_length = 0
+        episode_actions = [] # 记录当前回合的动作序列
+        transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
         
-        # 记录当前回合的动作序列
-        episode_actions = []
-        
-        blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
-        while env.get_robot("BLUE_3_STANDARD").grid_map.is_blocked(*world_to_grid(blue_navigation)):
-            blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
-        blue_action = {"BLUE_3_STANDARD": Action(navigation=blue_navigation, attack=True, target=RobotType.STANDARD_3)}
+        # blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
+        # while env.get_robot("BLUE_3_STANDARD").grid_map.is_blocked(*world_to_grid(blue_navigation)):
+        #     blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
+        # blue_action = {"BLUE_3_STANDARD": Action(navigation=blue_navigation, attack=True, target=RobotType.STANDARD_3)}
 
         for step in range(max_steps):
             with timer(time_stats, 'total_step'):
-                # 获取状态
-                with timer(time_stats, 'get_state'):
-                    state = env._get_team_state(GameTeam.RED)
-                
                 # 选择动作
                 with timer(time_stats, 'act'):
-                    red_action = agent_train.act(state)
-                    # blue_action = agent_test.act(state)
-                    # blue_action["BLUE_3_STANDARD"].navigation = opposite_position(blue_action["BLUE_3_STANDARD"].navigation, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
-                    # blue_action = {"BLUE_3_STANDARD": Action(navigation=None, attack=False, target=None)}
+                    red_action = agent_train.take_action(state)
+                    blue_action = {"BLUE_3_STANDARD": Action()}
                 
                 # 记录动作
-                with timer(time_stats, 'record_action'):
-                    frame_action = {
-                        'red_action': {
-                            robot_id: {
-                                'navigation': action.navigation,
-                                'attack': action.attack,
-                                'target': action.target.value if action.target is not None else None
-                            } for robot_id, action in red_action.items()
-                        },
-                        'blue_action': {
-                            robot_id: {
-                                'navigation': action.navigation,
-                                'attack': action.attack,
-                                'target': action.target.value if action.target is not None else None
-                            } for robot_id, action in blue_action.items()
-                        }
+                frame_action = {
+                    'red_action': {
+                        robot_id: {
+                            'navigation_target': action.navigation_target,
+                            'navigation_set': action.navigation_set,
+                            'attack_target': action.attack_target
+                        } for robot_id, action in red_action.items()
+                    },
+                    'blue_action': {
+                        robot_id: {
+                            'navigation_target': action.navigation_target,
+                            'navigation_set': action.navigation_set,
+                            'attack_target': action.attack_target
+                        } for robot_id, action in blue_action.items()
                     }
-                    episode_actions.append(frame_action)
+                }
+                episode_actions.append(frame_action)
                 
                 # 执行动作
                 with timer(time_stats, 'env_step'):
-                    env.step(1/env_config.FPS, red_action, blue_action)
-                
-                # 计算奖励
-                with timer(time_stats, 'calculate_reward'):
-                    reward = env.calculate_reward(GameTeam.RED, red_action)
+                    next_state, reward, terminated, truncated, info = env.step(red_action, blue_action)
                     episode_reward += reward
-                
-                # 存储轨迹
-                with timer(time_stats, 'store_reward'):
-                    agent_train.store_reward(reward, env.game_state_manager.state != GameState.PLAYING)
-                
+                    done = terminated or truncated
+
+                    transition_dict['states'].append(state)
+                    transition_dict['actions'].append(red_action["RED_3_STANDARD"].to_array())
+                    transition_dict['next_states'].append(next_state)
+                    transition_dict['rewards'].append(reward)
+                    transition_dict['dones'].append(done)
+
+                    state = next_state
+
                 # 更新步数
                 episode_length += 1
                 
                 # 检查是否结束
-                if env.game_state_manager.state != GameState.PLAYING:
+                if done:
                     break
-                
-                # 可视化模式
-                if visualize:
-                    renderer.render(env, {"show_grid": False})
-                    pygame.display.flip()
-                    time.sleep(0.5)  # 控制渲染速度
         
         # 保存当前回合的动作序列
         if (episode + 1) % (save_interval) == 0 or episode == 0:
             episode_log = {
                 'episode': episode,
-                'reward': episode_reward,
                 'length': episode_length,
-                'game_state': env.game_state_manager.state.value,
+                'reward': episode_reward,
+                'game_state': env.env.game_state.value,
                 'actions': episode_actions
             }
             with open(os.path.join(log_dir, f'episode_{time_tag}_{episode+1}.json'), 'w') as f:
@@ -170,18 +140,13 @@ def train(
         
         # 更新策略
         with timer(time_stats, 'update'):
-            agent_train.update()
-        
-        # 记录训练数据
-        episode_rewards.append(episode_reward)
-        episode_lengths.append(episode_length)
+            agent_train.update(transition_dict)
         
         # 打印训练进度
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")
-        tqdm.write(f"平均奖励: {episode_reward/episode_length:.3f}")
         tqdm.write(f"回合长度: {episode_length}")
-        tqdm.write(f"剩余时间: {env.game_state_manager.get_remaining_time():.2f}")
-        tqdm.write(f"比赛结果: {env.game_state_manager.state}")
+        tqdm.write(f"平均奖励: {episode_reward/episode_length:.3f}")
+        tqdm.write(f"比赛结果: {env.env.game_state}")
         
         # 打印性能统计
         tqdm.write("\n性能统计 (平均耗时，单位：秒):")
@@ -194,14 +159,8 @@ def train(
         # 保存模型
         if (episode + 1) % save_interval == 0:
             agent_train.save(os.path.join(model_dir, f"ppo_agent_{time_tag}_episode_{episode+1}.pt"))
-    
-    if visualize:
-        pygame.quit()
 
 if __name__ == "__main__":
-    # 设置可视化模式
-    VISUALIZE = False  # 设置为True启用可视化
-    
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
     # LOAD_MODEL = "models/ppo_agent_20250621_004342_episode_1800.pt"
     LOAD_MODEL = None
@@ -210,7 +169,6 @@ if __name__ == "__main__":
     DEVICE = None
     
     train(
-        visualize=VISUALIZE,
         load_model=LOAD_MODEL,
         device=DEVICE
     )

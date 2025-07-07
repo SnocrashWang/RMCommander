@@ -1,5 +1,6 @@
 import pymunk
 import numpy as np
+from dataclasses import dataclass
 from collections import defaultdict
 from typing import List, Dict, Optional, Tuple, Any
 
@@ -14,6 +15,21 @@ from utils.utils import attack_sight_clear, calc_distance, opposite_team, timer
 from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_CONFIGS
 
+
+@dataclass
+class Action:
+    navigation_target: Tuple[float, float] = (0.0, 0.0)
+    navigation_set: int = 0
+    attack_target: int = 0
+
+    def to_array(self) -> np.ndarray:
+        """将所有的属性值转换为一个NumPy数组"""
+        # 将navigation_target元组展开，然后与其他属性合并
+        return np.array([
+            *self.navigation_target,
+            self.navigation_set,
+            self.attack_target
+        ])
 
 class Environment:
     def __init__(
@@ -90,7 +106,7 @@ class Environment:
         self.game_state = GameState.PLAYING
         self._remaining_time = env_config.GAME_TIME_LIMIT
 
-    def step(self, dt: float, red_action: Dict[str, Dict[str, Any]], blue_action: Dict[str, Dict[str, Any]]):
+    def step(self, dt: float, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
         """推进环境仿真"""
         # 更新物理引擎
         with timer(self.time_stats, 'physics_engine_step'):
@@ -126,53 +142,14 @@ class Environment:
                     self.game_state = GameState.BLUE_TEAM_WIN
                 else:
                     self.game_state = GameState.DRAW
-    
-    # def _decode_state(self, state: np.ndarray, team: GameTeam) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    #     """解码状态"""
-    #     game_state = state[:1]
-    #     red_robots = [robot for robot in self.robots.values() if robot.team == GameTeam.RED]
-    #     blue_robots = [robot for robot in self.robots.values() if robot.team == GameTeam.BLUE]
-    #     if team == GameTeam.RED:
-    #         red_robot_state = state[1:1+8*len(red_robots)]
-    #         blue_robot_state = state[1+8*len(red_robots):]
-    #     else:
-    #         blue_robot_state = state[1:1+8*len(blue_robots)]
-    #         red_robot_state = state[1+8*len(blue_robots):]
 
-    #     game_state_dict = {
-    #         "remaining_time": game_state[0] * env_config.GAME_TIME_LIMIT,
-    #     }
-    #     red_robot_state_dict = {
-    #         robot.id: {
-    #             "position": (red_robot_state[i * 8 + 0] * env_config.FIELD_WIDTH, red_robot_state[i * 8 + 1] * env_config.FIELD_HEIGHT),
-    #             "chassis_property_type": red_robot_state[i * 8 + 2],
-    #             "gimbal_property_type": red_robot_state[i * 8 + 3],
-    #             "level": red_robot_state[i * 8 + 4],
-    #             "exp": red_robot_state[i * 8 + 5],
-    #             "hp": red_robot_state[i * 8 + 6],
-    #             "heat": red_robot_state[i * 8 + 7],
-    #         } for i, robot in enumerate(red_robots)
-    #     }
-    #     blue_robot_state_dict = {
-    #         robot.id: {
-    #             "position": (blue_robot_state[i * 8 + 0] * env_config.FIELD_WIDTH, blue_robot_state[i * 8 + 1] * env_config.FIELD_HEIGHT),
-    #             "chassis_property_type": blue_robot_state[i * 8 + 2],
-    #             "gimbal_property_type": blue_robot_state[i * 8 + 3],
-    #             "level": blue_robot_state[i * 8 + 4],
-    #             "exp": blue_robot_state[i * 8 + 5],
-    #             "hp": blue_robot_state[i * 8 + 6],
-    #             "heat": blue_robot_state[i * 8 + 7],
-    #         } for i, robot in enumerate(blue_robots)
-    #     }
-    #     return game_state_dict, red_robot_state_dict, blue_robot_state_dict
-
-    def _apply_team_action(self, team: GameTeam, action: Dict[str, Dict[str, Any]]):
+    def _apply_team_action(self, team: GameTeam, action: Dict[str, Action]):
         """应用动作"""
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
-            if robot_action["navigation_move"]:
-                robot.set_target(robot_action["navigation_target"])
-            target_type = RobotType(robot_action["attack_target"])
+            if robot_action.navigation_set:
+                robot.set_target(robot_action.navigation_target)
+            target_type = RobotType(robot_action.attack_target)
             if target_type != RobotType.NONE:
                 target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
                 if target_robot is not None:

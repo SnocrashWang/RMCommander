@@ -1,34 +1,35 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
+from torch.distributions import Normal, Categorical
 import numpy as np
 from typing import List, Dict, Any, Tuple
-from base.environment import Action
+from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_TYPE_LIST
+from base.environment import Action
 from utils.config.game_config import GameTeam
 from utils.config.robot_config import ROBOT_ID, RobotType
-from torch.distributions import Normal, Categorical
 
-class PPONetwork(nn.Module):
-    def __init__(self, state_size: int):
-        super(PPONetwork, self).__init__()
-        
+class PolicyNet(torch.nn.Module):
+    def __init__(self, state_dim):
+        super(PolicyNet, self).__init__()
         # 共享特征提取层
         self.shared_network = nn.Sequential(
-            nn.Linear(state_size, 256),
+            nn.Linear(state_dim, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU()
         )
         
-        # 导航分支（连续动作）
-        self.navigation_mean = nn.Sequential(
+        # 导航目标分支（连续动作）
+        self.navigation_target_mean = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 2),
             nn.Tanh()  # 添加tanh激活函数
         )
-        self.navigation_std = nn.Sequential(
+        self.navigation_target_std = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 2),  # 输出x,y的标准差
@@ -36,83 +37,66 @@ class PPONetwork(nn.Module):
             nn.Tanh()  # 添加tanh激活函数
         )
         
-        # 攻击分支（离散动作）
-        self.attack_network = nn.Sequential(
+        # 导航设置分支（离散动作）
+        self.navigation_set_network = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 2)  # 输出是否攻击的logits
+            nn.Linear(64, 2)  # 输出是否设定导航目标的logits
         )
         
-        # 目标选择分支（离散动作）
+        # 攻击目标分支（离散动作）
         # 输出维度为1（NONE）+ len(BASE_ROBOT_TYPE_LIST)
-        self.target_network = nn.Sequential(
+        self.attack_target_network = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1 + len(BASE_ROBOT_TYPE_LIST))  # 输出可能目标的logits
-        )
-        
-        # 价值网络
-        self.value_network = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(64, len(RobotType))  # 输出可能目标的logits
         )
 
-    def forward(self, state):
-        features = self.shared_network(state)
+    def forward(self, x):
+        features = self.shared_network(x)
         
-        # 导航动作（连续）
-        nav_mean = self.navigation_mean(features)
-        nav_std = self.navigation_std(features)
+        # 导航目标（连续）
+        navigation_target_mean = self.navigation_target_mean(features)
+        navigation_target_std = self.navigation_target_std(features)
         
-        # # 添加标准差的最小值约束，防止过早收敛
-        # nav_std = torch.clamp(nav_std, min=0.1, max=2.0)
-        
-        # 攻击动作（离散）
-        attack_logits = self.attack_network(features)
+        # 导航移动（离散）
+        navigation_set_logits = self.navigation_set_network(features)
         
         # 目标选择（离散）
-        target_logits = self.target_network(features)
+        attack_target_logits = self.attack_target_network(features)
         
-        # 状态价值
-        value = self.value_network(features)
-        
-        return nav_mean, nav_std, attack_logits, target_logits, value
+        return navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits
+
+
+class ValueNet(torch.nn.Module):
+    def __init__(self, state_dim):
+        super(ValueNet, self).__init__()
+        self.fc1 = torch.nn.Linear(state_dim, 128)
+        self.fc2 = torch.nn.Linear(128, 1)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        return self.fc2(x)
 
 class PPOAgent:
     def __init__(
         self,
         team: GameTeam,
-        state_size: int,
-        field_width: float,
-        field_height: float,
-        learning_rate: float = 5e-4,
-        gamma: float = 0.99,
-        gae_lambda: float = 0.95,
-        clip_ratio: float = 0.2,
-        target_kl: float = 0.01,
-        entropy_coef: float = 0.01,
-        value_coef: float = 0.5,
-        max_grad_norm: float = 0.5,
-        update_epochs: int = 10,
-        batch_size: int = 64,
-        device: str = None  # 新增设备参数
+        state_dim: int,
+        actor_lr = 1e-3,
+        critic_lr = 1e-2,
+        gamma = 0.98,
+        lmbda = 0.95,
+        epochs = 10,
+        eps = 0.2,
+        device: str = None
     ):
         self.team = team
-        self.state_size = state_size
-        self.field_width = field_width
-        self.field_height = field_height
-        self.target_robot_list = [RobotType.NONE] + BASE_ROBOT_TYPE_LIST
         
         self.gamma = gamma
-        self.gae_lambda = gae_lambda
-        self.clip_ratio = clip_ratio
-        self.target_kl = target_kl
-        self.entropy_coef = entropy_coef
-        self.value_coef = value_coef
-        self.max_grad_norm = max_grad_norm
-        self.update_epochs = update_epochs
-        self.batch_size = batch_size
+        self.lmbda = lmbda
+        self.epochs = epochs
+        self.eps = eps
         
         # 设置设备
         if device is None:
@@ -121,261 +105,128 @@ class PPOAgent:
             self.device = torch.device(device)
         print(f"使用设备: {self.device}")
         
-        # 创建网络并移动到指定设备
-        self.network = PPONetwork(state_size).to(self.device)
-        self.optimizer = optim.Adam(self.network.parameters(), lr=learning_rate)
-        
-        # 存储轨迹
-        self.states = []
-        self.actions = []
-        self.raw_actions = []
-        self.rewards = []
-        self.values = []
-        self.log_probs = []
-        self.dones = []
-        self.old_dist_params = []  # 存储旧策略的分布参数
+        self.actor = PolicyNet(state_dim).to(device)
+        self.critic = ValueNet(state_dim).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
+                                                lr=actor_lr)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),
+                                                 lr=critic_lr)
     
-    def _process_network_output(self, nav_mean, nav_std, attack_logits, target_logits) -> Tuple[Dict[str, Action], torch.Tensor]:
-        """将网络输出转换为实际动作，并返回原始采样动作用于概率计算"""
-        # 处理导航坐标
-        nav_dist = Normal(nav_mean, nav_std)
-        nav_action = nav_dist.sample()
-        
-        # 将tanh空间的输出映射到场地范围内
-        # nav_mean已经是tanh输出，nav_action是采样结果
-        x = (nav_action[0] + 1) * self.field_width / 2
-        y = (nav_action[1] + 1) * self.field_height / 2
-        
-        print(nav_mean, nav_std, nav_action, x, y)
+    def take_action(self, state) -> Dict[str, Action]:
+        state = torch.tensor(state, dtype=torch.float).to(self.device)
+        navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(state)
+        # 导航目标
+        navigation_target_dist = Normal(navigation_target_mean, navigation_target_std)
+        navigation_target_action = navigation_target_dist.sample()
+        x = (navigation_target_action[0] + 1) * env_config.FIELD_WIDTH / 2
+        y = (navigation_target_action[1] + 1) * env_config.FIELD_HEIGHT / 2
+        x = torch.clamp(x, 0, env_config.FIELD_WIDTH)
+        y = torch.clamp(y, 0, env_config.FIELD_HEIGHT)
+        # 导航移动
+        navigation_set_dist = Categorical(logits=navigation_set_logits)
+        navigation_set_action = navigation_set_dist.sample()
+        # 目标选择
+        attack_target_dist = Categorical(logits=attack_target_logits)
+        attack_target_action = attack_target_dist.sample()
 
-        # 确保坐标在场地范围内
-        x = torch.clamp(x, 0, self.field_width)
-        y = torch.clamp(y, 0, self.field_height)
-        
-        # 处理攻击决策
-        attack_dist = Categorical(logits=attack_logits)
-        attack_action = attack_dist.sample()
-        should_attack = attack_action.item() == 1
-        
-        # 处理目标选择
-        target_dist = Categorical(logits=target_logits)
-        target_action = target_dist.sample()
-        target_id = self.target_robot_list[target_action.item()]
-        
         actions = {
             ROBOT_ID[self.team][robot_type]: Action(
-                navigation=(x.item(), y.item()),
-                attack=should_attack,
-                target=target_id
+                navigation_target=(x.item(), y.item()),
+                navigation_set=navigation_set_action.item(),
+                attack_target=attack_target_action.item()
             ) for robot_type in BASE_ROBOT_TYPE_LIST
         }
-        
-        # 返回动作和原始采样值
-        return actions, nav_action, attack_action, target_action
+
+        return actions
     
-    def act(self, state: np.ndarray) -> Dict[str, Action]:
-        """选择动作"""
-        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            nav_mean, nav_std, attack_logits, target_logits, value = self.network(state_tensor)
-            action, nav_action, attack_action, target_action = self._process_network_output(nav_mean[0], nav_std[0], attack_logits[0], target_logits[0])
-            
-            # 计算动作概率
-            nav_dist = Normal(nav_mean[0], nav_std[0])
-            attack_dist = Categorical(logits=attack_logits[0])
-            target_dist = Categorical(logits=target_logits[0])
-            
-            # 计算每个机器人的动作概率
-            log_probs = []
-            for robot_id, robot_action in action.items():
-                # 使用原始采样的导航动作计算log概率
-                nav_log_prob = nav_dist.log_prob(nav_action).sum()
-                
-                # 计算攻击动作的log概率
-                attack_log_prob = attack_dist.log_prob(attack_action)
-                
-                # 计算目标选择的log概率
-                target_log_prob = target_dist.log_prob(target_action)
-                
-                # 合并所有log概率
-                robot_log_prob = nav_log_prob + attack_log_prob + target_log_prob
-                log_probs.append(robot_log_prob)
-            
-            # 所有机器人的平均对数概率
-            log_prob = torch.stack(log_probs).mean()
-        
-        # 存储轨迹
-        self.states.append(state)
-        self.actions.append(action)
-        self.raw_actions.append((nav_action, attack_action, target_action))
-        self.values.append(value.item())
-        self.log_probs.append(log_prob.item())
-        
-        # 保存旧策略的分布参数（用于KL散度计算）
-        self.old_dist_params.append({
-            'nav_mean': nav_mean[0].detach().clone(),
-            'nav_std': nav_std[0].detach().clone(),
-            'attack_logits': attack_logits[0].detach().clone(),
-            'target_logits': target_logits[0].detach().clone()
-        })
-        
-        return action
-    
-    def store_reward(self, reward: float, done: bool):
-        """存储奖励和完成状态"""
-        self.rewards.append(reward)
-        self.dones.append(done)
-    
-    def compute_gae(self):
-        """计算广义优势估计"""
-        advantages = []
-        gae = 0
-        for t in reversed(range(len(self.rewards))):
-            if t == len(self.rewards) - 1:
-                next_value = 0
-            else:
-                next_value = self.values[t + 1]
-            
-            delta = self.rewards[t] + self.gamma * next_value * (1 - self.dones[t]) - self.values[t]
-            gae = delta + self.gamma * self.gae_lambda * (1 - self.dones[t]) * gae
-            advantages.insert(0, gae)
-        
-        return torch.FloatTensor(advantages).to(self.device)
-    
-    def update(self):
+    def update(self, transition_dict):
         """更新策略"""
-        if len(self.states) < self.batch_size:
-            return
+        states = torch.tensor(transition_dict['states'],
+                              dtype=torch.float).to(self.device)
+        actions = torch.tensor(transition_dict['actions'],
+                               dtype=torch.float).to(self.device)
+        rewards = torch.tensor(transition_dict['rewards'],
+                               dtype=torch.float).view(-1, 1).to(self.device)
+        next_states = torch.tensor(transition_dict['next_states'],
+                                   dtype=torch.float).to(self.device)
+        dones = torch.tensor(transition_dict['dones'],
+                             dtype=torch.float).view(-1, 1).to(self.device)
+        td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
+        td_delta = td_target - self.critic(states)
+        advantage = compute_advantage(self.gamma, self.lmbda, td_delta.cpu()).to(self.device)
         
-        # 计算优势
-        advantages = self.compute_gae()
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        
-        # 转换为张量
-        states = torch.FloatTensor(np.array(self.states)).to(self.device)  # 先转换为numpy数组
-        old_log_probs = torch.FloatTensor(self.log_probs).to(self.device)
-        old_values = torch.FloatTensor(self.values).to(self.device)
-        
-        # 多轮更新
-        for _ in range(self.update_epochs):
-            # 随机打乱数据
-            indices = np.random.permutation(len(self.states))
-            
-            for start_idx in range(0, len(self.states), self.batch_size):
-                batch_indices = indices[start_idx:min(start_idx + self.batch_size, len(indices))]
-                
-                # 获取批次数据
-                batch_states = states[batch_indices]
-                batch_advantages = advantages[batch_indices]
-                batch_old_log_probs = old_log_probs[batch_indices]
-                batch_old_values = old_values[batch_indices]
-                
-                # 前向传播
-                nav_mean, nav_std, attack_logits, target_logits, values = self.network(batch_states)
-                
-                # 计算新的动作概率
-                nav_dist = Normal(nav_mean, nav_std)
-                attack_dist = Categorical(logits=attack_logits)
-                target_dist = Categorical(logits=target_logits)
-                
-                # 计算策略损失
-                batch_actions = [self.actions[i] for i in batch_indices]
-                batch_raw_actions = [self.raw_actions[i] for i in batch_indices]
-                batch_old_params = [self.old_dist_params[i] for i in batch_indices]
-                batch_log_probs = []
-                
-                # 计算KL散度
-                kl_divs = []
-                
-                for actions, raw_actions, old_params in zip(batch_actions, batch_raw_actions, batch_old_params):
-                    robot_log_probs = []
-                    nav_action, attack_action, target_action = raw_actions
-                    
-                    for robot_id, robot_action in actions.items():
-                        # 使用存储的原始采样动作计算log概率
-                        nav_log_prob = nav_dist.log_prob(nav_action).sum()
-                        
-                        # 计算攻击动作的log概率
-                        attack_log_prob = attack_dist.log_prob(attack_action)
-                        
-                        # 计算目标选择的log概率
-                        target_log_prob = target_dist.log_prob(target_action)
-                        
-                        # 合并所有log概率
-                        robot_log_prob = nav_log_prob + attack_log_prob + target_log_prob
-                        robot_log_probs.append(robot_log_prob)
-                    
-                    batch_log_probs.append(torch.stack(robot_log_probs).mean())
-                    
-                    # 计算KL散度
-                    old_nav_dist = Normal(old_params['nav_mean'], old_params['nav_std'])
-                    old_attack_dist = Categorical(logits=old_params['attack_logits'])
-                    old_target_dist = Categorical(logits=old_params['target_logits'])
-                    
-                    nav_kl = torch.distributions.kl_divergence(old_nav_dist, nav_dist).mean()
-                    attack_kl = torch.distributions.kl_divergence(old_attack_dist, attack_dist).mean()
-                    target_kl = torch.distributions.kl_divergence(old_target_dist, target_dist).mean()
-                    
-                    kl_divs.append(nav_kl + attack_kl + target_kl)
-                
-                batch_log_probs = torch.stack(batch_log_probs)
-                ratio = torch.exp(batch_log_probs - batch_old_log_probs)
-                
-                surr1 = ratio * batch_advantages
-                surr2 = torch.clamp(ratio, 1 - self.clip_ratio, 1 + self.clip_ratio) * batch_advantages
-                policy_loss = -torch.min(surr1, surr2).mean()
-                
-                # 计算价值损失
-                value_loss = nn.MSELoss()(values.squeeze(), batch_old_values + batch_advantages)
-                
-                # 计算熵损失
-                entropy_loss = -(
-                    nav_dist.entropy().mean() +
-                    attack_dist.entropy().mean() +
-                    target_dist.entropy().mean()
-                )
-                
-                # 总损失
-                loss = policy_loss + self.value_coef * value_loss + self.entropy_coef * entropy_loss
-                
-                # 优化
-                self.optimizer.zero_grad()
-                loss.backward()
-                
-                # 计算梯度范数（在裁剪之前）
-                total_norm = nn.utils.clip_grad_norm_(self.network.parameters(), self.max_grad_norm)
-                # if total_norm > self.max_grad_norm:
-                #     print(f"梯度被裁剪: {total_norm:.4f}")
-                
-                self.optimizer.step()
-                
-                # 检查KL散度早停
-                avg_kl_div = torch.stack(kl_divs).mean().item()
-                if avg_kl_div > self.target_kl:
-                    # print(f"KL散度早停: {avg_kl_div:.4f} > {self.target_kl}")
-                    break
-        
-        # 清空轨迹
-        self.states = []
-        self.actions = []
-        self.raw_actions = []
-        self.rewards = []
-        self.values = []
-        self.log_probs = []
-        self.dones = []
-        self.old_dist_params = []
+        # 计算old_log_probs，使用detach()避免梯度冲突
+        with torch.no_grad():
+            old_log_probs = self._get_log_probs(states, actions)
+
+        for _ in range(self.epochs):
+            log_probs = self._get_log_probs(states, actions)
+            ratio = torch.exp(log_probs - old_log_probs)
+            surr1 = ratio * advantage
+            surr2 = torch.clamp(ratio, 1 - self.eps,
+                                1 + self.eps) * advantage  # 截断
+            actor_loss = torch.mean(-torch.min(surr1, surr2))  # PPO损失函数
+            critic_loss = torch.mean(
+                F.mse_loss(self.critic(states), td_target.detach()))
+            self.actor_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
+            actor_loss.backward()
+            critic_loss.backward()
+            self.actor_optimizer.step()
+            self.critic_optimizer.step()
+
+    def _get_log_probs(self, states, actions):
+        navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(states)
+
+        # 创建正态分布，确保维度正确
+        navigation_target_action_dists = torch.distributions.Normal(navigation_target_mean, navigation_target_std)
+        navigation_set_action_dists = torch.distributions.Categorical(logits=navigation_set_logits)
+        attack_target_action_dists = torch.distributions.Categorical(logits=attack_target_logits)
+
+        # 提取动作的不同部分
+        navigation_target_actions = actions[:, 0:2]  # [batch_size, 2]
+        navigation_set_actions = actions[:, 2]  # [batch_size]
+        attack_target_actions = actions[:, 3]  # [batch_size]
+
+        # 计算各个动作的log概率
+        # 对于正态分布，log_prob会返回与输入相同形状的张量
+        navigation_target_log_probs = navigation_target_action_dists.log_prob(navigation_target_actions)  # [batch_size, 2]
+        navigation_set_log_probs = navigation_set_action_dists.log_prob(navigation_set_actions)  # [batch_size]
+        attack_target_log_probs = attack_target_action_dists.log_prob(attack_target_actions)  # [batch_size]
+
+        # 将导航目标的log概率在最后一个维度上求和（因为它是2维的x,y坐标）
+        navigation_target_log_probs_sum = navigation_target_log_probs.sum(dim=-1)  # [batch_size]
+
+        # 将所有log概率相加
+        log_probs = (navigation_target_log_probs_sum
+                     + navigation_set_log_probs
+                     + attack_target_log_probs)
+        return log_probs
     
     def save(self, path: str):
         """保存模型"""
         torch.save({
-            'network_state_dict': self.network.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
+            'actor_state_dict': self.actor.state_dict(),
+            'critic_state_dict': self.critic.state_dict(),
+            'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
+            'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
             'device': str(self.device)  # 保存设备信息
         }, path)
     
     def load(self, path: str):
         """加载模型"""
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
-        self.network.load_state_dict(checkpoint['network_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.actor.load_state_dict(checkpoint['actor_state_dict'])
+        self.critic.load_state_dict(checkpoint['critic_state_dict'])
+        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
+        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
 
+def compute_advantage(gamma, lmbda, td_delta):
+    td_delta = td_delta.detach().numpy()
+    advantage_list = []
+    advantage = 0.0
+    for delta in td_delta[::-1]:
+        advantage = gamma * lmbda * advantage + delta
+        advantage_list.append(advantage)
+    advantage_list.reverse()
+    return torch.tensor(advantage_list, dtype=torch.float)

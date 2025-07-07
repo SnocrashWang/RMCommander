@@ -5,11 +5,12 @@ import pygame
 import argparse
 import cv2
 import numpy as np
+from tqdm import tqdm
 from typing import Dict, Any
 
-from base.environment import Environment, Action
 from base.config import env_config
-from visualization.renderer import Renderer
+from base.environment import Action
+from base.game import Game
 from utils.config.game_config import GameTeam
 from utils.config.robot_config import RobotType
 
@@ -20,27 +21,28 @@ def load_episode(log_file: str) -> Dict[str, Any]:
 
 def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool = False, video_path: str = None):
     """回放一个回合的动作序列"""
-    # 初始化环境和渲染器
-    pygame.init()
+    # 初始化
+    if save_video:
+        render_mode = "rgb_array"
+        if video_path is None:
+            raise ValueError("视频保存路径不能为空")
+    else:
+        render_mode = "human"
 
-    env = Environment()
-    env.reset()
-    renderer = Renderer(env_config)
+    env = Game(render_mode=render_mode)
+    _, info = env.reset()
     
     # 如果保存视频，初始化视频写入器
     video_writer = None
-    if save_video and video_path:
+    if save_video:
         # 获取第一帧来确定视频尺寸
-        renderer.render(env, {"show_grid": True, "robot_id": "RED_3_STANDARD", "target_id": RobotType.STANDARD_3})
-        pygame.display.flip()
-        frame = pygame.surfarray.array3d(pygame.display.get_surface())
-        frame = frame.transpose([1, 0, 2])  # 转置以匹配cv2的格式
+        frame = info['render_image']
         height, width = frame.shape[:2]
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         video_writer = cv2.VideoWriter(video_path, fourcc, env_config.FPS, (width, height))
     
     # 回放每一帧
-    for frame_action in episode_data['actions']:
+    for frame_action in tqdm(episode_data['actions'], desc="回放动作"):
         frame_start = time.perf_counter()
 
         # 处理pygame事件
@@ -60,34 +62,29 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
         # 转换动作格式
         red_action = {
             robot_id: Action(
-                navigation=tuple(action['navigation']) if action['navigation'] else None,
-                attack=action['attack'],
-                target=RobotType(action['target']) if action['target'] else RobotType.NONE
+                navigation_target=tuple(action['navigation_target']),
+                navigation_set=action['navigation_set'],
+                attack_target=action['attack_target']
             ) for robot_id, action in frame_action['red_action'].items()
         }
         
         blue_action = {
             robot_id: Action(
-                navigation=tuple(action['navigation']) if action['navigation'] else None,
-                attack=action['attack'],
-                target=RobotType(action['target']) if action['target'] else RobotType.NONE
+                navigation_target=tuple(action['navigation_target']),
+                navigation_set=action['navigation_set'],
+                attack_target=action['attack_target']
             ) for robot_id, action in frame_action['blue_action'].items()
         }
         
         # 执行动作
-        # print(red_action)
-        env.step(env.dt, red_action, blue_action)
-        
-        # 渲染环境
-        renderer.render(env, {"show_grid": True, "robot_id": "RED_3_STANDARD", "target_id": RobotType.STANDARD_3})
-        pygame.display.flip()
+        _, _, _, _, info = env.step(red_action, blue_action)
         
         # 如果保存视频，保存当前帧
         if video_writer:
-            frame = pygame.surfarray.array3d(pygame.display.get_surface())
-            frame = frame.transpose([1, 0, 2])  # 转置以匹配cv2的格式
+            frame = info['render_image']
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # 转换颜色空间
             video_writer.write(frame)
+            continue
         
         # 计算本帧消耗的时间
         time_cost = time.perf_counter() - frame_start
@@ -118,8 +115,8 @@ def main():
         
         episode_data = load_episode(args.log_file)
         print(f"回放回合 {args.log_file}")
-        print(f"总奖励: {episode_data['reward']:.2f}")
         print(f"回合长度: {episode_data['length']}")
+        print(f"总奖励: {episode_data['reward']:.2f}")
         
         # 如果保存视频，创建视频保存目录
         video_path = None
@@ -140,7 +137,7 @@ def main():
         for log_file in sorted(log_files):
             episode_num = int(log_file.split('_')[1].split('.')[0])
             episode_data = load_episode(os.path.join('logs', log_file))
-            print(f"回合 {episode_num}: 奖励={episode_data['reward']:.2f}, 长度={episode_data['length']}")
+            print(f"回合 {episode_num}: 长度={episode_data['length']}, 奖励={episode_data['reward']:.2f}, 比赛结果={episode_data['game_state']}")
 
 if __name__ == "__main__":
-    main() 
+    main()

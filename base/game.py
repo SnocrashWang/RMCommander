@@ -3,7 +3,6 @@ import time
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
-from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple, Any
 
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
@@ -15,8 +14,7 @@ from visualization.renderer import Renderer
 
 from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_CONFIGS
-from base.environment import Environment
-
+from base.environment import Action, Environment
 
 class Game(gym.Env):
    
@@ -43,7 +41,7 @@ class Game(gym.Env):
         # 渲染
         self._render_mode = render_mode
         self._screen = None
-        self._frame_start_time = None
+        self._frame_start_time = time.perf_counter()
         self._renderer = None
         if self._render_mode:
             self._init_render()
@@ -72,7 +70,7 @@ class Game(gym.Env):
             )
             
             # 导航动作：是否导航
-            navigation_move_space = spaces.Discrete(2)  # 0: 不导航, 1: 导航
+            navigation_set_space = spaces.Discrete(2)  # 0: 不导航, 1: 导航
             
             # 目标动作：攻击目标类型
             attack_target_space = spaces.Discrete(len(RobotType))  # 所有机器人类型
@@ -80,16 +78,11 @@ class Game(gym.Env):
             # 组合动作空间
             robot_action_spaces[robot_id] = spaces.Dict({
                 'navigation_target': navigation_target_space,
-                'navigation_move': navigation_move_space,
+                'navigation_set': navigation_set_space,
                 'attack_target': attack_target_space,
             })
         
         self.action_space = spaces.Dict(robot_action_spaces)
-        self.robot_default_action = {
-            'navigation_target': np.array([0.0, 0.0]),
-            'navigation_move': np.int64(0),
-            'attack_target': np.int64(0),
-        }
     
     def _setup_observation_space(self):
         """设置观察空间"""
@@ -137,16 +130,19 @@ class Game(gym.Env):
         # 重置底层环境
         self.env.reset()
         
+        # 渲染
+        if self._render_mode:
+            render_image = self.render()
+        
         # 获取初始观察
         observation = self._get_obs()
-        info = {}
-        
-        if self._render_mode == "human":
-            self.render()
+        info = {
+            'render_image': render_image,
+        }
         
         return observation, info
     
-    def step(self, red_action: Dict[str, Dict[str, Any]], blue_action: Dict[str, Dict[str, Any]]):
+    def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
         """执行一步动作"""
         self._frame_start_time = time.perf_counter()
 
@@ -163,16 +159,18 @@ class Game(gym.Env):
         terminated = self._is_terminated()
         truncated = self._is_truncated()
         
+        # 渲染
+        if self._render_mode:
+            render_image = self.render()
+        
         # 信息
         info = {
             'game_state': self.env.game_state,
             'remaining_time': self.env._remaining_time,
             'red_hp': {robot_id: robot.hp for robot_id, robot in self.env.robots.items() if robot.team == GameTeam.RED},
             'blue_hp': {robot_id: robot.hp for robot_id, robot in self.env.robots.items() if robot.team == GameTeam.BLUE},
+            'render_image': render_image,
         }
-        
-        if self._render_mode == "human":
-            self.render()
         
         return observation, reward, terminated, truncated, info
     
@@ -205,7 +203,7 @@ class Game(gym.Env):
                 blue_robot_state.extend(robot_state)
         return np.array(game_state + red_robot_state + blue_robot_state)
     
-    def _get_reward(self, team: GameTeam, action: Dict[str, Dict[str, Any]]) -> float:
+    def _get_reward(self, team: GameTeam, action: Dict[str, Action]) -> float:
         """获取奖励"""
         reward_list = []
         reward_weight = []
@@ -216,8 +214,8 @@ class Game(gym.Env):
         reward_weight.append(5)
 
         # 不可行导航点惩罚
-        if action["RED_3_STANDARD"]["navigation_move"] == 1:
-            col, row = world_to_grid(action["RED_3_STANDARD"]["navigation_target"])
+        if action["RED_3_STANDARD"].navigation_set == 1:
+            col, row = world_to_grid(action["RED_3_STANDARD"].navigation_target)
             if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
                 reward_navigation_unmovable = -1.0
             else:
@@ -316,9 +314,8 @@ class Game(gym.Env):
         self._init_render()
 
         screen = self._renderer.render(self.env)
+        self._screen.blit(screen, (0, 0))
         if self._render_mode == "human":
-            # 使用自定义渲染器
-            self._screen.blit(screen, (0, 0))
             time_cost = time.perf_counter() - self._frame_start_time
             wait_time = max(0, self.dt - time_cost)
             if wait_time > 0:

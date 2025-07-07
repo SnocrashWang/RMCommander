@@ -73,7 +73,7 @@ class GameRMUL(gym.Env):
             )
             
             # 导航动作：是否导航
-            navigation_move_space = spaces.Discrete(2)  # 0: 不导航, 1: 导航
+            navigation_set_space = spaces.Discrete(2)  # 0: 不导航, 1: 导航
             
             # 目标动作：攻击目标类型
             attack_target_space = spaces.Discrete(len(RobotType))  # 所有机器人类型
@@ -84,18 +84,12 @@ class GameRMUL(gym.Env):
             # 组合动作空间
             robot_action_spaces[robot_id] = spaces.Dict({
                 'navigation_target': navigation_target_space,
-                'navigation_move': navigation_move_space,
+                'navigation_set': navigation_set_space,
                 'attack_target': attack_target_space,
                 'purchase': purchase_space,
             })
         
         self.action_space = spaces.Dict(robot_action_spaces)
-        self.robot_default_action = {
-            'navigation_target': np.array([0.0, 0.0]),
-            'navigation_move': np.int64(0),
-            'attack_target': np.int64(0),
-            'purchase': np.int64(0),
-        }
     
     def _setup_observation_space(self):
         """设置观察空间"""
@@ -233,7 +227,7 @@ class GameRMUL(gym.Env):
         reward_weight.append(5)
 
         # # 不可行导航点惩罚
-        # if action["RED_3_STANDARD"]["navigation_move"] == 1:
+        # if action["RED_3_STANDARD"]["navigation_set"] == 1:
         #     col, row = world_to_grid(action["RED_3_STANDARD"]["navigation_target"])
         #     if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
         #         reward_navigation_unmovable = -1.0

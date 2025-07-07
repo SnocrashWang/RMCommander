@@ -34,7 +34,7 @@ class PolicyNet(torch.nn.Module):
             nn.ReLU(),
             nn.Linear(64, 2),  # 输出x,y的标准差
             nn.Softplus(),  # 确保标准差为正
-            nn.Tanh()  # 添加tanh激活函数
+            # nn.Tanh()  # 添加tanh激活函数
         )
         
         # 导航设置分支（离散动作）
@@ -64,6 +64,13 @@ class PolicyNet(torch.nn.Module):
         
         # 目标选择（离散）
         attack_target_logits = self.attack_target_network(features)
+
+        # FIX: 有时候shared_network的参数会包含nan，导致actor返回nan。原因未知
+        if torch.isnan(features).any():
+            print(x)
+            print(features)
+            print(dict(self.shared_network.named_parameters()))
+            raise ValueError("shared_network的参数包含nan")
         
         return navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits
 
@@ -83,8 +90,8 @@ class PPOAgent:
         self,
         team: GameTeam,
         state_dim: int,
-        actor_lr = 1e-3,
-        critic_lr = 1e-2,
+        actor_lr = 1e-4,
+        critic_lr = 1e-3,
         gamma = 0.98,
         lmbda = 0.95,
         epochs = 10,
@@ -105,8 +112,8 @@ class PPOAgent:
             self.device = torch.device(device)
         print(f"使用设备: {self.device}")
         
-        self.actor = PolicyNet(state_dim).to(device)
-        self.critic = ValueNet(state_dim).to(device)
+        self.actor = PolicyNet(state_dim).to(self.device)
+        self.critic = ValueNet(state_dim).to(self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
                                                 lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),
@@ -141,16 +148,11 @@ class PPOAgent:
     
     def update(self, transition_dict):
         """更新策略"""
-        states = torch.tensor(transition_dict['states'],
-                              dtype=torch.float).to(self.device)
-        actions = torch.tensor(transition_dict['actions'],
-                               dtype=torch.float).to(self.device)
-        rewards = torch.tensor(transition_dict['rewards'],
-                               dtype=torch.float).view(-1, 1).to(self.device)
-        next_states = torch.tensor(transition_dict['next_states'],
-                                   dtype=torch.float).to(self.device)
-        dones = torch.tensor(transition_dict['dones'],
-                             dtype=torch.float).view(-1, 1).to(self.device)
+        states = torch.tensor(np.array(transition_dict['states']), dtype=torch.float).to(self.device)
+        actions = torch.tensor(np.array(transition_dict['actions']), dtype=torch.float).to(self.device)
+        rewards = torch.tensor(np.array(transition_dict['rewards']), dtype=torch.float).view(-1, 1).to(self.device)
+        next_states = torch.tensor(np.array(transition_dict['next_states']), dtype=torch.float).to(self.device)
+        dones = torch.tensor(np.array(transition_dict['dones']), dtype=torch.float).view(-1, 1).to(self.device)
         td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
         td_delta = td_target - self.critic(states)
         advantage = compute_advantage(self.gamma, self.lmbda, td_delta.cpu()).to(self.device)
@@ -163,42 +165,47 @@ class PPOAgent:
             log_probs = self._get_log_probs(states, actions)
             ratio = torch.exp(log_probs - old_log_probs)
             surr1 = ratio * advantage
-            surr2 = torch.clamp(ratio, 1 - self.eps,
-                                1 + self.eps) * advantage  # 截断
+            surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * advantage  # 截断
             actor_loss = torch.mean(-torch.min(surr1, surr2))  # PPO损失函数
-            critic_loss = torch.mean(
-                F.mse_loss(self.critic(states), td_target.detach()))
+            critic_loss = torch.mean(F.mse_loss(self.critic(states), td_target.detach()))
             self.actor_optimizer.zero_grad()
             self.critic_optimizer.zero_grad()
             actor_loss.backward()
             critic_loss.backward()
             self.actor_optimizer.step()
             self.critic_optimizer.step()
+            if torch.isinf(actor_loss) or abs(actor_loss) > 1e10 or self.actor.shared_network[0].weight.isnan().any():
+                print("states: ", states)
+                print("actions: ", actions)
+                print("old_log_probs: ", old_log_probs)
+                print("log_probs: ", log_probs)
+                print("ratio: ", ratio)
+                print("surr1: ", surr1)
+                print("surr2: ", surr2)
+                print("actor_loss: ", actor_loss)
+                print("advantage: ", advantage)
+                exit()
 
     def _get_log_probs(self, states, actions):
         navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(states)
 
-        # 创建正态分布，确保维度正确
         navigation_target_action_dists = torch.distributions.Normal(navigation_target_mean, navigation_target_std)
         navigation_set_action_dists = torch.distributions.Categorical(logits=navigation_set_logits)
         attack_target_action_dists = torch.distributions.Categorical(logits=attack_target_logits)
 
         # 提取动作的不同部分
-        navigation_target_actions = actions[:, 0:2]  # [batch_size, 2]
-        navigation_set_actions = actions[:, 2]  # [batch_size]
-        attack_target_actions = actions[:, 3]  # [batch_size]
+        navigation_target_actions = actions[:, 0:2]
+        navigation_set_actions = actions[:, 2]
+        attack_target_actions = actions[:, 3]
 
         # 计算各个动作的log概率
         # 对于正态分布，log_prob会返回与输入相同形状的张量
-        navigation_target_log_probs = navigation_target_action_dists.log_prob(navigation_target_actions)  # [batch_size, 2]
-        navigation_set_log_probs = navigation_set_action_dists.log_prob(navigation_set_actions)  # [batch_size]
-        attack_target_log_probs = attack_target_action_dists.log_prob(attack_target_actions)  # [batch_size]
-
-        # 将导航目标的log概率在最后一个维度上求和（因为它是2维的x,y坐标）
-        navigation_target_log_probs_sum = navigation_target_log_probs.sum(dim=-1)  # [batch_size]
+        navigation_target_log_probs = navigation_target_action_dists.log_prob(navigation_target_actions)
+        navigation_set_log_probs = navigation_set_action_dists.log_prob(navigation_set_actions)
+        attack_target_log_probs = attack_target_action_dists.log_prob(attack_target_actions)
 
         # 将所有log概率相加
-        log_probs = (navigation_target_log_probs_sum
+        log_probs = (navigation_target_log_probs.sum(dim=-1) # 将导航目标的log概率在最后一个维度上求和（因为它是2维的x,y坐标）
                      + navigation_set_log_probs
                      + attack_target_log_probs)
         return log_probs
@@ -229,4 +236,4 @@ def compute_advantage(gamma, lmbda, td_delta):
         advantage = gamma * lmbda * advantage + delta
         advantage_list.append(advantage)
     advantage_list.reverse()
-    return torch.tensor(advantage_list, dtype=torch.float)
+    return torch.tensor(np.array(advantage_list), dtype=torch.float)

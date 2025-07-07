@@ -133,6 +133,8 @@ class Game(gym.Env):
         # 渲染
         if self._render_mode:
             render_image = self.render()
+        else:
+            render_image = None
         
         # 获取初始观察
         observation = self._get_obs()
@@ -162,6 +164,8 @@ class Game(gym.Env):
         # 渲染
         if self._render_mode:
             render_image = self.render()
+        else:
+            render_image = None
         
         # 信息
         info = {
@@ -236,6 +240,14 @@ class Game(gym.Env):
         # reward_list.append(reward_navigation_diff)
         # reward_weight.append(10)
 
+        # 导航代价
+        if action["RED_3_STANDARD"].navigation_set == 1:
+            reward_navigation_cost = -1.0
+        else:
+            reward_navigation_cost = 0.0
+        reward_list.append(reward_navigation_cost)
+        reward_weight.append(5)
+
         # 血量奖励
         our_last_hp = sum([self._last_observation[7]])
         our_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == team])
@@ -260,9 +272,9 @@ class Game(gym.Env):
         
         # 游戏结束奖励
         if self.env.game_state == GameState.RED_TEAM_WIN:
-            reward_win = 10.0
+            reward_win = 100.0
         elif self.env.game_state == GameState.BLUE_TEAM_WIN:
-            reward_win = -10.0
+            reward_win = -100.0
         else:
             reward_win = 0.0
         

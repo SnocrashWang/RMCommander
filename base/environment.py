@@ -22,9 +22,26 @@ class Action:
     navigation_set: int = 0
     attack_target: int = 0
 
+    def __post_init__(self):
+        """初始化后自动将navigation_target转换为list"""
+        try:
+            if isinstance(self.navigation_target, np.ndarray):
+                self.navigation_target = tuple(self.navigation_target.astype(float))
+            else:
+                self.navigation_target = tuple(self.navigation_target)
+        except:
+            self.navigation_target = (0.0, 0.0)
+        try:
+            self.navigation_set = int(self.navigation_set)
+        except:
+            self.navigation_set = 0
+        try:
+            self.attack_target = int(self.attack_target)
+        except:
+            self.attack_target = 0
+
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
-        # 将navigation_target元组展开，然后与其他属性合并
         return np.array([
             *self.navigation_target,
             self.navigation_set,

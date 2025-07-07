@@ -75,6 +75,8 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
                 attack_target=action['attack_target']
             ) for robot_id, action in frame_action['blue_action'].items()
         }
+
+        print(red_action, blue_action)
         
         # 执行动作
         _, _, _, _, info = env.step(red_action, blue_action)

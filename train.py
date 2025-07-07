@@ -10,18 +10,19 @@ from base.config import env_config
 from base.environment import Action
 from base.game import Game
 from utils.config.game_config import GameTeam
-from utils.config.robot_config import RobotType
+from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.grid_map import world_to_grid
 from utils.utils import timer, opposite_position
 
 def train(
-    load_model: str = None,
+    base_model: str = None,
+    rival_model: str = None,
     device: str = None,
     model_dir: str = "models",
     log_dir: str = "logs",
-    num_episodes: int = 1000,
+    num_episodes: int = 2000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    save_interval: int = 20,
+    save_interval: int = 100,
 ):
     """
     训练PPO智能体
@@ -54,13 +55,19 @@ def train(
         device=device
     )
     # 如果指定了预训练模型，则加载它
-    if load_model is not None:
-        if os.path.exists(load_model):
-            agent_train.load(load_model)
-            agent_test.load(load_model)
-            print(f"已加载预训练模型: {load_model}")
+    if base_model is not None:
+        if os.path.exists(base_model):
+            agent_train.load(base_model)
+            print(f"已加载预训练模型: {base_model}")
         else:
-            print(f"警告: 预训练模型 {load_model} 不存在，将从头开始训练")
+            print(f"警告: 预训练模型 {base_model} 不存在，将从头开始训练")
+    # 如果指定了对手模型，则加载它
+    if rival_model is not None:
+        if os.path.exists(rival_model):
+            agent_test.load(rival_model)
+            print(f"已加载对手模型: {rival_model}")
+        else:
+            print(f"警告: 对手模型 {rival_model} 不存在，将采用随机策略")
     
     # 训练循环
     for episode in tqdm(range(num_episodes), dynamic_ncols=True):
@@ -73,31 +80,31 @@ def train(
         episode_length = 0
         episode_actions = [] # 记录当前回合的动作序列
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
-        
-        # blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
-        # while env.get_robot("BLUE_3_STANDARD").grid_map.is_blocked(*world_to_grid(blue_navigation)):
-        #     blue_navigation = (random.randint(0, int(env_config.FIELD_WIDTH)), random.randint(0, int(env_config.FIELD_HEIGHT)))
-        # blue_action = {"BLUE_3_STANDARD": Action(navigation=blue_navigation, attack=True, target=RobotType.STANDARD_3)}
 
         for step in range(max_steps):
             with timer(time_stats, 'total_step'):
                 # 选择动作
                 with timer(time_stats, 'act'):
                     red_action = agent_train.take_action(state)
-                    blue_action = {"BLUE_3_STANDARD": Action()}
+                    if rival_model is not None:
+                        blue_action = agent_test.take_action(state)
+                    else:
+                        blue_action = {id: Action(**action) for id, action in env.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
+                        for id in blue_action.keys():
+                            blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
                 
                 # 记录动作
                 frame_action = {
                     'red_action': {
                         robot_id: {
-                            'navigation_target': action.navigation_target,
+                            'navigation_target': list(action.navigation_target),
                             'navigation_set': action.navigation_set,
                             'attack_target': action.attack_target
                         } for robot_id, action in red_action.items()
                     },
                     'blue_action': {
                         robot_id: {
-                            'navigation_target': action.navigation_target,
+                            'navigation_target': list(action.navigation_target),
                             'navigation_set': action.navigation_set,
                             'attack_target': action.attack_target
                         } for robot_id, action in blue_action.items()
@@ -162,13 +169,16 @@ def train(
 
 if __name__ == "__main__":
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    # LOAD_MODEL = "models/ppo_agent_20250621_004342_episode_1800.pt"
-    LOAD_MODEL = None
+    BASE_MODEL = "models/ppo_agent_20250707_222836_episode_200.pt"
+    # BASE_MODEL = None
+    # RIVAL_MODEL = "models/ppo_agent_20250707_222836_episode_200.pt"
+    RIVAL_MODEL = None
     
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
     DEVICE = None
     
     train(
-        load_model=LOAD_MODEL,
+        base_model=BASE_MODEL,
+        rival_model=RIVAL_MODEL,
         device=DEVICE
     )

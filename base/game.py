@@ -14,7 +14,7 @@ from visualization.renderer import Renderer
 
 from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_CONFIGS
-from base.environment import Action, Environment
+from base.environment import Action, GameObs, RobotObs, Observation, Environment
 
 class Game(gym.Env):
    
@@ -178,34 +178,19 @@ class Game(gym.Env):
         
         return observation, reward, terminated, truncated, info
     
-    def _get_obs(self) -> np.ndarray:
+    def _get_obs(self) -> Observation:
         """获取观察"""
         # 全局状态向量
-        game_state = [
-            self.env._remaining_time / env_config.GAME_TIME_LIMIT,
-        ]
-        
+        game_state = GameObs(
+            remaining_time=self.env._remaining_time,
+        )
+
         # 机器人状态向量
-        red_robot_state = []
-        blue_robot_state = []
-        for robot in self.env.robots.values():
-            x, y = robot.get_position()
-            robot_state = [
-                x / env_config.FIELD_WIDTH,
-                y / env_config.FIELD_HEIGHT,
-                # robot.angle / 360,
-                robot.chassis_property_type.value,
-                robot.gimbal_property_type.value,
-                robot.level,
-                robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1,
-                robot.hp / robot.max_hp,
-                robot.heat / robot.max_heat,
-            ]
-            if robot.team == GameTeam.RED:
-                red_robot_state.extend(robot_state)
-            else:
-                blue_robot_state.extend(robot_state)
-        return np.array(game_state + red_robot_state + blue_robot_state)
+        robot_state = {}
+        for robot_id, robot in self.env.robots.items():
+            robot_state[robot_id] = RobotObs(robot)
+        
+        return Observation(game_state, robot_state)
     
     def _get_reward(self, team: GameTeam, action: Dict[str, Action]) -> float:
         """获取奖励"""
@@ -249,9 +234,9 @@ class Game(gym.Env):
         reward_weight.append(5)
 
         # 血量奖励
-        our_last_hp = sum([self._last_observation[7]])
+        our_last_hp = sum([self._last_observation.robot_obs["RED_3_STANDARD"].hp])
         our_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == team])
-        enemy_last_hp = sum([self._last_observation[15]])
+        enemy_last_hp = sum([self._last_observation.robot_obs["BLUE_3_STANDARD"].hp])
         enemy_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == opposite_team(team)])        
         reward_hp = np.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
         reward_list.append(reward_hp)
@@ -259,8 +244,8 @@ class Game(gym.Env):
 
         # 距离奖励
         last_distance = calc_distance(
-            self._last_observation[1:3] * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]),
-            self._last_observation[9:11] * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+            np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]),
+            np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
         )
         current_distance = calc_distance(
             self.env.get_robot("RED_3_STANDARD").get_position(),

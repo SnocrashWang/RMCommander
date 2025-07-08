@@ -21,6 +21,7 @@ elif CURRENT_GAME == GameType.RMUL:
     # from RMUC.game import GameRMUC as Game
     # from RMUC.config.robot_config import RMUC_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 
+np.set_printoptions(precision=4, floatmode='fixed')
 
 def main():
     # 创建环境和渲染器
@@ -94,10 +95,11 @@ def main():
                 elif event.key == pygame.K_d:  # D键切换目标
                     control_state["target_id"] = target_id_list[(target_id_list.index(control_state["target_id"]) - 1) % len(target_id_list)]
 
-        print(red_action)
+        # print(red_action)
         # 更新环境
         game.set_render(control_state)
         observation, reward, terminated, truncated, info = game.step(red_action, blue_action)
+        state = observation.to_array()
 
 
 if __name__ == "__main__":

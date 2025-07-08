@@ -17,6 +17,7 @@ from utils.utils import timer, opposite_position
 def train(
     base_model: str = None,
     rival_model: str = None,
+    adversarial: bool = False,
     device: str = None,
     model_dir: str = "models",
     log_dir: str = "logs",
@@ -42,18 +43,22 @@ def train(
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # 创建环境和智能体
-    env = Game()
-    state_size = env.observation_space.shape[0]
+    game = Game()
+    state_size = game.observation_space.shape[0]
     agent_train = PPOAgent(
         team=GameTeam.RED,
         state_dim=state_size,
         device=device
     )
-    agent_test = PPOAgent(
-        team=GameTeam.BLUE,
-        state_dim=state_size,
-        device=device
-    )
+    if adversarial:
+        print("对抗训练")
+        rival_model = None
+    else:
+        agent_test = PPOAgent(
+            team=GameTeam.BLUE,
+            state_dim=state_size,
+            device=device
+        )
     # 如果指定了预训练模型，则加载它
     if base_model is not None:
         if os.path.exists(base_model):
@@ -74,7 +79,8 @@ def train(
         # 性能统计
         time_stats = defaultdict(list)
 
-        state, info = env.reset()
+        obs, info = game.reset()
+        state = obs.to_array()
 
         episode_reward = 0
         episode_length = 0
@@ -86,12 +92,18 @@ def train(
                 # 选择动作
                 with timer(time_stats, 'act'):
                     red_action = agent_train.take_action(state)
-                    if rival_model is not None:
+                    if adversarial:
+                        # 对抗训练，蓝方使用红方模型
+                        # TODO: 翻转state，让蓝方使用红方模型
+                        blue_action = agent_train.take_action(state)
+                    elif rival_model is not None:
+                        # 蓝方使用对手模型
                         blue_action = agent_test.take_action(state)
                     else:
-                        blue_action = {id: Action(**action) for id, action in env.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
-                        for id in blue_action.keys():
-                            blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                        blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
+                    # 翻转蓝方导航点
+                    for id in blue_action.keys():
+                        blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
                 
                 # 记录动作
                 frame_action = {
@@ -114,7 +126,8 @@ def train(
                 
                 # 执行动作
                 with timer(time_stats, 'env_step'):
-                    next_state, reward, terminated, truncated, info = env.step(red_action, blue_action)
+                    next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action)
+                    next_state = next_obs.to_array()
                     episode_reward += reward
                     done = terminated or truncated
 
@@ -139,7 +152,7 @@ def train(
                 'episode': episode,
                 'length': episode_length,
                 'reward': episode_reward,
-                'game_state': env.env.game_state.value,
+                'game_state': game.env.game_state.value,
                 'actions': episode_actions
             }
             with open(os.path.join(log_dir, f'episode_{time_tag}_{episode+1}.json'), 'w') as f:
@@ -153,7 +166,7 @@ def train(
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")
         tqdm.write(f"回合长度: {episode_length}")
         tqdm.write(f"平均奖励: {episode_reward/episode_length:.3f}")
-        tqdm.write(f"比赛结果: {env.env.game_state}")
+        tqdm.write(f"比赛结果: {game.env.game_state}")
         
         # 打印性能统计
         tqdm.write("\n性能统计 (平均耗时，单位：秒):")
@@ -169,16 +182,20 @@ def train(
 
 if __name__ == "__main__":
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    BASE_MODEL = "models/ppo_agent_20250707_222836_episode_200.pt"
-    # BASE_MODEL = None
-    # RIVAL_MODEL = "models/ppo_agent_20250707_222836_episode_200.pt"
+    # BASE_MODEL = "models/ppo_agent_20250708_143557_episode_200.pt"
+    BASE_MODEL = None
+    # RIVAL_MODEL = "models/ppo_agent_20250708_143557_episode_200.pt"
     RIVAL_MODEL = None
     
+    # 对抗训练
+    ADVERSARIAL = False
+
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
     DEVICE = None
     
     train(
         base_model=BASE_MODEL,
         rival_model=RIVAL_MODEL,
+        adversarial=ADVERSARIAL,
         device=DEVICE
     )

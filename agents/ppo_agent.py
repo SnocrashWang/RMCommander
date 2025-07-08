@@ -17,30 +17,31 @@ class PolicyNet(torch.nn.Module):
         # 共享特征提取层
         self.shared_network = nn.Sequential(
             nn.Linear(state_dim, 256),
-            nn.ReLU(),
+            nn.ELU(),
             nn.Linear(256, 128),
-            nn.ReLU()
+            nn.ELU()
         )
         
         # 导航目标分支（连续动作）
         self.navigation_target_mean = nn.Sequential(
             nn.Linear(128, 64),
-            nn.ReLU(),
+            nn.ELU(),
             nn.Linear(64, 2),
             nn.Tanh()  # 添加tanh激活函数
         )
-        self.navigation_target_std = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 2),  # 输出x,y的标准差
-            nn.Softplus(),  # 确保标准差为正
-            # nn.Tanh()  # 添加tanh激活函数
-        )
+        # self.navigation_target_std = nn.Sequential(
+        #     nn.Linear(128, 64),
+        #     nn.ReLU(),
+        #     nn.Linear(64, 2),  # 输出x,y的标准差
+        #     nn.Softplus(),  # 确保标准差为正
+        #     # nn.Tanh()  # 添加tanh激活函数
+        # )
+        self.navigation_target_std = nn.Parameter(torch.ones(2))
         
         # 导航设置分支（离散动作）
         self.navigation_set_network = nn.Sequential(
             nn.Linear(128, 64),
-            nn.ReLU(),
+            nn.ELU(),
             nn.Linear(64, 2)  # 输出是否设定导航目标的logits
         )
         
@@ -48,7 +49,7 @@ class PolicyNet(torch.nn.Module):
         # 输出维度为1（NONE）+ len(BASE_ROBOT_TYPE_LIST)
         self.attack_target_network = nn.Sequential(
             nn.Linear(128, 64),
-            nn.ReLU(),
+            nn.ELU(),
             nn.Linear(64, len(RobotType))  # 输出可能目标的logits
         )
 
@@ -57,20 +58,13 @@ class PolicyNet(torch.nn.Module):
         
         # 导航目标（连续）
         navigation_target_mean = self.navigation_target_mean(features)
-        navigation_target_std = self.navigation_target_std(features)
+        navigation_target_std = self.navigation_target_std
         
         # 导航移动（离散）
         navigation_set_logits = self.navigation_set_network(features)
         
         # 目标选择（离散）
         attack_target_logits = self.attack_target_network(features)
-
-        # FIX: 有时候shared_network的参数会包含nan，导致actor返回nan。原因未知
-        if torch.isnan(features).any():
-            print(x)
-            print(features)
-            print(dict(self.shared_network.named_parameters()))
-            raise ValueError("shared_network的参数包含nan")
         
         return navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits
 
@@ -78,12 +72,14 @@ class PolicyNet(torch.nn.Module):
 class ValueNet(torch.nn.Module):
     def __init__(self, state_dim):
         super(ValueNet, self).__init__()
-        self.fc1 = torch.nn.Linear(state_dim, 128)
-        self.fc2 = torch.nn.Linear(128, 1)
+        self.network = nn.Sequential(
+            nn.Linear(state_dim, 128),
+            nn.ELU(),
+            nn.Linear(128, 1)
+        )
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        return self.fc2(x)
+        return self.network(x)
 
 class PPOAgent:
     def __init__(
@@ -114,11 +110,10 @@ class PPOAgent:
         
         self.actor = PolicyNet(state_dim).to(self.device)
         self.critic = ValueNet(state_dim).to(self.device)
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
-                                                lr=actor_lr)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),
-                                                 lr=critic_lr)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
     
+    @torch.no_grad()
     def take_action(self, state) -> Dict[str, Action]:
         state = torch.tensor(state, dtype=torch.float).to(self.device)
         navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(state)
@@ -163,7 +158,9 @@ class PPOAgent:
 
         for _ in range(self.epochs):
             log_probs = self._get_log_probs(states, actions)
-            ratio = torch.exp(log_probs - old_log_probs)
+            log_ratio = log_probs - old_log_probs
+            # log_ratio = torch.clamp(log_ratio, min=-10, max=10)  # 限制在 e^{-10}~e^{10} 范围内
+            ratio = torch.exp(log_ratio)
             surr1 = ratio * advantage
             surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * advantage  # 截断
             actor_loss = torch.mean(-torch.min(surr1, surr2))  # PPO损失函数
@@ -172,6 +169,8 @@ class PPOAgent:
             self.critic_optimizer.zero_grad()
             actor_loss.backward()
             critic_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 10)
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 10)
             self.actor_optimizer.step()
             self.critic_optimizer.step()
             if torch.isinf(actor_loss) or abs(actor_loss) > 1e10 or self.actor.shared_network[0].weight.isnan().any():
@@ -184,6 +183,7 @@ class PPOAgent:
                 print("surr2: ", surr2)
                 print("actor_loss: ", actor_loss)
                 print("advantage: ", advantage)
+                print("actor.shared_network: ", dict(self.actor.shared_network.named_parameters()))
                 exit()
 
     def _get_log_probs(self, states, actions):

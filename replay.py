@@ -29,8 +29,8 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
     else:
         render_mode = "human"
 
-    env = Game(render_mode=render_mode)
-    _, info = env.reset()
+    game = Game(render_mode=render_mode)
+    _, info = game.reset()
     
     # 如果保存视频，初始化视频写入器
     video_writer = None
@@ -79,7 +79,7 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
         print(red_action, blue_action)
         
         # 执行动作
-        _, _, _, _, info = env.step(red_action, blue_action)
+        _, _, _, _, info = game.step(red_action, blue_action)
         
         # 如果保存视频，保存当前帧
         if video_writer:

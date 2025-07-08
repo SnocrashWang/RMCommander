@@ -23,6 +23,112 @@ class ActionRMUL:
     attack_target: int = 0
     purchase: int = 0
 
+    def __post_init__(self):
+        """初始化"""
+        try:
+            if isinstance(self.navigation_target, np.ndarray):
+                self.navigation_target = tuple(self.navigation_target.astype(float))
+            else:
+                self.navigation_target = tuple(self.navigation_target)
+        except:
+            self.navigation_target = (0.0, 0.0)
+        try:
+            self.navigation_set = int(self.navigation_set)
+        except:
+            self.navigation_set = 0
+        try:
+            self.attack_target = int(self.attack_target)
+        except:
+            self.attack_target = 0
+        try:
+            self.purchase = int(self.purchase)
+        except:
+            self.purchase = 0
+
+    def to_array(self) -> np.ndarray:
+        """将所有的属性值转换为一个NumPy数组"""
+        return np.array([
+            *self.navigation_target,
+            self.navigation_set,
+            self.attack_target,
+            self.purchase,
+        ])
+
+@dataclass
+class GameObsRMUL:
+    remaining_time: float
+    victory_progress_red: float
+    victory_progress_blue: float
+    # economics_red: int
+    # economics_blue: int
+
+    def __init__(self, remaining_time: float, victory_progress: Dict[GameTeam, float]):
+        """初始化"""
+        self.remaining_time = remaining_time / env_config.GAME_TIME_LIMIT
+        self.victory_progress_red = victory_progress[GameTeam.RED] / env_config.OCCUPATION_TARGET
+        self.victory_progress_blue = victory_progress[GameTeam.BLUE] / env_config.OCCUPATION_TARGET
+
+    def to_array(self) -> np.ndarray:
+        """将所有的属性值转换为一个NumPy数组"""
+        return np.array([
+            self.remaining_time,
+            self.victory_progress_red,
+            self.victory_progress_blue,
+            # self.economics_red,
+            # self.economics_blue,
+        ])
+
+@dataclass
+class RobotObsRMUL:
+    position: Tuple[float, float]
+    # orientation: float
+    chassis_property_type: int
+    gimbal_property_type: int
+    level: int
+    exp: float
+    hp: float
+    heat: float
+
+    def __init__(self, robot: Robot):
+        """初始化"""
+        self.position = robot.get_position()
+        self.position = (self.position[0] / env_config.FIELD_WIDTH, self.position[1] / env_config.FIELD_HEIGHT)
+        self.chassis_property_type = robot.chassis_property_type.value
+        self.gimbal_property_type = robot.gimbal_property_type.value
+        self.level = robot.level
+        self.exp = robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1
+        self.hp = robot.hp / robot.max_hp
+        self.heat = robot.heat / robot.max_heat
+
+    def to_array(self) -> np.ndarray:
+        """将所有的属性值转换为一个NumPy数组"""
+        return np.array([
+            *self.position,
+            # self.orientation,
+            self.chassis_property_type,
+            self.gimbal_property_type,
+            self.level,
+            self.exp,
+            self.hp,
+            self.heat,
+        ])
+
+@dataclass
+class ObservationRMUL:
+    game_obs: GameObsRMUL
+    robot_obs: Dict[str, RobotObsRMUL]
+    
+    def to_array(self) -> np.ndarray:
+        """将所有的属性值转换为一个NumPy数组"""
+        return np.concatenate([
+            self.game_obs.to_array(),
+            *[robot_obs.to_array() for _, robot_obs in sorted(
+                self.robot_obs.items(),
+                key=lambda x: (x[0].split('_')[0], -int(x[0].split('_')[1])),
+                reverse=True
+            )]
+        ])
+
 class EnvironmentRMUL(Environment):
     def __init__(
             self,

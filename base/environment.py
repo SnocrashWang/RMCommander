@@ -23,7 +23,7 @@ class Action:
     attack_target: int = 0
 
     def __post_init__(self):
-        """初始化后自动将navigation_target转换为list"""
+        """初始化"""
         try:
             if isinstance(self.navigation_target, np.ndarray):
                 self.navigation_target = tuple(self.navigation_target.astype(float))
@@ -46,6 +46,71 @@ class Action:
             *self.navigation_target,
             self.navigation_set,
             self.attack_target
+        ])
+
+@dataclass
+class GameObs:
+    remaining_time: float
+
+    def __init__(self, remaining_time: float):
+        """初始化"""
+        self.remaining_time = remaining_time
+
+    def to_array(self) -> np.ndarray:
+        """将所有的属性值转换为一个NumPy数组"""
+        return np.array([
+            self.remaining_time,
+        ])
+
+@dataclass
+class RobotObs:
+    position: Tuple[float, float]
+    # orientation: float
+    chassis_property_type: int
+    gimbal_property_type: int
+    level: int
+    exp: float
+    hp: float
+    heat: float
+
+    def __init__(self, robot: Robot):
+        """初始化"""
+        self.position = robot.get_position()
+        self.position = (self.position[0] / env_config.FIELD_WIDTH, self.position[1] / env_config.FIELD_HEIGHT)
+        self.chassis_property_type = robot.chassis_property_type.value
+        self.gimbal_property_type = robot.gimbal_property_type.value
+        self.level = robot.level
+        self.exp = robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1
+        self.hp = robot.hp / robot.max_hp
+        self.heat = robot.heat / robot.max_heat
+
+    def to_array(self) -> np.ndarray:
+        """将所有的属性值转换为一个NumPy数组"""
+        return np.array([
+            *self.position,
+            # self.orientation,
+            self.chassis_property_type,
+            self.gimbal_property_type,
+            self.level,
+            self.exp,
+            self.hp,
+            self.heat,
+        ])
+
+@dataclass
+class Observation:
+    game_obs: GameObs
+    robot_obs: Dict[str, RobotObs]
+    
+    def to_array(self) -> np.ndarray:
+        """将所有的属性值转换为一个NumPy数组"""
+        return np.concatenate([
+            self.game_obs.to_array(),
+            *[robot_obs.to_array() for _, robot_obs in sorted(
+                self.robot_obs.items(),
+                key=lambda x: (x[0].split('_')[0], -int(x[0].split('_')[1])),
+                reverse=True
+            )]  # 按编号排序，RED>BLUE
         ])
 
 class Environment:

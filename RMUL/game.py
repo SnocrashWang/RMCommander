@@ -16,7 +16,7 @@ from visualization.renderer import Renderer
 
 from RMUL.config import env_config
 from RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
-from RMUL.environment import EnvironmentRMUL as Environment
+from RMUL.environment import ActionRMUL, ObservationRMUL, GameObsRMUL, RobotObsRMUL, EnvironmentRMUL
 
 
 class GameRMUL(gym.Env):
@@ -33,7 +33,7 @@ class GameRMUL(gym.Env):
         super().__init__()
 
         # 创建底层环境
-        self.env = Environment(
+        self.env = EnvironmentRMUL(
             env_config=env_config,
             obstacle_configs=env_config.OBSTACLES,
             robot_configs=RMUL_ROBOT_CONFIGS
@@ -155,7 +155,7 @@ class GameRMUL(gym.Env):
         
         return observation, info
     
-    def step(self, red_action: Dict[str, Dict[str, Any]], blue_action: Dict[str, Dict[str, Any]]):
+    def step(self, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL]):
         """执行一步动作"""
         self._frame_start_time = time.perf_counter()
 
@@ -185,38 +185,22 @@ class GameRMUL(gym.Env):
         
         return observation, reward, terminated, truncated, info
     
-    def _get_obs(self) -> np.ndarray:
+    def _get_obs(self) -> ObservationRMUL:
         """获取观察"""
         # 全局状态向量
-        game_state = [
-            self.env._remaining_time / env_config.GAME_TIME_LIMIT,
-            self.env._victory_progress[GameTeam.RED] / env_config.OCCUPATION_TARGET,
-            self.env._victory_progress[GameTeam.BLUE] / env_config.OCCUPATION_TARGET,
-        ]
-        
+        game_state = GameObsRMUL(
+            remaining_time=self.env._remaining_time,
+            victory_progress=self.env._victory_progress,
+        )
+
         # 机器人状态向量
-        red_robot_state = []
-        blue_robot_state = []
-        for robot in self.env.robots.values():
-            x, y = robot.get_position()
-            robot_state = [
-                x / env_config.FIELD_WIDTH,
-                y / env_config.FIELD_HEIGHT,
-                # robot.angle / 360,
-                robot.chassis_property_type.value,
-                robot.gimbal_property_type.value,
-                robot.level,
-                robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1,
-                robot.hp / robot.max_hp,
-                robot.heat / robot.max_heat,
-            ]
-            if robot.team == GameTeam.RED:
-                red_robot_state.extend(robot_state)
-            else:
-                blue_robot_state.extend(robot_state)
-        return np.array(game_state + red_robot_state + blue_robot_state)
+        robot_state = {}
+        for robot_id, robot in self.env.robots.items():
+            robot_state[robot_id] = RobotObsRMUL(robot)
+        
+        return ObservationRMUL(game_state, robot_state)
     
-    def _get_reward(self, team: GameTeam, action: Dict[str, Dict[str, Any]]) -> float:
+    def _get_reward(self, team: GameTeam, action: Dict[str, ActionRMUL]) -> float:
         """获取奖励"""
         reward_list = []
         reward_weight = []

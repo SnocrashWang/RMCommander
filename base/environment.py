@@ -101,16 +101,19 @@ class RobotObs:
 class Observation:
     game_obs: GameObs
     robot_obs: Dict[str, RobotObs]
-    
-    def to_array(self) -> np.ndarray:
+
+    def to_array(self, team: GameTeam = GameTeam.RED) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
+        red_robot_obs = {robot_id: robot_obs for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("RED")}
+        blue_robot_obs = {robot_id: robot_obs for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("BLUE")}
+        if team == GameTeam.RED:
+            robot_obs = {**red_robot_obs, **blue_robot_obs}
+        else:
+            robot_obs = {**blue_robot_obs, **red_robot_obs}
+
         return np.concatenate([
             self.game_obs.to_array(),
-            *[robot_obs.to_array() for _, robot_obs in sorted(
-                self.robot_obs.items(),
-                key=lambda x: (x[0].split('_')[0], -int(x[0].split('_')[1])),
-                reverse=True
-            )]  # 按编号排序，RED>BLUE
+            *[robot_obs.to_array() for _, robot_obs in robot_obs.items()]
         ])
 
 class Environment:

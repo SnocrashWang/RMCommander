@@ -84,7 +84,6 @@ class ValueNet(torch.nn.Module):
 class PPOAgent:
     def __init__(
         self,
-        team: GameTeam,
         state_dim: int,
         actor_lr = 1e-4,
         critic_lr = 1e-3,
@@ -94,8 +93,6 @@ class PPOAgent:
         eps = 0.2,
         device: str = None
     ):
-        self.team = team
-        
         self.gamma = gamma
         self.lmbda = lmbda
         self.epochs = epochs
@@ -114,7 +111,7 @@ class PPOAgent:
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
     
     @torch.no_grad()
-    def take_action(self, state) -> Dict[str, Action]:
+    def take_action(self, state, team: GameTeam) -> Dict[str, Action]:
         state = torch.tensor(state, dtype=torch.float).to(self.device)
         navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(state)
         # 导航目标
@@ -132,7 +129,7 @@ class PPOAgent:
         attack_target_action = attack_target_dist.sample()
 
         actions = {
-            ROBOT_ID[self.team][robot_type]: Action(
+            ROBOT_ID[team][robot_type]: Action(
                 navigation_target=(x.item(), y.item()),
                 navigation_set=navigation_set_action.item(),
                 attack_target=attack_target_action.item()
@@ -173,18 +170,6 @@ class PPOAgent:
             torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 10)
             self.actor_optimizer.step()
             self.critic_optimizer.step()
-            if torch.isinf(actor_loss) or abs(actor_loss) > 1e10 or self.actor.shared_network[0].weight.isnan().any():
-                print("states: ", states)
-                print("actions: ", actions)
-                print("old_log_probs: ", old_log_probs)
-                print("log_probs: ", log_probs)
-                print("ratio: ", ratio)
-                print("surr1: ", surr1)
-                print("surr2: ", surr2)
-                print("actor_loss: ", actor_loss)
-                print("advantage: ", advantage)
-                print("actor.shared_network: ", dict(self.actor.shared_network.named_parameters()))
-                exit()
 
     def _get_log_probs(self, states, actions):
         navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(states)

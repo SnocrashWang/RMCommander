@@ -46,7 +46,6 @@ def train(
     game = Game()
     state_size = game.observation_space.shape[0]
     agent_train = PPOAgent(
-        team=GameTeam.RED,
         state_dim=state_size,
         device=device
     )
@@ -55,7 +54,6 @@ def train(
         rival_model = None
     else:
         agent_test = PPOAgent(
-            team=GameTeam.BLUE,
             state_dim=state_size,
             device=device
         )
@@ -88,63 +86,61 @@ def train(
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
 
         for step in range(max_steps):
-            with timer(time_stats, 'total_step'):
-                # 选择动作
-                with timer(time_stats, 'act'):
-                    red_action = agent_train.take_action(state)
-                    if adversarial:
-                        # 对抗训练，蓝方使用红方模型
-                        # TODO: 翻转state，让蓝方使用红方模型
-                        blue_action = agent_train.take_action(state)
-                    elif rival_model is not None:
-                        # 蓝方使用对手模型
-                        blue_action = agent_test.take_action(state)
-                    else:
-                        blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
-                    # 翻转蓝方导航点
-                    for id in blue_action.keys():
-                        blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
-                
-                # 记录动作
-                frame_action = {
-                    'red_action': {
-                        robot_id: {
-                            'navigation_target': list(action.navigation_target),
-                            'navigation_set': action.navigation_set,
-                            'attack_target': action.attack_target
-                        } for robot_id, action in red_action.items()
-                    },
-                    'blue_action': {
-                        robot_id: {
-                            'navigation_target': list(action.navigation_target),
-                            'navigation_set': action.navigation_set,
-                            'attack_target': action.attack_target
-                        } for robot_id, action in blue_action.items()
-                    }
+            # 选择动作
+            with timer(time_stats, 'act'):
+                red_action = agent_train.take_action(obs.to_array(GameTeam.RED), GameTeam.RED)
+                if adversarial:
+                    # 对抗训练，蓝方使用红方模型
+                    blue_action = agent_train.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
+                elif rival_model is not None:
+                    # 蓝方使用对手模型
+                    blue_action = agent_test.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
+                else:
+                    blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
+                # 翻转蓝方导航点
+                for id in blue_action.keys():
+                    blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+            
+            # 记录动作
+            frame_action = {
+                'red_action': {
+                    robot_id: {
+                        'navigation_target': list(action.navigation_target),
+                        'navigation_set': action.navigation_set,
+                        'attack_target': action.attack_target
+                    } for robot_id, action in red_action.items()
+                },
+                'blue_action': {
+                    robot_id: {
+                        'navigation_target': list(action.navigation_target),
+                        'navigation_set': action.navigation_set,
+                        'attack_target': action.attack_target
+                    } for robot_id, action in blue_action.items()
                 }
-                episode_actions.append(frame_action)
-                
-                # 执行动作
-                with timer(time_stats, 'env_step'):
-                    next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action)
-                    next_state = next_obs.to_array()
-                    episode_reward += reward
-                    done = terminated or truncated
+            }
+            episode_actions.append(frame_action)
+            
+            # 执行动作
+            with timer(time_stats, 'env_step'):
+                next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action)
+                next_state = next_obs.to_array()
+                episode_reward += reward
+                done = terminated or truncated
 
-                    transition_dict['states'].append(state)
-                    transition_dict['actions'].append(red_action["RED_3_STANDARD"].to_array())
-                    transition_dict['next_states'].append(next_state)
-                    transition_dict['rewards'].append(reward)
-                    transition_dict['dones'].append(done)
+                transition_dict['states'].append(state)
+                transition_dict['actions'].append(red_action["RED_3_STANDARD"].to_array())
+                transition_dict['next_states'].append(next_state)
+                transition_dict['rewards'].append(reward)
+                transition_dict['dones'].append(done)
 
-                    state = next_state
+                state = next_state
 
-                # 更新步数
-                episode_length += 1
-                
-                # 检查是否结束
-                if done:
-                    break
+            # 更新步数
+            episode_length += 1
+            
+            # 检查是否结束
+            if done:
+                break
         
         # 保存当前回合的动作序列
         if (episode + 1) % (save_interval) == 0 or episode == 0:
@@ -182,13 +178,13 @@ def train(
 
 if __name__ == "__main__":
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    # BASE_MODEL = "models/ppo_agent_20250708_143557_episode_200.pt"
-    BASE_MODEL = None
-    # RIVAL_MODEL = "models/ppo_agent_20250708_143557_episode_200.pt"
+    BASE_MODEL = "models/ppo_agent_20250708_175723_episode_200.pt"
+    # BASE_MODEL = None
+    # RIVAL_MODEL = "models/ppo_agent_20250708_175723_episode_200.pt"
     RIVAL_MODEL = None
     
     # 对抗训练
-    ADVERSARIAL = False
+    ADVERSARIAL = True
 
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
     DEVICE = None

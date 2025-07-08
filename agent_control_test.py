@@ -58,14 +58,12 @@ def main():
     # 创建PPO agent
     state_size = len(env._get_team_state(GameTeam.RED))
     agent_red = PPOAgent(
-        team=GameTeam.RED,
         state_size=state_size,
         field_width=env_config.FIELD_WIDTH,
         field_height=env_config.FIELD_HEIGHT,
         device="cpu"
     )
     agent_blue = PPOAgent(
-        team=GameTeam.BLUE,
         state_size=state_size,
         field_width=env_config.FIELD_WIDTH,
         field_height=env_config.FIELD_HEIGHT,

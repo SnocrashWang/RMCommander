@@ -4,15 +4,18 @@ from datetime import datetime
 from tqdm import tqdm
 from collections import defaultdict
 import random
+import threading
+import queue
 
 from agents.ppo_agent import PPOAgent
 from base.config import env_config
 from base.environment import Action
 from base.game import Game
-from utils.config.game_config import GameTeam
+from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.grid_map import world_to_grid
 from utils.utils import timer, opposite_position
+
 
 def train(
     base_model: str = None,
@@ -21,10 +24,11 @@ def train(
     device: str = None,
     model_dir: str = "models",
     log_dir: str = "logs",
+    num_games: int = 4,
     num_episodes: int = 2000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
     control_frequency: int = 2,
-    save_interval: int = 100,
+    save_interval: int = 20,
 ):
     """
     训练PPO智能体
@@ -44,8 +48,8 @@ def train(
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # 创建环境和智能体
-    game = Game()
-    state_size = game.observation_space.shape[0]
+    games = [Game() for _ in range(num_games)]
+    state_size = games[0].observation_space.shape[0]
     agent_train = PPOAgent(
         state_dim=state_size,
         device=device
@@ -74,22 +78,21 @@ def train(
             print(f"警告: 对手模型 {rival_model} 不存在，将采用随机策略")
 
     # 计算控制步数
-    control_steps = int(game.metadata['render_fps'] // control_frequency)
+    control_steps = int(games[0].metadata['render_fps'] // control_frequency)
+    # 性能统计
+    time_stats = defaultdict(list)
+    # 结果列表
+    info_queue = queue.Queue()
+    transition_queue = queue.Queue()
     
-    # 训练循环
-    for episode in tqdm(range(num_episodes), dynamic_ncols=True):
-        # 性能统计
-        time_stats = defaultdict(list)
+    def game_worker(game: Game):
+        with timer(time_stats, 'game_worker'):
+            obs, info = game.reset()
+            state = obs.to_array()
+            transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
 
-        obs, info = game.reset()
-        state = obs.to_array()
-
-        episode_actions = [] # 记录当前回合的动作序列
-        transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
-
-        for step in range(max_steps // control_steps):
-            # 选择动作
-            with timer(time_stats, 'act'):
+            for step in range(max_steps // control_steps):
+                # 选择动作
                 red_action = agent_train.take_action(obs.to_array(GameTeam.RED), GameTeam.RED)
                 if adversarial:
                     # 对抗训练，蓝方使用红方模型
@@ -102,28 +105,8 @@ def train(
                 # 翻转蓝方导航点
                 for id in blue_action.keys():
                     blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
-            
-            # 记录动作
-            frame_action = {
-                'red_action': {
-                    robot_id: {
-                        'navigation_target': list(action.navigation_target),
-                        'navigation_set': action.navigation_set,
-                        'attack_target': action.attack_target
-                    } for robot_id, action in red_action.items()
-                },
-                'blue_action': {
-                    robot_id: {
-                        'navigation_target': list(action.navigation_target),
-                        'navigation_set': action.navigation_set,
-                        'attack_target': action.attack_target
-                    } for robot_id, action in blue_action.items()
-                }
-            }
-            episode_actions.extend([frame_action] * control_steps)
-            
-            # 执行动作
-            with timer(time_stats, 'env_step'):
+                
+                # 执行动作
                 next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
                 next_state = next_obs.to_array()
                 done = terminated or truncated
@@ -135,41 +118,57 @@ def train(
                 transition_dict['dones'].append(done)
 
                 state = next_state
-            
-            # 检查是否结束
-            if done:
-                break
+                
+                # 检查是否结束
+                if done:
+                    break
         
-        # 保存当前回合的动作序列
-        if (episode + 1) % (save_interval) == 0 or episode == 0:
-            episode_log = {
-                'episode': episode,
-                'length': len(transition_dict['states']),
-                'reward': sum(transition_dict['rewards']),
-                'game_state': game.env.game_state.value,
-                'actions': episode_actions
-            }
-            with open(os.path.join(log_dir, f'episode_{time_tag}_{episode+1}.json'), 'w') as f:
-                json.dump(episode_log, f, indent=2)
+        info_queue.put(info)
+        transition_queue.put(transition_dict)
+    
+    # 训练循环
+    for episode in tqdm(range(num_episodes), dynamic_ncols=True):
+        # 创建和启动多个线程
+        threads = []
+        for game in games:
+            thread = threading.Thread(target=game_worker, args=(game,))
+            threads.append(thread)
+            thread.start()
+
+        # 等待所有线程完成
+        for thread in threads:
+            thread.join()
         
+        info_list = []
+        while not info_queue.empty():
+            info_list.append(info_queue.get())
+        transition_list = []
+        while not transition_queue.empty():
+            transition_list.append(transition_queue.get())
+
         # 更新策略
         with timer(time_stats, 'update'):
-            agent_train.update([transition_dict])
+            agent_train.update(transition_list)
         
         # 打印训练进度
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")
-        tqdm.write(f"回合长度: {len(transition_dict['states'])}")
-        tqdm.write(f"剩余时间: {info['remaining_time']:.3f}s")
-        tqdm.write(f"平均奖励: {sum(transition_dict['rewards'])/len(transition_dict['rewards']):.3f}")
-        tqdm.write(f"比赛结果: {game.env.game_state}")
+        # 比赛结果
+        red_wins = sum([1 for info in info_list if info['game_state'] == GameState.RED_TEAM_WIN])
+        blue_wins = sum([1 for info in info_list if info['game_state'] == GameState.BLUE_TEAM_WIN])
+        # draws = sum([1 for info in info_list if info['game_state'] == GameState.DRAW])
+        tqdm.write(f"比赛结果: Red {red_wins:>3} : Blue {blue_wins:>3}")
+        remaining_time_list = [info['remaining_time'] for info in info_list]
+        tqdm.write(f"剩余时间: {sum(remaining_time_list)/len(remaining_time_list):.3f}s")
+        reward_list = [sum(transition['rewards']) for transition in transition_list]
+        tqdm.write(f"平均奖励: {sum(reward_list)/len(reward_list):.3f}")
         
-        # # 打印性能统计
-        # tqdm.write("\n性能统计:")
-        # for key, times in time_stats.items():
-        #     if times:  # 确保有数据
-        #         avg_time = sum(times)
-        #         tqdm.write(f"{key}: {avg_time:.6f}s")
-
+        # 打印性能统计
+        tqdm.write("\n性能统计:")
+        for key, times in time_stats.items():
+            if times:  # 确保有数据
+                avg_time = sum(times) / len(times)
+                tqdm.write(f"{key}: {avg_time:.6f}s")
+        time_stats.clear()
         tqdm.write("=" * 50)
         
         # 保存模型

@@ -218,7 +218,7 @@ class Game(gym.Env):
         else:
             reward_navigation_unmovable = 0.0
         reward_list.append(reward_navigation_unmovable)
-        reward_weight.append(5)
+        reward_weight.append(10)
 
         # # 导航点差异惩罚
         # try:
@@ -232,12 +232,12 @@ class Game(gym.Env):
         # reward_weight.append(10)
 
         # 导航代价
-        if action["RED_3_STANDARD"].navigation_set == 1:
-            reward_navigation_cost = -1.0
-        else:
-            reward_navigation_cost = 0.0
-        reward_list.append(reward_navigation_cost)
-        reward_weight.append(5)
+        # if action["RED_3_STANDARD"].navigation_set == 1:
+        #     reward_navigation_cost = -1.0
+        # else:
+        #     reward_navigation_cost = 0.0
+        # reward_list.append(reward_navigation_cost)
+        # reward_weight.append(5)
 
         # 血量奖励
         our_last_hp = sum([self._last_observation.robot_obs["RED_3_STANDARD"].hp])
@@ -249,13 +249,17 @@ class Game(gym.Env):
         reward_weight.append(20)
 
         # 距离奖励
+        our_last_position = np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        our_position = self.env.get_robot("RED_3_STANDARD").get_position()
+        enemy_last_position = np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        enemy_position = self.env.get_robot("BLUE_3_STANDARD").get_position()
         last_distance = calc_distance(
-            np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]),
-            np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+            our_last_position,
+            enemy_last_position
         )
         current_distance = calc_distance(
-            self.env.get_robot("RED_3_STANDARD").get_position(),
-            self.env.get_robot("BLUE_3_STANDARD").get_position()
+            our_position,
+            enemy_last_position
         )
         reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
         reward_list.append(reward_distance)

@@ -23,6 +23,7 @@ def train(
     log_dir: str = "logs",
     num_episodes: int = 2000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
+    control_frequency: int = 1,
     save_interval: int = 100,
 ):
     """
@@ -71,6 +72,9 @@ def train(
             print(f"已加载对手模型: {rival_model}")
         else:
             print(f"警告: 对手模型 {rival_model} 不存在，将采用随机策略")
+
+    # 计算控制步数
+    control_steps = int(game.metadata['render_fps'] // control_frequency)
     
     # 训练循环
     for episode in tqdm(range(num_episodes), dynamic_ncols=True):
@@ -85,7 +89,7 @@ def train(
         episode_actions = [] # 记录当前回合的动作序列
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
 
-        for step in range(max_steps):
+        for step in range(max_steps // control_steps):
             # 选择动作
             with timer(time_stats, 'act'):
                 red_action = agent_train.take_action(obs.to_array(GameTeam.RED), GameTeam.RED)
@@ -118,11 +122,11 @@ def train(
                     } for robot_id, action in blue_action.items()
                 }
             }
-            episode_actions.append(frame_action)
+            episode_actions.extend([frame_action] * control_steps)
             
             # 执行动作
             with timer(time_stats, 'env_step'):
-                next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action)
+                next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
                 next_state = next_obs.to_array()
                 episode_reward += reward
                 done = terminated or truncated
@@ -161,6 +165,7 @@ def train(
         # 打印训练进度
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")
         tqdm.write(f"回合长度: {episode_length}")
+        tqdm.write(f"剩余时间: {info['remaining_time']:.3f}s")
         tqdm.write(f"平均奖励: {episode_reward/episode_length:.3f}")
         tqdm.write(f"比赛结果: {game.env.game_state}")
         
@@ -178,13 +183,13 @@ def train(
 
 if __name__ == "__main__":
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    BASE_MODEL = "models/ppo_agent_20250708_175723_episode_200.pt"
+    BASE_MODEL = "models/ppo_agent_20250708_225211_episode_200.pt"
     # BASE_MODEL = None
     # RIVAL_MODEL = "models/ppo_agent_20250708_175723_episode_200.pt"
     RIVAL_MODEL = None
     
     # 对抗训练
-    ADVERSARIAL = True
+    ADVERSARIAL = False
 
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
     DEVICE = None

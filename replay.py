@@ -8,11 +8,16 @@ import numpy as np
 from tqdm import tqdm
 from typing import Dict, Any
 
-from base.config import env_config
-from base.environment import Action
-from base.game import Game
-from utils.config.game_config import GameTeam
-from utils.config.robot_config import RobotType
+from config import CURRENT_GAME
+from utils.config.game_config import GameType, GameState
+
+if CURRENT_GAME == GameType.BASE:
+    from base.game import Game
+    from base.environment import Action
+elif CURRENT_GAME == GameType.RMUL:
+    from RMUL.game import GameRMUL as Game
+    from RMUL.environment import ActionRMUL as Action
+
 
 def load_episode(log_file: str) -> Dict[str, Any]:
     """加载回合日志文件"""
@@ -39,7 +44,7 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
         frame = info['render_image']
         height, width = frame.shape[:2]
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        video_writer = cv2.VideoWriter(video_path, fourcc, env_config.FPS, (width, height))
+        video_writer = cv2.VideoWriter(video_path, fourcc, game.metadata['render_fps'], (width, height))
     
     # 回放每一帧
     for frame_action in tqdm(episode_data['actions'], desc="回放动作"):
@@ -61,22 +66,14 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
 
         # 转换动作格式
         red_action = {
-            robot_id: Action(
-                navigation_target=tuple(action['navigation_target']),
-                navigation_set=action['navigation_set'],
-                attack_target=action['attack_target']
-            ) for robot_id, action in frame_action['red_action'].items()
+            robot_id: Action(**action) for robot_id, action in frame_action['red_action'].items()
         }
         
         blue_action = {
-            robot_id: Action(
-                navigation_target=tuple(action['navigation_target']),
-                navigation_set=action['navigation_set'],
-                attack_target=action['attack_target']
-            ) for robot_id, action in frame_action['blue_action'].items()
+            robot_id: Action(**action) for robot_id, action in frame_action['blue_action'].items()
         }
 
-        print(red_action, blue_action)
+        # print(red_action, blue_action)
         
         # 执行动作
         _, _, _, _, info = game.step(red_action, blue_action)
@@ -101,13 +98,10 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
 def main():
     parser = argparse.ArgumentParser(description='回放训练过程中的动作序列')
     parser.add_argument('-l', '--log_file', type=str, default=None, help='日志文件')
-    parser.add_argument('-d', '--delay', type=float, default=None, help='渲染延迟时间（秒）')
+    parser.add_argument('-d', '--delay', type=float, default=0, help='渲染延迟时间（秒）')
     parser.add_argument('-v', '--video', action='store_true', help='是否保存为视频')
     parser.add_argument('--video_dir', type=str, default='videos', help='视频保存目录')
     args = parser.parse_args()
-
-    if args.delay is None:
-        args.delay = 1 / env_config.FPS
     
     if args.log_file is not None:
         # 回放指定回合
@@ -137,9 +131,9 @@ def main():
         
         print("可用的回合：")
         for log_file in sorted(log_files):
-            episode_num = int(log_file.split('_')[1].split('.')[0])
+            episode_no = log_file.replace('\\', '/').split('/')[-1]
             episode_data = load_episode(os.path.join('logs', log_file))
-            print(f"回合 {episode_num}: 长度={episode_data['length']}, 奖励={episode_data['reward']:.2f}, 比赛结果={episode_data['game_state']}")
+            print(f"{episode_no}: \t长度={episode_data['length']}, \t奖励={episode_data['reward']:.2f}, \t比赛结果={GameState(episode_data['game_state']).name}")
 
 if __name__ == "__main__":
     main()

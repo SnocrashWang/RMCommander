@@ -144,28 +144,34 @@ class Game(gym.Env):
         
         return observation, info
     
-    def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
+    def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action], control_steps: int = 1):
         """执行一步动作"""
-        self._frame_start_time = time.perf_counter()
+        reward = 0
+        for _ in range(control_steps):
+            # 记录帧开始时间
+            self._frame_start_time = time.perf_counter()
 
-        # 执行环境步进
-        self.env.step(self.env.dt, red_action, blue_action)
+            # 执行环境步进
+            self.env.step(red_action, blue_action)
         
-        # 获取观察
-        observation = self._get_obs()
-        
-        # 计算奖励（以红队视角）
-        reward = self._get_reward(GameTeam.RED, red_action)
-        
-        # 判断是否结束
-        terminated = self._is_terminated()
-        truncated = self._is_truncated()
-        
-        # 渲染
-        if self._render_mode:
-            render_image = self.render()
-        else:
-            render_image = None
+            # 获取观察
+            observation = self._get_obs()
+            
+            # 计算奖励（以红队视角）
+            reward += self._get_reward(GameTeam.RED, red_action)
+            
+            # 判断是否结束
+            terminated = self._is_terminated()
+            truncated = self._is_truncated()
+            
+            # 渲染
+            if self._render_mode:
+                render_image = self.render()
+            else:
+                render_image = None
+
+            if terminated or truncated:
+                break
         
         # 信息
         info = {

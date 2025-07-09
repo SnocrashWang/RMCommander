@@ -121,14 +121,14 @@ class GameRMUL(gym.Env):
         # 组合观察空间
         observation_low = np.concatenate([
             game_state_remaining_time_space.low,  # 游戏状态
-            game_state_victory_progress_space.low,  # 游戏状态
+            np.tile(game_state_victory_progress_space.low, 2),  # 游戏状态
             np.tile(robot_state_space.low, len(red_robots)),  # 红队机器人
             np.tile(robot_state_space.low, len(blue_robots))  # 蓝队机器人
         ])
         
         observation_high = np.concatenate([
             game_state_remaining_time_space.high,  # 游戏状态
-            game_state_victory_progress_space.high,  # 游戏状态
+            np.tile(game_state_victory_progress_space.high, 2),  # 游戏状态
             np.tile(robot_state_space.high, len(red_robots)),  # 红队机器人
             np.tile(robot_state_space.high, len(blue_robots))  # 蓝队机器人
         ])
@@ -155,22 +155,33 @@ class GameRMUL(gym.Env):
         
         return observation, info
     
-    def step(self, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL]):
+    def step(self, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL], control_steps: int = 1):
         """执行一步动作"""
-        self._frame_start_time = time.perf_counter()
+        reward = 0
+        for _ in range(control_steps):
+            # 记录帧开始时间
+            self._frame_start_time = time.perf_counter()
 
-        # 执行环境步进
-        self.env.step(self.env.dt, red_action, blue_action)
-        
-        # 获取观察
-        observation = self._get_obs()
-        
-        # 计算奖励（以红队视角）
-        reward = self._get_reward(GameTeam.RED, red_action)
-        
-        # 判断是否结束
-        terminated = self._is_terminated()
-        truncated = self._is_truncated()
+            # 执行环境步进
+            self.env.step(self.env.dt, red_action, blue_action)
+            
+            # 获取观察
+            observation = self._get_obs()
+            
+            # 计算奖励（以红队视角）
+            reward += self._get_reward(GameTeam.RED, red_action)
+            
+            # 判断是否结束
+            terminated = self._is_terminated()
+            truncated = self._is_truncated()
+
+            if self._render_mode == "human":
+                render_image = self.render()
+            else:
+                render_image = None
+
+            if terminated or truncated:
+                break
         
         # 信息
         info = {
@@ -179,9 +190,6 @@ class GameRMUL(gym.Env):
             'victory_progress': self.env._victory_progress,
             'economics': self.env._economics,
         }
-        
-        if self._render_mode == "human":
-            self.render()
         
         return observation, reward, terminated, truncated, info
     

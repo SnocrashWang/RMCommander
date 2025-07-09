@@ -158,11 +158,17 @@ class Robot:
 
     def set_target(self, target_pos):
         """设置目标位置并计算路径"""
-        self.target_pos = target_pos
+        # 如果目标位置与当前位置相同，则不再次计算路径
+        if target_pos == self.target_pos:
+            return
+        else:
+            self.target_pos = target_pos
+
+        # 如果网格地图为空
         if self.grid_map is None:
             self.path_points = [target_pos]
             self.current_path_idx = 0
-            return
+            raise ValueError("网格地图为空，无法计算路径")
 
         # 使用A*算法规划路径
         start_grid = world_to_grid(self.get_position())
@@ -209,7 +215,7 @@ class Robot:
                 self._body.velocity = (direction.x, direction.y)
         else:
             self._body.velocity = (0, 0)
-            self.target_pos = None
+            # self.target_pos = None
 
         # 结算热量冷却
         self.heat = max(0, self.heat - self.cool_down * dt)

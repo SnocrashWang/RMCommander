@@ -146,7 +146,7 @@ class Environment:
         self._init_robot_grid_maps(env_config)
 
         # 性能统计
-        self.time_stats = defaultdict(list)
+        self._time_stats = defaultdict(list)
 
     def _create_robots(self):
         """根据配置创建机器人"""
@@ -191,26 +191,26 @@ class Environment:
         self.game_state = GameState.PLAYING
         self._remaining_time = env_config.GAME_TIME_LIMIT
 
-    def step(self, dt: float, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
+    def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
         """推进环境仿真"""
         # 更新物理引擎
-        with timer(self.time_stats, 'physics_engine_step'):
-            self.physics_engine.step(dt)
+        with timer(self._time_stats, 'physics_engine_step'):
+            self.physics_engine.step(self.dt)
         
         # 应用动作
-        with timer(self.time_stats, 'apply_team_action'):
+        with timer(self._time_stats, 'apply_team_action'):
             self._apply_team_action(GameTeam.RED, red_action)
             self._apply_team_action(GameTeam.BLUE, blue_action)
 
         # 更新机器人状态
-        with timer(self.time_stats, 'robot_step'):
+        with timer(self._time_stats, 'robot_step'):
             for robot in self.robots.values():
-                robot.step(dt)
+                robot.step(self.dt)
 
         # 更新游戏状态
-        with timer(self.time_stats, 'game_state_manager_update'):
+        with timer(self._time_stats, 'game_state_update'):
             # 倒计时减少
-            self._remaining_time = max(0, self._remaining_time - dt)
+            self._remaining_time = max(0, self._remaining_time - self.dt)
             # 检查胜利条件
             red_hp = self.robots["RED_3_STANDARD"].hp
             blue_hp = self.robots["BLUE_3_STANDARD"].hp
@@ -228,30 +228,52 @@ class Environment:
                 else:
                     self.game_state = GameState.DRAW
 
+        # # 打印性能统计
+        # print("\n性能统计:")
+        # for key, times in self._time_stats.items():
+        #     if times:  # 确保有数据
+        #         avg_time = sum(times) / len(times)
+        #         print(f"{key}: {avg_time:.6f}s -- {times}")
+        # print("=" * 50)
+        # self._time_stats.clear()
+
     def _apply_team_action(self, team: GameTeam, action: Dict[str, Action]):
         """应用动作"""
+        def apply_robot_action_attack(robot: Robot, robot_action: Action):
+            target_type = RobotType(robot_action.attack_target)
+            # 目标为空
+            if target_type == RobotType.NONE:
+                return
+            target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
+            # 目标不存在
+            if target_robot is None:
+                return
+            # 判断完整视野
+            if not attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
+                return
+            # 攻击
+            if not robot.attack(target_robot) or target_robot.is_alive:
+                return
+            
+            # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
+            if robot.robot_type == RobotType.SENTRY:
+                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
+                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - killer_level)))
+                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
+                # 经验分享
+                for robot in robot_alive:
+                    robot.update_exp(int(kill_exp / len(robot_alive)))
+            else:
+                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
+                robot.update_exp(int(kill_exp))
+
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
+            
             if robot_action.navigation_set:
                 robot.set_target(robot_action.navigation_target)
-            target_type = RobotType(robot_action.attack_target)
-            if target_type != RobotType.NONE:
-                target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
-                if target_robot is not None:
-                    # 判断完整视野
-                    if attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
-                        if robot.attack(target_robot) and not target_robot.is_alive:
-                            # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
-                            if robot.robot_type == RobotType.SENTRY:
-                                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
-                                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - killer_level)))
-                                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
-                                # 经验分享
-                                for robot in robot_alive:
-                                    robot.update_exp(int(kill_exp / len(robot_alive)))
-                            else:
-                                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
-                                robot.update_exp(int(kill_exp))
+
+            apply_robot_action_attack(robot, robot_action)
     
     def get_top_bar_info(self) -> Dict[str, Any]:
         """获取渲染顶部信息"""

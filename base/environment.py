@@ -1,8 +1,10 @@
 import numpy as np
+import torch
 from dataclasses import dataclass
 from collections import defaultdict
 from typing import List, Dict, Optional, Tuple, Any
 
+from config import DEVICE
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotConfig, ROBOT_ID, RobotType
@@ -17,84 +19,91 @@ from base.config.robot_config import BASE_ROBOT_CONFIGS
 
 @dataclass
 class Action:
-    navigation_target: Tuple[float, float] = (0.0, 0.0)
-    navigation_set: int = 0
-    attack_target: int = 0
+    navigation_target: torch.Tensor = torch.tensor([0.0, 0.0], dtype=torch.float, device=DEVICE)
+    navigation_set: torch.Tensor = torch.tensor(0, dtype=torch.int, device=DEVICE)
+    attack_target: torch.Tensor = torch.tensor(0, dtype=torch.int, device=DEVICE)
 
     def __post_init__(self):
         """初始化"""
         try:
-            if isinstance(self.navigation_target, np.ndarray):
-                self.navigation_target = tuple(self.navigation_target.astype(float))
-            else:
-                self.navigation_target = tuple(self.navigation_target)
+            if not isinstance(self.navigation_target, torch.Tensor):
+                self.navigation_target = torch.tensor(self.navigation_target, dtype=torch.float, device=DEVICE)
         except:
-            self.navigation_target = (0.0, 0.0)
+            self.navigation_target = torch.tensor([0.0, 0.0], dtype=torch.float, device=DEVICE)
+            raise ValueError("navigation_target: ", self.navigation_target)
         try:
-            self.navigation_set = int(self.navigation_set)
+            if not isinstance(self.navigation_set, torch.Tensor):
+                self.navigation_set = torch.tensor(self.navigation_set, dtype=torch.int, device=DEVICE)
         except:
-            self.navigation_set = 0
+            self.navigation_set = torch.tensor(0, dtype=torch.int, device=DEVICE)
+            raise ValueError("navigation_set: ", self.navigation_set)
         try:
-            self.attack_target = int(self.attack_target)
+            if not isinstance(self.attack_target, torch.Tensor):
+                self.attack_target = torch.tensor(self.attack_target, dtype=torch.int, device=DEVICE)
         except:
-            self.attack_target = 0
+            self.attack_target = torch.tensor(0, dtype=torch.int, device=DEVICE)
+            raise ValueError("attack_target: ", self.attack_target)
 
-    def to_array(self) -> np.ndarray:
+    def to_array(self) -> torch.Tensor:
         """将所有的属性值转换为一个NumPy数组"""
-        return np.array([
-            *self.navigation_target,
-            self.navigation_set,
-            self.attack_target
-        ])
+        return torch.cat([
+            self.navigation_target,
+            self.navigation_set.unsqueeze(0),
+            self.attack_target.unsqueeze(0),
+        ], dim=0)
 
 @dataclass
 class GameObs:
-    remaining_time: float
+    remaining_time: torch.Tensor
 
-    def __init__(self, remaining_time: float):
+    def __post_init__(self):
         """初始化"""
-        self.remaining_time = remaining_time
+        try:
+            if not isinstance(self.remaining_time, torch.Tensor):
+                self.remaining_time = torch.tensor(self.remaining_time, dtype=torch.float, device=DEVICE)
+        except:
+            self.remaining_time = torch.tensor(0, dtype=torch.float, device=DEVICE)
+            raise ValueError("remaining_time: ", self.remaining_time)
 
-    def to_array(self) -> np.ndarray:
+    def to_array(self) -> torch.Tensor:
         """将所有的属性值转换为一个NumPy数组"""
-        return np.array([
-            self.remaining_time,
-        ])
+        return torch.cat([
+            self.remaining_time.unsqueeze(0),
+        ], dim=0)
 
 @dataclass
 class RobotObs:
-    position: Tuple[float, float]
-    # orientation: float
-    chassis_property_type: int
-    gimbal_property_type: int
-    level: int
-    exp: float
-    hp: float
-    heat: float
+    position: torch.Tensor
+    # orientation: torch.Tensor
+    chassis_property_type: torch.Tensor
+    gimbal_property_type: torch.Tensor
+    level: torch.Tensor
+    exp: torch.Tensor
+    hp: torch.Tensor
+    heat: torch.Tensor
 
     def __init__(self, robot: Robot):
         """初始化"""
-        self.position = robot.position
-        self.position = (self.position[0] / env_config.FIELD_WIDTH, self.position[1] / env_config.FIELD_HEIGHT)
-        self.chassis_property_type = robot.chassis_property_type.value
-        self.gimbal_property_type = robot.gimbal_property_type.value
+        self.position = robot.position / torch.stack([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT], dim=0)
+        # self.chassis_property_type = robot.chassis_property_type.value
+        # self.gimbal_property_type = robot.gimbal_property_type.value
         self.level = robot.level
-        self.exp = robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1
+        self.exp = robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < LEVEL_NEED_EXP.shape[0] else 1
         self.hp = robot.hp / robot.max_hp
         self.heat = robot.heat / robot.max_heat
 
-    def to_array(self) -> np.ndarray:
+    def to_array(self) -> torch.Tensor:
         """将所有的属性值转换为一个NumPy数组"""
-        return np.array([
-            *self.position,
+        return torch.cat([
+            self.position,
             # self.orientation,
-            self.chassis_property_type,
-            self.gimbal_property_type,
-            self.level,
-            self.exp,
-            self.hp,
-            self.heat,
-        ])
+            # self.chassis_property_type,
+            # self.gimbal_property_type,
+            self.level.unsqueeze(0),
+            self.exp.unsqueeze(0),
+            self.hp.unsqueeze(0),
+            self.heat.unsqueeze(0),
+        ], dim=0)
 
 @dataclass
 class Observation:
@@ -110,7 +119,7 @@ class Observation:
         else:
             robot_obs = {**blue_robot_obs, **red_robot_obs}
 
-        return np.concatenate([
+        return torch.cat([
             self.game_obs.to_array(),
             *[robot_obs.to_array() for _, robot_obs in robot_obs.items()]
         ])
@@ -228,7 +237,8 @@ class Environment:
     def _apply_team_action(self, team: GameTeam, action: Dict[str, Action]):
         """应用动作"""
         def apply_robot_action_attack(robot: Robot, robot_action: Action):
-            target_type = RobotType(robot_action.attack_target)
+            # FIX: 这里暂时不得不保留设备转换
+            target_type = RobotType(robot_action.attack_target.item())
             # 目标为空
             if target_type == RobotType.NONE:
                 return

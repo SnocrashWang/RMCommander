@@ -1,13 +1,16 @@
+import torch
+
+from config import DEVICE
 from utils.utils import get_reverse_obstacle_config
 
 ENV_NAME = "solo"
 
 # 仿真配置
-FPS = 60
+FPS = torch.tensor(60, dtype=torch.int, device=DEVICE)
 
 # 场地尺寸（米）
-FIELD_WIDTH = 5.0
-FIELD_HEIGHT = 5.0
+FIELD_WIDTH = torch.tensor(5.0, dtype=torch.float, device=DEVICE)
+FIELD_HEIGHT = torch.tensor(5.0, dtype=torch.float, device=DEVICE)
 
 # 障碍物
 OBSTACLES = [
@@ -23,4 +26,4 @@ blue_obstacle = get_reverse_obstacle_config(red_obstacle, FIELD_WIDTH, FIELD_HEI
 OBSTACLES.append(red_obstacle)
 OBSTACLES.append(blue_obstacle)
 
-GAME_TIME_LIMIT = 60  # 游戏时间限制（秒）
+GAME_TIME_LIMIT = torch.tensor(60, dtype=torch.int, device=DEVICE)  # 游戏时间限制（秒）

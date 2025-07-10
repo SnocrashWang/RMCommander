@@ -1,10 +1,13 @@
 import math
 import pygame
-from visualization.config import render_config
+import torch
+
+from config import DEVICE
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameState, GameTeam
 from utils.config.robot_config import ROBOT_ID
 from utils.utils import meters_to_pixels, draw_dashed_line, second2minute, get_tangent_points, opposite_team
+from visualization.config import render_config
 
 
 class Renderer:
@@ -32,24 +35,23 @@ class Renderer:
         self.font_small = pygame.font.SysFont("consolas", 16, bold=True)
         self.font_tiny = pygame.font.SysFont("consolas", 9, bold=True)
 
+        # 绘制场地，仅在初始化时
+        self.screen_field.fill((0, 0, 0, 0))
+        # # 绘制增益区域
+        # if hasattr(env, "buff_zone"):
+        #     self._draw_buff_zone(env)
+        # 绘制四周墙壁
+        self._draw_walls()
+        # 绘制障碍物
+        self._draw_obstacles(env_config.OBSTACLES)
+
     def render(self, env) -> pygame.Surface:
         """渲染环境"""
         # 清空屏幕
         screen = pygame.Surface((self.screen_width, self.screen_height))
         screen.fill(render_config.COLOR_BACKGROUND)
-        self.screen_field.fill((0, 0, 0, 0))
         self.screen_robot.fill((0, 0, 0, 0))
         self.screen_note.fill((0, 0, 0, 0))
-
-        # 绘制增益区域
-        if hasattr(env, "buff_zone"):
-            self._draw_buff_zone(env)
-
-        # 绘制四周墙壁
-        self._draw_walls()
-
-        # 绘制障碍物
-        self._draw_obstacles(env.obstacles)
 
         # 绘制所有机器人
         for robot in env.robots.values():
@@ -98,22 +100,30 @@ class Renderer:
             pygame.draw.polygon(self.screen_field, render_config.COLOR_CENTER_ZONE, vertices)
 
     def _draw_walls(self):
-        """绘制围墙"""
+        """
+        绘制围墙
+        仅初始化时调用，允许设备转移
+        """
+        width = meters_to_pixels(self.env_config.FIELD_WIDTH)
+        height = meters_to_pixels(self.env_config.FIELD_HEIGHT)
         # 上墙
-        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, 0, meters_to_pixels(self.env_config.FIELD_WIDTH), 10))
+        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, 0, width, 10))
         # 下墙
-        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, meters_to_pixels(self.env_config.FIELD_HEIGHT) - 10, meters_to_pixels(self.env_config.FIELD_WIDTH), 10))
+        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, height - 10, width, 10))
         # 左墙
-        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, 0, 10, meters_to_pixels(self.env_config.FIELD_HEIGHT)))
+        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, 0, 10, height))
         # 右墙
-        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (meters_to_pixels(self.env_config.FIELD_WIDTH) - 10, 0, 10, meters_to_pixels(self.env_config.FIELD_HEIGHT)))
+        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (width - 10, 0, 10, height))
 
     def _draw_obstacles(self, obstacles):
-        """绘制所有障碍物为有厚度的矩形"""
+        """
+        绘制所有障碍物为有厚度的矩形
+        仅初始化时调用，允许设备转移
+        """
         for obs in obstacles:
-            x1, y1 = obs.p1
-            x2, y2 = obs.p2
-            thickness = obs.thickness
+            x1, y1 = obs["p1"]
+            x2, y2 = obs["p2"]
+            thickness = obs["thickness"]
             dx, dy = x2 - x1, y2 - y1
             length = math.hypot(dx, dy)
             if length == 0:
@@ -197,14 +207,16 @@ class Renderer:
         # 经验条
         exp_bar_x = x - bar_width / 2
         exp_bar_y = y - scale * 1.5
-        if robot.level < len(LEVEL_NEED_EXP):
+        cur_exp = (robot.exp - LEVEL_NEED_EXP[torch.minimum(robot.level - 1, torch.tensor(LEVEL_NEED_EXP.shape[0] - 2, dtype=torch.int, device=DEVICE))]).item()
+        if robot.level < LEVEL_NEED_EXP.shape[0]:
             exp_need_to_level_up = LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]
         else:
             exp_need_to_level_up = LEVEL_NEED_EXP[robot.level] - LEVEL_NEED_EXP[robot.level - 1]
-        current_exp_width = int(bar_width * min(1, (robot.exp - LEVEL_NEED_EXP[min(robot.level, len(LEVEL_NEED_EXP) - 1)]) / exp_need_to_level_up))
+        exp_need_to_level_up = exp_need_to_level_up.item()
+        current_exp_width = int(bar_width * min(1, cur_exp / exp_need_to_level_up))
         pygame.draw.rect(self.screen_note, render_config.COLOR_EXP_BAR,
                         (exp_bar_x, exp_bar_y, current_exp_width, bar_height))
-        exp_text = self.font_tiny.render(f"{robot.exp - LEVEL_NEED_EXP[min(robot.level, len(LEVEL_NEED_EXP) - 1)]:>3d}/{exp_need_to_level_up:>3d}", True, render_config.COLOR_TEXT)
+        exp_text = self.font_tiny.render(f"{cur_exp:>3d}/{exp_need_to_level_up:>3d}", True, render_config.COLOR_TEXT)
         self.screen_note.blit(exp_text, (exp_bar_x + bar_width / 2 - exp_text.get_width() / 2, exp_bar_y + bar_height / 2 - exp_text.get_height() / 2))
         # 等级
         level_text = self.font_tiny.render(f"Lv.{robot.level:>2d}", True, render_config.COLOR_TEXT)

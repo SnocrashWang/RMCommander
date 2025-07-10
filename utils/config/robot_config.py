@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
+
 from utils.config.game_config import GameTeam
 from utils.config.exp_prop_config import *
 
@@ -42,11 +43,11 @@ class RobotConfig:
     """机器人配置类"""
     team: GameTeam
     robot_type: RobotType
-    init_pos: Tuple[float, float]
+    init_pos: torch.Tensor
     chassis_property_type: CHASSIS_PROPERTY_TYPE = CHASSIS_PROPERTY_TYPE.DEFAULT
     gimbal_property_type: GIMBAL_PROPERTY_TYPE = GIMBAL_PROPERTY_TYPE.DEFAULT
-    forward_speed_efficiency: float = 0.02
-    rotation_speed_efficiency: float = 2.0
-    radius: float = 0.25
-    max_ammo: int = 200
-    ammo_allowed: int = 0
+    forward_speed_efficiency: torch.Tensor = torch.tensor(0.02, dtype=torch.float, device=DEVICE)
+    rotation_speed_efficiency: torch.Tensor = torch.tensor(2.0, dtype=torch.float, device=DEVICE)
+    radius: torch.Tensor = torch.tensor(0.25, dtype=torch.float, device=DEVICE)
+    max_ammo: torch.Tensor = torch.tensor(200, dtype=torch.int, device=DEVICE)
+    ammo_allowed: torch.Tensor = torch.tensor(0, dtype=torch.int, device=DEVICE)

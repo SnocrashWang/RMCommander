@@ -1,6 +1,7 @@
-import math
 import pygame
+import math
 import time
+import torch
 from contextlib import contextmanager
 from typing import List, Tuple
 
@@ -36,13 +37,13 @@ def second2minute(seconds: int) -> Tuple[int, int]:
     sec = seconds % 60
     return min, sec
 
-def calc_distance(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
+def calc_distance(p1: torch.Tensor, p2: torch.Tensor) -> torch.Tensor:
     """计算两点之间的距离"""
-    return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
+    return torch.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
-def opposite_position(p: Tuple[float, float], field_width: float, field_height: float) -> Tuple[float, float]:
+def opposite_position(p: torch.Tensor, field_width: torch.Tensor, field_height: torch.Tensor) -> torch.Tensor:
     """计算相反位置"""
-    return field_width - p[0], field_height - p[1]
+    return torch.stack([field_width - p[0], field_height - p[1]], dim=0)
 
 def draw_dashed_line(
     surface: pygame.Surface,

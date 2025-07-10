@@ -1,10 +1,12 @@
 import pygame
 import time
 import numpy as np
+import torch
 import gymnasium as gym
 from gymnasium import spaces
 from typing import List, Dict, Optional, Tuple, Any
 
+from config import DEVICE
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType
@@ -17,7 +19,7 @@ from base.config.robot_config import BASE_ROBOT_CONFIGS
 from base.environment import Action, GameObs, RobotObs, Observation, Environment
 
 class Game(gym.Env):
-   
+    
     metadata = {
         "render_modes": ["human", "rgb_array"],
         "render_fps": env_config.FPS,
@@ -65,7 +67,7 @@ class Game(gym.Env):
             # 导航动作：x, y坐标
             navigation_target_space = spaces.Box(
                 low=np.array([0.0, 0.0], dtype=np.float32),
-                high=np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT], dtype=np.float32),
+                high=np.array([env_config.FIELD_WIDTH.item(), env_config.FIELD_HEIGHT.item()], dtype=np.float32),
                 dtype=np.float32
             )
             
@@ -94,9 +96,14 @@ class Game(gym.Env):
         )
         
         # 机器人状态：位置(2) + 属性(2) + 等级(1) + 经验(1) + 血量(1) + 热量(1) = 8维
+        # robot_state_space = spaces.Box(
+        #     low=np.array([0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
+        #     high=np.array([1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
+        #     dtype=np.float32
+        # )
         robot_state_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.array([0.0, 0.0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 10, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
         
@@ -158,7 +165,7 @@ class Game(gym.Env):
             observation = self._get_obs()
             
             # 计算奖励（以红队视角）
-            reward += self._get_reward(GameTeam.RED, red_action)
+            reward += self._get_reward(observation, GameTeam.RED, red_action)
             
             # 判断是否结束
             terminated = self._is_terminated()
@@ -198,27 +205,27 @@ class Game(gym.Env):
         
         return Observation(game_state, robot_state)
     
-    def _get_reward(self, team: GameTeam, action: Dict[str, Action]) -> float:
+    def _get_reward(self, observation: Observation, team: GameTeam, action: Dict[str, Action]) -> float:
         """获取奖励"""
-        reward_list = []
-        reward_weight = []
+        reward_list = torch.tensor([], dtype=torch.float, device=DEVICE)
+        reward_weight = torch.tensor([], dtype=torch.float, device=DEVICE)
 
         # 时间消耗惩罚
         reward_time = - self.dt * 1
-        reward_list.append(reward_time)
-        reward_weight.append(5)
+        reward_list = torch.cat([reward_list, reward_time.unsqueeze(0)], dim=0)
+        reward_weight = torch.cat([reward_weight, torch.tensor(5, dtype=torch.float, device=DEVICE).unsqueeze(0)], dim=0)
 
         # 不可行导航点惩罚
         if action["RED_3_STANDARD"].navigation_set == 1:
             col, row = world_to_grid(action["RED_3_STANDARD"].navigation_target)
             if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
-                reward_navigation_unmovable = -1.0
+                reward_navigation_unmovable = torch.tensor(-1.0, dtype=torch.float, device=DEVICE)
             else:
-                reward_navigation_unmovable = 1.0
+                reward_navigation_unmovable = torch.tensor(1.0, dtype=torch.float, device=DEVICE)
         else:
-            reward_navigation_unmovable = 0.0
-        reward_list.append(reward_navigation_unmovable)
-        reward_weight.append(10)
+            reward_navigation_unmovable = torch.tensor(0.0, dtype=torch.float, device=DEVICE)
+        reward_list = torch.cat([reward_list, reward_navigation_unmovable.unsqueeze(0)], dim=0)
+        reward_weight = torch.cat([reward_weight, torch.tensor(10, dtype=torch.float, device=DEVICE).unsqueeze(0)], dim=0)
 
         # # 导航点差异惩罚
         # try:
@@ -240,18 +247,18 @@ class Game(gym.Env):
         # reward_weight.append(5)
 
         # 血量奖励
-        our_last_hp = sum([self._last_observation.robot_obs["RED_3_STANDARD"].hp])
-        our_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == team])
-        enemy_last_hp = sum([self._last_observation.robot_obs["BLUE_3_STANDARD"].hp])
-        enemy_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == opposite_team(team)])        
-        reward_hp = np.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
-        reward_list.append(reward_hp)
-        reward_weight.append(20)
+        our_last_hp = self._last_observation.robot_obs["RED_3_STANDARD"].hp
+        our_hp = observation.robot_obs["RED_3_STANDARD"].hp
+        enemy_last_hp = self._last_observation.robot_obs["BLUE_3_STANDARD"].hp
+        enemy_hp = observation.robot_obs["BLUE_3_STANDARD"].hp
+        reward_hp = torch.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
+        reward_list = torch.cat([reward_list, reward_hp.unsqueeze(0)], dim=0)
+        reward_weight = torch.cat([reward_weight, torch.tensor(20, dtype=torch.float, device=DEVICE).unsqueeze(0)], dim=0)
 
         # 距离奖励
-        our_last_position = np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        our_last_position = self._last_observation.robot_obs["RED_3_STANDARD"].position * torch.stack([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT], dim=0)
         our_position = self.env.get_robot("RED_3_STANDARD").position
-        enemy_last_position = np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        enemy_last_position = self._last_observation.robot_obs["BLUE_3_STANDARD"].position * torch.stack([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT], dim=0)
         enemy_position = self.env.get_robot("BLUE_3_STANDARD").position
         last_distance = calc_distance(
             our_last_position,
@@ -261,23 +268,23 @@ class Game(gym.Env):
             our_position,
             enemy_last_position
         )
-        reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
-        reward_list.append(reward_distance)
-        reward_weight.append(10)
+        reward_distance = torch.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
+        reward_list = torch.cat([reward_list, reward_distance.unsqueeze(0)], dim=0)
+        reward_weight = torch.cat([reward_weight, torch.tensor(10, dtype=torch.float, device=DEVICE).unsqueeze(0)], dim=0)
         
         # 游戏结束奖励
         if self.env.game_state == GameState.RED_TEAM_WIN:
-            reward_win = 100.0
+            reward_win = torch.tensor(100.0, dtype=torch.float, device=DEVICE)
         elif self.env.game_state == GameState.BLUE_TEAM_WIN:
-            reward_win = -100.0
+            reward_win = torch.tensor(-100.0, dtype=torch.float, device=DEVICE)
         else:
-            reward_win = 0.0
+            reward_win = torch.tensor(0.0, dtype=torch.float, device=DEVICE)
         
         # 更新状态记录
         self._last_observation = self._get_obs()
         self._last_action = action
 
-        reward = np.average(reward_list, weights=reward_weight)
+        reward = torch.sum(reward_list * reward_weight) / torch.sum(reward_weight)
         # print(reward_list, reward_win, reward)
         return reward + reward_win
 

@@ -1,15 +1,18 @@
+import torch
+from config import DEVICE
+
 class SmallBullet():
     """小子弹"""
-    DAMAGE: int = 10
-    HEAT: int = 10
-    PRICE: int = 1
-    EXP: int = 1
-    PURCHASE_NUM: int = 10
+    DAMAGE: torch.Tensor = torch.tensor(10, dtype=torch.int, device=DEVICE)
+    HEAT: torch.Tensor = torch.tensor(10, dtype=torch.int, device=DEVICE)
+    PRICE: torch.Tensor = torch.tensor(1, dtype=torch.int, device=DEVICE)
+    EXP: torch.Tensor = torch.tensor(1, dtype=torch.int, device=DEVICE)
+    PURCHASE_NUM: torch.Tensor = torch.tensor(10, dtype=torch.int, device=DEVICE)
 
 class LargeBullet():
     """大子弹"""
-    DAMAGE: int = 100
-    HEAT: int = 100
-    PRICE: int = 10
-    EXP: int = 10
-    PURCHASE_NUM: int = 1
+    DAMAGE: torch.Tensor = torch.tensor(100, dtype=torch.int, device=DEVICE)
+    HEAT: torch.Tensor = torch.tensor(100, dtype=torch.int, device=DEVICE)
+    PRICE: torch.Tensor = torch.tensor(10, dtype=torch.int, device=DEVICE)
+    EXP: torch.Tensor = torch.tensor(10, dtype=torch.int, device=DEVICE)
+    PURCHASE_NUM: torch.Tensor = torch.tensor(1, dtype=torch.int, device=DEVICE)

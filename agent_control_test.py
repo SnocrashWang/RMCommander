@@ -115,8 +115,7 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
 
     if video_writer:
         video_writer.release()
-    pygame.quit()
-    sys.exit()
+    game.close()
 
 def main():
     parser = argparse.ArgumentParser(description='')

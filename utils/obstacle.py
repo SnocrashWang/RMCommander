@@ -1,9 +1,7 @@
-import pymunk
 import math
-from typing import Optional
 
 class Obstacle:
-    def __init__(self, obstacle_config, physics_engine: Optional[pymunk.Space] = None):
+    def __init__(self, obstacle_config):
         # obstacle_config 需要包含: p1, p2, thickness
         self.p1 = obstacle_config["p1"]
         self.p2 = obstacle_config["p2"]
@@ -23,18 +21,3 @@ class Obstacle:
             (half_length, half_thickness),    # 右上
             (-half_length, half_thickness)    # 左上
         ]
-
-        # 创建物理体
-        body = pymunk.Body(body_type=pymunk.Body.STATIC)
-        body.position = self.center
-        # 设置旋转角度
-        body.angle = self.angle
-        
-        # 创建多边形形状
-        shape = pymunk.Poly(body, self.vertices)
-        shape.elasticity = 0.8
-        shape.friction = 0.5
-
-
-        if physics_engine:
-            physics_engine.add(body, shape)

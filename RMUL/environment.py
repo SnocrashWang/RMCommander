@@ -91,7 +91,7 @@ class RobotObsRMUL:
 
     def __init__(self, robot: Robot):
         """初始化"""
-        self.position = robot.get_position()
+        self.position = robot.position
         self.position = (self.position[0] / env_config.FIELD_WIDTH, self.position[1] / env_config.FIELD_HEIGHT)
         self.chassis_property_type = robot.chassis_property_type.value
         self.gimbal_property_type = robot.gimbal_property_type.value
@@ -190,13 +190,13 @@ class EnvironmentRMUL(Environment):
         # 检查中心区域占领情况
         robots_in_center_zone = {GameTeam.RED: False, GameTeam.BLUE: False} # 机器人是否在中心区域
         for robot in self.robots.values():
-            if robot.is_alive and point_in_polygon(robot.get_position(), self.buff_zone["center"]):
+            if robot.is_alive and point_in_polygon(robot.position, self.buff_zone["center"]):
                 robots_in_center_zone[robot.team] = True
         
         # 检查补给区占领情况
         for robot in self.robots.values():
-            if robot.team == GameTeam.RED and point_in_polygon(robot.get_position(), self.buff_zone["boot_red"]) or \
-                robot.team == GameTeam.BLUE and point_in_polygon(robot.get_position(), self.buff_zone["boot_blue"]):
+            if robot.team == GameTeam.RED and point_in_polygon(robot.position, self.buff_zone["boot_red"]) or \
+                robot.team == GameTeam.BLUE and point_in_polygon(robot.position, self.buff_zone["boot_blue"]):
                 # 解锁发射机构
                 robot.gun_locked = False
                 # 为防止血量计算中出现小数，仅在整数秒时一次性回复血量
@@ -279,7 +279,7 @@ class EnvironmentRMUL(Environment):
                 target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
                 if target_robot is not None:
                     # 判断完整视野
-                    if attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
+                    if attack_sight_clear(robot.position, target_robot.position, target_robot.radius, self.obstacles, self.robots.values()):
                         if robot.attack(target_robot) and not target_robot.is_alive:
                             # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
                             if robot.robot_type == RobotType.SENTRY:
@@ -298,7 +298,7 @@ class EnvironmentRMUL(Environment):
             # 购买允许发弹量
             if robot_action.purchase and robot.robot_type != RobotType.SENTRY:
                 if self._economics[team] >= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM:
-                    if point_in_polygon(robot.get_position(), self.buff_zone["boot_red"] if team == GameTeam.RED else self.buff_zone["boot_blue"]):
+                    if point_in_polygon(robot.position, self.buff_zone["boot_red"] if team == GameTeam.RED else self.buff_zone["boot_blue"]):
                         robot.ammo_allowed += robot.bullet.PURCHASE_NUM
                         self._economics[team] -= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM
 
@@ -317,7 +317,7 @@ class EnvironmentRMUL(Environment):
     #     #     reward += 0.1
         
     #     # 中心区域距离奖励
-    #     robot_pos = red_robot.get_position()
+    #     robot_pos = red_robot.position
     #     distance = math.sqrt((robot_pos[0] - env_config.FIELD_WIDTH / 2) ** 2 + (robot_pos[1] - env_config.FIELD_HEIGHT / 2) ** 2)
     #     reward_distance = 10 * (1 - distance / env_config.FIELD_WIDTH)
     #     reward += reward_distance

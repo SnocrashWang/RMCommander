@@ -131,7 +131,7 @@ class Renderer:
 
     def _draw_robot(self, robot):
         """绘制机器人"""
-        position = robot.get_position()
+        position = robot.position
         x = meters_to_pixels(position[0])
         y = meters_to_pixels(position[1])
         radius = meters_to_pixels(robot.radius)
@@ -223,8 +223,8 @@ class Renderer:
 
     def _draw_attack_sight_line(self, robot, target_robot):
         """绘制视野"""
-        p1 = robot.get_position()
-        p2 = target_robot.get_position()
+        p1 = robot.position
+        p2 = target_robot.position
         r = robot.radius
         tangents = get_tangent_points(p1, p2, r)
         if len(tangents) < 2:
@@ -365,7 +365,7 @@ class Renderer:
 
     def _draw_path(self, robot):
         """绘制路径"""
-        point1 = robot.get_position()
+        point1 = robot.position
         for i in range(robot.current_path_idx, len(robot.path_points) - 1):
             point2 = robot.path_points[i]
             # 将世界坐标转换为像素坐标，并加上半个栅格的大小使其居中

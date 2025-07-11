@@ -4,8 +4,7 @@ from datetime import datetime
 from tqdm import tqdm
 from collections import defaultdict
 import random
-import threading
-import queue
+import concurrent.futures
 
 from agents.ppo_agent import PPOAgent
 from base.config import env_config
@@ -24,7 +23,8 @@ def train(
     device: str = None,
     model_dir: str = "models",
     log_dir: str = "logs",
-    num_games: int = 4,
+    batch_size: int = 16,
+    num_workers: int = 4,
     num_episodes: int = 2000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
     control_frequency: int = 2,
@@ -48,8 +48,7 @@ def train(
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # 创建环境和智能体
-    games = [Game() for _ in range(num_games)]
-    state_size = games[0].observation_space.shape[0]
+    state_size = Game().observation_space.shape[0]
     agent_train = PPOAgent(
         state_dim=state_size,
         device=device
@@ -78,15 +77,13 @@ def train(
             print(f"警告: 对手模型 {rival_model} 不存在，将采用随机策略")
 
     # 计算控制步数
-    control_steps = int(games[0].metadata['render_fps'] // control_frequency)
+    control_steps = int(Game().metadata['render_fps'] // control_frequency)
     # 性能统计
     time_stats = defaultdict(list)
-    # 结果列表
-    info_queue = queue.Queue()
-    transition_queue = queue.Queue()
     
-    def game_worker(game: Game):
+    def game_worker():
         with timer(time_stats, 'game_worker'):
+            game = Game()
             obs, info = game.reset()
             state = obs.to_array()
             transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
@@ -122,29 +119,28 @@ def train(
                 # 检查是否结束
                 if done:
                     break
-        
-        info_queue.put(info)
-        transition_queue.put(transition_dict)
+
+        return transition_dict, info
     
     # 训练循环
     for episode in tqdm(range(num_episodes), dynamic_ncols=True):
-        # 创建和启动多个线程
-        threads = []
-        for game in games:
-            thread = threading.Thread(target=game_worker, args=(game,))
-            threads.append(thread)
-            thread.start()
-
-        # 等待所有线程完成
-        for thread in threads:
-            thread.join()
-        
-        info_list = []
-        while not info_queue.empty():
-            info_list.append(info_queue.get())
+        # 结果列表
         transition_list = []
-        while not transition_queue.empty():
-            transition_list.append(transition_queue.get())
+        info_list = []
+
+        # 使用线程池执行任务
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+            # 提交所有任务到线程池
+            futures = [executor.submit(game_worker) for _ in range(batch_size)]
+            
+            # 等待所有任务完成
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    transition_dict, info = future.result()
+                    transition_list.append(transition_dict)
+                    info_list.append(info)
+                except Exception as e:
+                    print(f"任务执行出错: {e}")
 
         # 更新策略
         with timer(time_stats, 'update'):
@@ -177,10 +173,10 @@ def train(
 
 if __name__ == "__main__":
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    BASE_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
-    # BASE_MODEL = None
-    RIVAL_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
-    # RIVAL_MODEL = None
+    # BASE_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
+    BASE_MODEL = None
+    # RIVAL_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
+    RIVAL_MODEL = None
     
     # 对抗训练
     ADVERSARIAL = True

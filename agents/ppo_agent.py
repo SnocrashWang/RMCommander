@@ -29,14 +29,7 @@ class PolicyNet(torch.nn.Module):
             nn.Linear(64, 2),
             nn.Tanh()  # 添加tanh激活函数
         )
-        # self.navigation_target_std = nn.Sequential(
-        #     nn.Linear(128, 64),
-        #     nn.ReLU(),
-        #     nn.Linear(64, 2),  # 输出x,y的标准差
-        #     nn.Softplus(),  # 确保标准差为正
-        #     # nn.Tanh()  # 添加tanh激活函数
-        # )
-        self.navigation_target_std = nn.Parameter(0.05 * torch.ones(2))
+        self.navigation_target_log_std = nn.Parameter(torch.full((2,), np.log(0.05)))
         
         # 导航设置分支（离散动作）
         self.navigation_set_network = nn.Sequential(
@@ -58,7 +51,7 @@ class PolicyNet(torch.nn.Module):
         
         # 导航目标（连续）
         navigation_target_mean = self.navigation_target_mean(features)
-        navigation_target_std = self.navigation_target_std
+        navigation_target_std = torch.exp(self.navigation_target_log_std)
         
         # 导航移动（离散）
         navigation_set_logits = self.navigation_set_network(features)
@@ -140,39 +133,6 @@ class PPOAgent:
         }
 
         return actions
-    
-    # def update(self, transition_dict):
-    #     """更新策略"""
-    #     states = torch.tensor(np.array(transition_dict['states']), dtype=torch.float).to(self.device)
-    #     actions = torch.tensor(np.array(transition_dict['actions']), dtype=torch.float).to(self.device)
-    #     rewards = torch.tensor(np.array(transition_dict['rewards']), dtype=torch.float).view(-1, 1).to(self.device)
-    #     next_states = torch.tensor(np.array(transition_dict['next_states']), dtype=torch.float).to(self.device)
-    #     dones = torch.tensor(np.array(transition_dict['dones']), dtype=torch.float).view(-1, 1).to(self.device)
-    #     td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
-    #     td_delta = td_target - self.critic(states)
-    #     advantage = compute_advantage(self.gamma, self.lmbda, td_delta.cpu()).to(self.device)
-        
-    #     # 计算old_log_probs，使用detach()避免梯度冲突
-    #     with torch.no_grad():
-    #         old_log_probs = self._get_log_probs(states, actions)
-
-    #     for _ in range(self.epochs):
-    #         log_probs = self._get_log_probs(states, actions)
-    #         log_ratio = log_probs - old_log_probs
-    #         # log_ratio = torch.clamp(log_ratio, min=-10, max=10)  # 限制在 e^{-10}~e^{10} 范围内
-    #         ratio = torch.exp(log_ratio)
-    #         surr1 = ratio * advantage
-    #         surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * advantage  # 截断
-    #         actor_loss = torch.mean(-torch.min(surr1, surr2))  # PPO损失函数
-    #         critic_loss = torch.mean(F.mse_loss(self.critic(states), td_target.detach()))
-    #         self.actor_optimizer.zero_grad()
-    #         self.critic_optimizer.zero_grad()
-    #         actor_loss.backward()
-    #         critic_loss.backward()
-    #         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 10)
-    #         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 10)
-    #         self.actor_optimizer.step()
-    #         self.critic_optimizer.step()
 
     def update(self, transition_dicts):
         """更新策略，支持多个rollout和shuffle"""

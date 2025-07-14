@@ -1,3 +1,4 @@
+import pymunk
 import numpy as np
 from dataclasses import dataclass
 from collections import defaultdict
@@ -17,23 +18,31 @@ from base.config.robot_config import BASE_ROBOT_CONFIGS
 
 @dataclass
 class Action:
-    navigation_target: Tuple[float, float] = (0.0, 0.0)
-    navigation_set: int = 0
+    # navigation_target: Tuple[float, float] = (0.0, 0.0)
+    # navigation_set: int = 0
+    velocity: Tuple[float, float] = (0.0, 0.0)
     attack_target: int = 0
 
     def __post_init__(self):
         """初始化"""
+        # try:
+        #     if isinstance(self.navigation_target, np.ndarray):
+        #         self.navigation_target = tuple(self.navigation_target.astype(float))
+        #     else:
+        #         self.navigation_target = tuple(self.navigation_target)
+        # except:
+        #     self.navigation_target = (0.0, 0.0)
+        # try:
+        #     self.navigation_set = int(self.navigation_set)
+        # except:
+        #     self.navigation_set = 0
         try:
-            if isinstance(self.navigation_target, np.ndarray):
-                self.navigation_target = tuple(self.navigation_target.astype(float))
+            if isinstance(self.velocity, np.ndarray):
+                self.velocity = tuple(self.velocity.astype(float))
             else:
-                self.navigation_target = tuple(self.navigation_target)
+                self.velocity = tuple(self.velocity)
         except:
-            self.navigation_target = (0.0, 0.0)
-        try:
-            self.navigation_set = int(self.navigation_set)
-        except:
-            self.navigation_set = 0
+            self.velocity = (0.0, 0.0)
         try:
             self.attack_target = int(self.attack_target)
         except:
@@ -42,8 +51,9 @@ class Action:
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            *self.navigation_target,
-            self.navigation_set,
+            # *self.navigation_target,
+            # self.navigation_set,
+            *self.velocity,
             self.attack_target
         ])
 
@@ -63,8 +73,8 @@ class GameObs:
 
 @dataclass
 class RobotObs:
-    position: Tuple[float, float]
-    # orientation: float
+    position: np.ndarray
+    velocity: np.ndarray
     chassis_property_type: int
     gimbal_property_type: int
     level: int
@@ -74,8 +84,10 @@ class RobotObs:
 
     def __init__(self, robot: Robot):
         """初始化"""
-        self.position = robot.position
-        self.position = (self.position[0] / env_config.FIELD_WIDTH, self.position[1] / env_config.FIELD_HEIGHT)
+        self.position = np.array(robot.get_position())
+        self.position = self.position / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        self.velocity = np.array(robot.get_velocity())
+        self.velocity = self.velocity / np.linalg.norm(self.velocity)
         self.chassis_property_type = robot.chassis_property_type.value
         self.gimbal_property_type = robot.gimbal_property_type.value
         self.level = robot.level
@@ -87,7 +99,7 @@ class RobotObs:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
             *self.position,
-            # self.orientation,
+            *self.velocity,
             self.chassis_property_type,
             self.gimbal_property_type,
             self.level,
@@ -122,8 +134,12 @@ class Environment:
             obstacle_configs: Optional[List[Dict[str, Any]]] = env_config.OBSTACLES,
             robot_configs: Optional[Dict[str, RobotConfig]] = BASE_ROBOT_CONFIGS,
         ):
-        # 游戏状态
+        # 创建物理引擎
+        self.physics_engine = pymunk.Space()
+        self.physics_engine.gravity = (0, 0)  # 无重力
         self.dt = 1 / env_config.FPS
+
+        # 游戏状态
         self.game_state = GameState.PLAYING
         self.total_time = env_config.GAME_TIME_LIMIT       # 总时长
         self._remaining_time = env_config.GAME_TIME_LIMIT  # 剩余时间
@@ -148,6 +164,7 @@ class Environment:
         for config in self.robot_configs:
             robot = Robot(
                 **config.__dict__,
+                physics_engine=self.physics_engine,
             )
             self.robots[robot.id] = robot
 
@@ -166,11 +183,13 @@ class Environment:
 
     def _create_obstacles(self, obstacles: List[Dict[str, Any]]):
         for obstacle_config in obstacles:
-            self.obstacles.append(Obstacle(obstacle_config))
+            self.obstacles.append(Obstacle(obstacle_config, self.physics_engine))
 
     def reset(self):
         """重置环境"""
         # 销毁现有机器人
+        for robot in self.robots.values():
+            robot.destroy_physics_body(self.physics_engine)
         self.robots.clear()
         
         # 创建新机器人
@@ -185,6 +204,10 @@ class Environment:
 
     def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
         """推进环境仿真"""
+        # 更新物理引擎
+        with timer(self._time_stats, 'physics_engine_step'):
+            self.physics_engine.step(self.dt)
+        
         # 应用动作
         with timer(self._time_stats, 'apply_team_action'):
             self._apply_team_action(GameTeam.RED, red_action)
@@ -237,7 +260,7 @@ class Environment:
             if target_robot is None:
                 return
             # 判断完整视野
-            if not attack_sight_clear(robot.position, target_robot.position, target_robot.radius, self.obstacles, self.robots.values()):
+            if not attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
                 return
             # 攻击
             if not robot.attack(target_robot) or target_robot.is_alive:
@@ -255,11 +278,13 @@ class Environment:
                 kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
                 robot.update_exp(int(kill_exp))
 
+        # 对所有机器人应用动作
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
             
-            if robot_action.navigation_set:
-                robot.set_target(robot_action.navigation_target)
+            # if robot_action.navigation_set:
+            #     robot.set_target(robot_action.navigation_target)
+            robot.set_velocity(robot_action.velocity)
 
             apply_robot_action_attack(robot, robot_action)
     

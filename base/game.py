@@ -208,17 +208,17 @@ class Game(gym.Env):
         reward_list.append(reward_time)
         reward_weight.append(5)
 
-        # 不可行导航点惩罚
-        if action["RED_3_STANDARD"].navigation_set == 1:
-            col, row = world_to_grid(action["RED_3_STANDARD"].navigation_target)
-            if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
-                reward_navigation_unmovable = -1.0
-            else:
-                reward_navigation_unmovable = 1.0
-        else:
-            reward_navigation_unmovable = 0.0
-        reward_list.append(reward_navigation_unmovable)
-        reward_weight.append(10)
+        # # 不可行导航点惩罚
+        # if action["RED_3_STANDARD"].navigation_set == 1:
+        #     col, row = world_to_grid(action["RED_3_STANDARD"].navigation_target)
+        #     if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
+        #         reward_navigation_unmovable = -1.0
+        #     else:
+        #         reward_navigation_unmovable = 1.0
+        # else:
+        #     reward_navigation_unmovable = 0.0
+        # reward_list.append(reward_navigation_unmovable)
+        # reward_weight.append(10)
 
         # # 导航点差异惩罚
         # try:
@@ -250,9 +250,9 @@ class Game(gym.Env):
 
         # 距离奖励
         our_last_position = np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
-        our_position = self.env.get_robot("RED_3_STANDARD").position
+        our_position = self.env.get_robot("RED_3_STANDARD").get_position()
         enemy_last_position = np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
-        enemy_position = self.env.get_robot("BLUE_3_STANDARD").position
+        enemy_position = self.env.get_robot("BLUE_3_STANDARD").get_position()
         last_distance = calc_distance(
             our_last_position,
             enemy_last_position

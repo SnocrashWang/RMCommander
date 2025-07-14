@@ -7,6 +7,7 @@ import numpy as np
 from config import CURRENT_GAME
 from utils.config.game_config import GameTeam, GameType
 from utils.config.robot_config import RobotType
+from utils.grid_map import world_to_grid, grid_to_world, a_star, simplify_path
 from visualization.config import render_config
 
 if CURRENT_GAME == GameType.BASE:
@@ -49,6 +50,7 @@ def main():
         # blue_action["BLUE_3_STANDARD"].attack = True if random.random() < 0.05 else False
 
         for event in pygame.event.get():
+            robot_in_control = game.env.robots[control_state["robot_id"]]
             if event.type == pygame.QUIT:
                 game.close()
                 sys.exit()
@@ -57,14 +59,24 @@ def main():
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = pygame.mouse.get_pos()  # 屏幕坐标
                 # 转换为世界坐标
-                world_x = mouse_pos[0] / render_config.SCALE
-                world_y = mouse_pos[1] / render_config.SCALE
-                if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
-                    red_action[control_state["robot_id"]].navigation_target = (world_x, world_y)
-                    red_action[control_state["robot_id"]].navigation_set = 1
-                else:
-                    blue_action[control_state["robot_id"]].navigation_target = (world_x, world_y)
-                    blue_action[control_state["robot_id"]].navigation_set = 1
+                world_pos = (mouse_pos[0] / render_config.SCALE, mouse_pos[1] / render_config.SCALE)
+                # 如果目标位置与当前位置相同，则不再次计算路径
+                if world_pos != robot_in_control.target_pos:
+                    robot_in_control.target_pos = world_pos
+
+                    # 如果网格地图为空
+                    if robot_in_control.grid_map is None:
+                        raise ValueError("网格地图为空，无法计算路径")
+
+                    # 使用A*算法规划路径
+                    start_grid = world_to_grid(robot_in_control.get_position())
+                    goal_grid = world_to_grid(world_pos)
+                    path_grids = a_star(robot_in_control.grid_map, start_grid, goal_grid)
+                    path_grids = simplify_path(path_grids, robot_in_control.grid_map)
+                
+                    # 将栅格坐标转换回世界坐标
+                    robot_in_control.path_points = [grid_to_world(gp[0], gp[1]) for gp in path_grids[1:]]
+                    robot_in_control.current_path_idx = 0
 
             # 按键事件
             elif event.type == pygame.KEYDOWN:
@@ -95,7 +107,26 @@ def main():
                 elif event.key == pygame.K_d:  # D键切换目标
                     control_state["target_id"] = target_id_list[(target_id_list.index(control_state["target_id"]) - 1) % len(target_id_list)]
 
-        # print(red_action)
+        # 计算速度
+        for robot in game.env.robots.values():
+            if robot.path_points and robot.current_path_idx < len(robot.path_points):
+                next_point = robot.path_points[robot.current_path_idx]
+                current_pos = pygame.math.Vector2(robot.get_position())
+                direction = pygame.math.Vector2(next_point) - current_pos
+                if direction.length() < 0.05:
+                    robot.current_path_idx += 1
+                else:
+                    direction = direction.normalize() * robot.forward_speed
+                    velocity = (direction.x, direction.y)
+            else:
+                velocity = (0, 0)
+
+            if robot.team == GameTeam.RED:
+                red_action[robot.id].velocity = velocity
+            else:
+                blue_action[robot.id].velocity = velocity
+
+        print(red_action, blue_action)
         # 更新环境
         game.set_render(control_state)
         observation, reward, terminated, truncated, info = game.step(red_action, blue_action)

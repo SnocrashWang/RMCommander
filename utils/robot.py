@@ -1,7 +1,8 @@
 import pygame
+import pymunk
 import math
 import time
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from utils.config.exp_prop_config import *
 from utils.config.bullet_config import *
 from utils.config.robot_config import ROBOT_ID, RobotType
@@ -21,6 +22,7 @@ class Robot:
         radius: float,
         max_ammo: int,
         ammo_allowed: int,
+        physics_engine: Optional[pymunk.Space] = None,
     ):
         # 全局属性
         self.team : GameTeam = team
@@ -57,11 +59,20 @@ class Robot:
         self.heat : float = 0
         
         # 物理属性
-        self.position : Tuple[float, float] = init_pos
-        self.velocity : Tuple[float, float] = (0, 0)
         self.radius : float = radius
         self.forward_speed : float = self.power * forward_speed_efficiency
         self.rotation_speed : float = self.power * rotation_speed_efficiency
+
+        # 创建物理实体
+        self._body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, radius))
+        self._body.position = init_pos
+
+        self._shape = pymunk.Circle(self._body, radius)
+        self._shape.elasticity = 0.8
+        self._shape.friction = 0.7
+
+        if physics_engine:
+            physics_engine.add(self._body, self._shape)
 
         self.angle : float = 0  # 角度（度）
         self.target_pos : Tuple[float, float] = None
@@ -101,10 +112,15 @@ class Robot:
         # GridMap相关
         self.grid_map : GridMap = None
 
+    def destroy_physics_body(self, physics_engine: pymunk.Space):
+        """从物理引擎中移除物理体"""
+        if self._body is not None and self._shape is not None:
+            physics_engine.remove(self._shape, self._body)
+
     def print_info(self):
         info = {
             "id": self.id,
-            "position": self.position,
+            "position": self.get_position(),
             "angle": self.angle,
             "is_alive": self.is_alive,
             "level": self.level,
@@ -134,35 +150,30 @@ class Robot:
         self.max_heat : int = self.gimbal_property[self.level]["HEAT"]
         self.cool_down : int = self.gimbal_property[self.level]["COOL_DOWN"]
 
-    def set_target(self, target_pos):
-        """设置目标位置并计算路径"""
-        # 如果目标位置与当前位置相同，则不再次计算路径
-        if target_pos == self.target_pos:
+    def get_position(self):
+        """获取位置"""
+        if self._body is None:
+            return self._init_pos
+        return self._body.position.x, self._body.position.y
+    
+    def get_velocity(self):
+        """获取速度"""
+        if self._body is None:
+            return (0, 0)
+        return self._body.velocity.x, self._body.velocity.y
+    
+    def set_velocity(self, velocity: Tuple[float, float]):
+        """设置速度"""
+        if self._body is None:
             return
-        else:
-            self.target_pos = target_pos
-
-        # 如果网格地图为空
-        if self.grid_map is None:
-            self.path_points = [target_pos]
-            self.current_path_idx = 0
-            raise ValueError("网格地图为空，无法计算路径")
-
-        # 使用A*算法规划路径
-        start_grid = world_to_grid(self.position)
-        goal_grid = world_to_grid(target_pos)
-        path_grids = a_star(self.grid_map, start_grid, goal_grid)
-        path_grids = simplify_path(path_grids, self.grid_map)
-        
-        # 将栅格坐标转换回世界坐标
-        self.path_points = [grid_to_world(gp[0], gp[1]) for gp in path_grids[1:]]
-        self.current_path_idx = 0
+        self._body.velocity = pymunk.Vec2d(velocity[0], velocity[1])
 
     def step(self, dt):
         """沿路径点导航"""
         # 若非存活
         if not self.is_alive:
-            self.velocity = (0, 0)
+            if self._body is not None:
+                self._body.velocity = (0, 0)
             # 结算复活进度
             self.revive_progress = min(self.revive_progress + self.revive_efficiency * dt, self.revive_target)
             if self.revive_progress >= self.revive_target:
@@ -180,20 +191,18 @@ class Robot:
         else:
             self.defense_buff_dict.pop("revive", None)
 
-        # 沿路径移动
-        if self.path_points and self.current_path_idx < len(self.path_points):
-            next_point = self.path_points[self.current_path_idx]
-            current_pos = pygame.math.Vector2(self.position)
-            direction = pygame.math.Vector2(next_point) - current_pos
-            if direction.length() < 0.05:
-                self.current_path_idx += 1
-            else:
-                direction = direction.normalize() * self.forward_speed
-                self.velocity = (direction.x, direction.y)
-        else:
-            self.velocity = (0, 0)
-            # self.target_pos = None
-        self.position = (self.position[0] + self.velocity[0] * dt, self.position[1] + self.velocity[1] * dt)
+        # # 沿路径移动
+        # if self.path_points and self.current_path_idx < len(self.path_points):
+        #     next_point = self.path_points[self.current_path_idx]
+        #     current_pos = pygame.math.Vector2(self.get_position())
+        #     direction = pygame.math.Vector2(next_point) - current_pos
+        #     if direction.length() < 0.05:
+        #         self.current_path_idx += 1
+        #     else:
+        #         direction = direction.normalize() * self.forward_speed
+        #         self._body.velocity = (direction.x, direction.y)
+        # else:
+        #     self._body.velocity = (0, 0)
 
         # 结算热量冷却
         self.heat = max(0, self.heat - self.cool_down * dt)
@@ -227,8 +236,8 @@ class Robot:
         self.last_in_combat_time = time.time()
 
         # 计算攻击角度
-        target_pos = self.attack_target.position
-        current_pos = self.position
+        target_pos = self.attack_target.get_position()
+        current_pos = self.get_position()
         dx = target_pos[0] - current_pos[0]
         dy = target_pos[1] - current_pos[1]
         self.angle = math.degrees(math.atan2(dy, dx))
@@ -260,7 +269,7 @@ class Robot:
             return None
         if time.time() - self.last_attack_time > 0.2:
             return None
-        return (self.position, self.attack_target.position)
+        return (self.get_position(), self.attack_target.get_position())
 
     def take_damage(self, damage) -> int:
         """受到伤害

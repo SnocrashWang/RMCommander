@@ -18,24 +18,11 @@ from base.config.robot_config import BASE_ROBOT_CONFIGS
 
 @dataclass
 class Action:
-    # navigation_target: Tuple[float, float] = (0.0, 0.0)
-    # navigation_set: int = 0
     velocity: Tuple[float, float] = (0.0, 0.0)
     attack_target: int = 0
 
     def __post_init__(self):
         """初始化"""
-        # try:
-        #     if isinstance(self.navigation_target, np.ndarray):
-        #         self.navigation_target = tuple(self.navigation_target.astype(float))
-        #     else:
-        #         self.navigation_target = tuple(self.navigation_target)
-        # except:
-        #     self.navigation_target = (0.0, 0.0)
-        # try:
-        #     self.navigation_set = int(self.navigation_set)
-        # except:
-        #     self.navigation_set = 0
         try:
             if isinstance(self.velocity, np.ndarray):
                 self.velocity = tuple(self.velocity.astype(float))
@@ -281,11 +268,11 @@ class Environment:
         # 对所有机器人应用动作
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
-            
-            # if robot_action.navigation_set:
-            #     robot.set_target(robot_action.navigation_target)
+
+            # 设置速度
             robot.set_velocity(robot_action.velocity)
 
+            # 攻击
             apply_robot_action_attack(robot, robot_action)
     
     def get_top_bar_info(self) -> Dict[str, Any]:

@@ -38,8 +38,6 @@ class Action:
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            # *self.navigation_target,
-            # self.navigation_set,
             *self.velocity,
             self.attack_target
         ])
@@ -164,7 +162,7 @@ class Environment:
                 robot_radius=robot.radius
             )
             # 标记所有障碍物
-            # grid_map.mark_obstacles(self.obstacles)
+            grid_map.mark_obstacles(self.obstacles)
             # 设置机器人的网格地图
             robot.grid_map = grid_map
 

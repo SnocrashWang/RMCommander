@@ -76,9 +76,9 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
         # 动作
         red_action = agent.take_action(obs.to_array(GameTeam.RED), GameTeam.RED)
         blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
-        # 翻转蓝方导航点
+        # 翻转蓝方速度
         for id in blue_action.keys():
-            blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+            blue_action[id].velocity = (-blue_action[id].velocity[0], -blue_action[id].velocity[1])
 
         # print(red_action, blue_action)
 
@@ -123,7 +123,7 @@ def main():
     parser.add_argument('-m', '--model_file', type=str, default=None, help='模型文件')
     parser.add_argument('-d', '--delay', type=float, default=0, help='渲染延迟时间（秒）')
     parser.add_argument('-v', '--video', action='store_true', help='是否保存为视频')
-    parser.add_argument('--control_frequency', type=float, default=2, help='控制频率（Hz）')
+    parser.add_argument('--control_frequency', type=float, default=10, help='控制频率（Hz）')
     parser.add_argument('--video_dir', type=str, default='videos', help='视频保存目录')
     args = parser.parse_args()
 

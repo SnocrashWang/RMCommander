@@ -1,9 +1,7 @@
 import os
-import json
 from datetime import datetime
 from tqdm import tqdm
 from collections import defaultdict
-import random
 import concurrent.futures
 
 from agents.ppo_agent import PPOAgent
@@ -12,8 +10,7 @@ from base.environment import Action
 from base.game import Game
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
-from utils.grid_map import world_to_grid
-from utils.utils import timer, opposite_position
+from utils.utils import timer
 
 
 def train(
@@ -27,8 +24,8 @@ def train(
     num_workers: int = 4,
     num_episodes: int = 2000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    control_frequency: int = 2,
-    save_interval: int = 20,
+    control_frequency: int = 10,
+    save_interval: int = 50,
 ):
     """
     训练PPO智能体
@@ -179,7 +176,7 @@ if __name__ == "__main__":
     RIVAL_MODEL = None
     
     # 对抗训练
-    ADVERSARIAL = True
+    ADVERSARIAL = False
 
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
     DEVICE = None

@@ -74,7 +74,7 @@ class RobotObs:
         self.position = np.array(robot.get_position())
         self.position = self.position / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
         self.velocity = np.array(robot.get_velocity())
-        self.velocity = self.velocity / np.linalg.norm(self.velocity)
+        self.velocity = self.velocity / np.linalg.norm(self.velocity) if np.linalg.norm(self.velocity) != 0 else np.array([0, 0])
         self.chassis_property_type = robot.chassis_property_type.value
         self.gimbal_property_type = robot.gimbal_property_type.value
         self.level = robot.level
@@ -164,9 +164,9 @@ class Environment:
                 robot_radius=robot.radius
             )
             # 标记所有障碍物
-            grid_map.mark_obstacles(self.obstacles)
+            # grid_map.mark_obstacles(self.obstacles)
             # 设置机器人的网格地图
-            robot.set_grid_map(grid_map)
+            robot.grid_map = grid_map
 
     def _create_obstacles(self, obstacles: List[Dict[str, Any]]):
         for obstacle_config in obstacles:

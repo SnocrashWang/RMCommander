@@ -99,23 +99,21 @@ def train(
                     blue_action = agent_test.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
                 else:
                     blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
-                # 翻转蓝方导航点
+                # 翻转蓝方速度
                 for id in blue_action.keys():
-                    blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                    blue_action[id].velocity = (-blue_action[id].velocity[0], -blue_action[id].velocity[1])
             
             # 记录动作
             frame_action = {
                 'red_action': {
                     robot_id: {
-                        'navigation_target': list(action.navigation_target),
-                        'navigation_set': action.navigation_set,
+                        'velocity': list(action.velocity),
                         'attack_target': action.attack_target
                     } for robot_id, action in red_action.items()
                 },
                 'blue_action': {
                     robot_id: {
-                        'navigation_target': list(action.navigation_target),
-                        'navigation_set': action.navigation_set,
+                        'velocity': list(action.velocity),
                         'attack_target': action.attack_target
                     } for robot_id, action in blue_action.items()
                 }
@@ -178,10 +176,10 @@ def train(
 
 if __name__ == "__main__":
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    BASE_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
-    # BASE_MODEL = None
-    RIVAL_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
-    # RIVAL_MODEL = None
+    # BASE_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
+    BASE_MODEL = None
+    # RIVAL_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
+    RIVAL_MODEL = None
     
     # 对抗训练
     ADVERSARIAL = True

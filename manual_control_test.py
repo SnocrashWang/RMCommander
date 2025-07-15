@@ -116,7 +116,7 @@ def main():
                 if direction.length() < 0.05:
                     robot.current_path_idx += 1
                 else:
-                    direction = direction.normalize() * robot.forward_speed
+                    direction = direction.normalize()
                     velocity = (direction.x, direction.y)
             else:
                 velocity = (0, 0)

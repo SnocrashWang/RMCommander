@@ -34,6 +34,7 @@ class Obstacle:
         self._shape = pymunk.Poly(self._body, self.vertices)
         self._shape.elasticity = 0.8
         self._shape.friction = 0.5
+        self._shape.filter = pymunk.ShapeFilter(categories=0b1, mask=0b1)
 
         if physics_engine:
             physics_engine.add(self._body, self._shape)

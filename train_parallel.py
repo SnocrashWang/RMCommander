@@ -99,9 +99,9 @@ def train(
                     blue_action = agent_test.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
                 else:
                     blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
-                # 翻转蓝方导航点
+                # 翻转蓝方速度
                 for id in blue_action.keys():
-                    blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                    blue_action[id].velocity = (-blue_action[id].velocity[0], -blue_action[id].velocity[1])
                 
                 # 执行动作
                 next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)

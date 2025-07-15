@@ -93,10 +93,10 @@ class Game(gym.Env):
             dtype=np.float32
         )
         
-        # 机器人状态：位置(2) + 属性(2) + 等级(1) + 经验(1) + 血量(1) + 热量(1) = 8维
+        # 机器人状态：位置(2) + 速度(2) + 属性(2) + 等级(1) + 经验(1) + 血量(1) + 热量(1) = 10维
         robot_state_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.array([0.0, 0.0, -1, -1, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1, 1, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
         

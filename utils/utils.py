@@ -317,18 +317,18 @@ def attack_sight_clear(
     
     if ignore_robot_blocked:
         return True
-    robots = [robot for robot in robots if robot.position != attacker_pos and robot.position != target_pos]
+    robots = [robot for robot in robots if robot.get_position() != attacker_pos and robot.get_position() != target_pos]
     
     # 4. 判断切线是否被机器人遮挡
     for tp in tangents:
         for robot in robots:
-            if point_to_line_segment_distance(robot.position, attacker_pos, tp) < robot.radius:
+            if point_to_line_segment_distance(robot.get_position(), attacker_pos, tp) < robot.radius:
                 # print(f"Blocked tangents by robot: {robot.id}")
                 return False
 
     # 5. 判断机器人坐标是否在四边形内
     for robot in robots:
-        if point_in_polygon(robot.position, quad):
+        if point_in_polygon(robot.get_position(), quad):
             # print(f"Blocked by robot: {robot.id}")
             return False
 

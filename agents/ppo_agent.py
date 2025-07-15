@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from torch.distributions import Normal, Categorical
 import numpy as np
 from typing import List, Dict, Any, Tuple
-from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_TYPE_LIST
 from base.environment import Action
 from utils.config.game_config import GameTeam
@@ -22,24 +21,16 @@ class PolicyNet(torch.nn.Module):
             nn.ELU()
         )
         
-        # 导航目标分支（连续动作）
-        self.navigation_target_mean = nn.Sequential(
+        # 速度分支（连续动作）
+        self.velocity_mean = nn.Sequential(
             nn.Linear(128, 64),
             nn.ELU(),
             nn.Linear(64, 2),
             nn.Tanh()  # 添加tanh激活函数
         )
-        self.navigation_target_log_std = nn.Parameter(torch.full((2,), np.log(0.05)))
-        
-        # 导航设置分支（离散动作）
-        self.navigation_set_network = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ELU(),
-            nn.Linear(64, 2)  # 输出是否设定导航目标的logits
-        )
+        self.velocity_log_std = nn.Parameter(torch.full((2,), np.log(0.05)))
         
         # 攻击目标分支（离散动作）
-        # 输出维度为1（NONE）+ len(BASE_ROBOT_TYPE_LIST)
         self.attack_target_network = nn.Sequential(
             nn.Linear(128, 64),
             nn.ELU(),
@@ -49,17 +40,14 @@ class PolicyNet(torch.nn.Module):
     def forward(self, x):
         features = self.shared_network(x)
         
-        # 导航目标（连续）
-        navigation_target_mean = self.navigation_target_mean(features)
-        navigation_target_std = torch.exp(self.navigation_target_log_std)
-        
-        # 导航移动（离散）
-        navigation_set_logits = self.navigation_set_network(features)
+        # 速度（连续）
+        velocity_mean = self.velocity_mean(features)
+        velocity_std = torch.exp(self.velocity_log_std)
         
         # 目标选择（离散）
         attack_target_logits = self.attack_target_network(features)
         
-        return navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits
+        return velocity_mean, velocity_std, attack_target_logits
 
 
 class ValueNet(torch.nn.Module):
@@ -108,26 +96,19 @@ class PPOAgent:
     @torch.no_grad()
     def take_action(self, state, team: GameTeam) -> Dict[str, Action]:
         state = torch.tensor(state, dtype=torch.float).to(self.device)
-        navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(state)
-        # print(navigation_target_mean, navigation_target_std)
-        # 导航目标
-        navigation_target_dist = Normal(navigation_target_mean, navigation_target_std)
-        navigation_target_action = navigation_target_dist.sample()
-        x = (navigation_target_action[0] + 1) * env_config.FIELD_WIDTH / 2
-        y = (navigation_target_action[1] + 1) * env_config.FIELD_HEIGHT / 2
-        x = torch.clamp(x, 0, env_config.FIELD_WIDTH)
-        y = torch.clamp(y, 0, env_config.FIELD_HEIGHT)
-        # 导航移动
-        navigation_set_dist = Categorical(logits=navigation_set_logits)
-        navigation_set_action = navigation_set_dist.sample()
+        velocity_mean, velocity_std, attack_target_logits = self.actor(state)
+        # print(velocity_mean, velocity_std)
+        # 速度
+        velocity_dist = Normal(velocity_mean, velocity_std)
+        velocity_action = velocity_dist.sample()
+        velocity_action = torch.clamp(velocity_action, -1, 1)
         # 目标选择
         attack_target_dist = Categorical(logits=attack_target_logits)
         attack_target_action = attack_target_dist.sample()
 
         actions = {
             ROBOT_ID[team][robot_type]: Action(
-                navigation_target=(x.item(), y.item()),
-                navigation_set=navigation_set_action.item(),
+                velocity=velocity_action.cpu().numpy(),
                 attack_target=attack_target_action.item()
             ) for robot_type in BASE_ROBOT_TYPE_LIST
         }
@@ -215,26 +196,22 @@ class PPOAgent:
                 self.critic_optimizer.step()
 
     def _get_log_probs(self, states, actions):
-        navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(states)
+        velocity_mean, velocity_std, attack_target_logits = self.actor(states)
 
-        navigation_target_action_dists = torch.distributions.Normal(navigation_target_mean, navigation_target_std)
-        navigation_set_action_dists = torch.distributions.Categorical(logits=navigation_set_logits)
+        velocity_action_dists = torch.distributions.Normal(velocity_mean, velocity_std)
         attack_target_action_dists = torch.distributions.Categorical(logits=attack_target_logits)
 
         # 提取动作的不同部分
-        navigation_target_actions = actions[:, 0:2]
-        navigation_set_actions = actions[:, 2]
-        attack_target_actions = actions[:, 3]
+        velocity_actions = actions[:, 0:2]
+        attack_target_actions = actions[:, 2]
 
         # 计算各个动作的log概率
         # 对于正态分布，log_prob会返回与输入相同形状的张量
-        navigation_target_log_probs = navigation_target_action_dists.log_prob(navigation_target_actions)
-        navigation_set_log_probs = navigation_set_action_dists.log_prob(navigation_set_actions)
+        velocity_log_probs = velocity_action_dists.log_prob(velocity_actions)
         attack_target_log_probs = attack_target_action_dists.log_prob(attack_target_actions)
 
         # 将所有log概率相加
-        log_probs = (navigation_target_log_probs.sum(dim=-1) # 将导航目标的log概率在最后一个维度上求和（因为它是2维的x,y坐标）
-                     + navigation_set_log_probs
+        log_probs = (velocity_log_probs.sum(dim=-1) # 将速度的log概率在最后一个维度上求和（因为它是2维的）
                      + attack_target_log_probs)
         return log_probs
     

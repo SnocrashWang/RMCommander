@@ -70,6 +70,7 @@ class Robot:
         self._shape = pymunk.Circle(self._body, radius)
         self._shape.elasticity = 0.8
         self._shape.friction = 0.7
+        self._shape.filter = pymunk.ShapeFilter(categories=0b1, mask=0b1)
 
         if physics_engine:
             physics_engine.add(self._body, self._shape)
@@ -166,7 +167,7 @@ class Robot:
         """设置速度"""
         if self._body is None:
             return
-        self._body.velocity = pymunk.Vec2d(velocity[0], velocity[1])
+        self._body.velocity = pymunk.Vec2d(velocity[0] * self.forward_speed, velocity[1] * self.forward_speed)
 
     def step(self, dt):
         """沿路径点导航"""
@@ -190,19 +191,6 @@ class Robot:
             self.defense_buff_dict["revive"] = 2.0
         else:
             self.defense_buff_dict.pop("revive", None)
-
-        # # 沿路径移动
-        # if self.path_points and self.current_path_idx < len(self.path_points):
-        #     next_point = self.path_points[self.current_path_idx]
-        #     current_pos = pygame.math.Vector2(self.get_position())
-        #     direction = pygame.math.Vector2(next_point) - current_pos
-        #     if direction.length() < 0.05:
-        #         self.current_path_idx += 1
-        #     else:
-        #         direction = direction.normalize() * self.forward_speed
-        #         self._body.velocity = (direction.x, direction.y)
-        # else:
-        #     self._body.velocity = (0, 0)
 
         # 结算热量冷却
         self.heat = max(0, self.heat - self.cool_down * dt)
@@ -296,7 +284,3 @@ class Robot:
         """恢复血量"""
         if self.is_alive:
             self.hp = int(min(self.max_hp, self.hp + amount))
-
-    def set_grid_map(self, grid_map: GridMap):
-        """设置网格地图"""
-        self.grid_map = grid_map

@@ -88,7 +88,7 @@ class RobotObsRMUL:
         self.position = robot.get_position()
         self.position = (self.position[0] / env_config.FIELD_WIDTH, self.position[1] / env_config.FIELD_HEIGHT)
         self.velocity = np.array(robot.get_velocity())
-        self.velocity = self.velocity / np.linalg.norm(self.velocity)
+        self.velocity = self.velocity / np.linalg.norm(self.velocity) if np.linalg.norm(self.velocity) != 0 else np.array([0, 0])
         self.chassis_property_type = robot.chassis_property_type.value
         self.gimbal_property_type = robot.gimbal_property_type.value
         self.level = robot.level

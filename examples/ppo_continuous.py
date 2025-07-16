@@ -75,8 +75,6 @@ class PPOContinuous:
         print(action_dists)
         # 动作是正态分布
         old_log_probs = action_dists.log_prob(actions)
-        print(old_log_probs.shape)
-        exit()
 
         for _ in range(self.epochs):
             mu, std = self.actor(states)
@@ -111,7 +109,7 @@ env = gym.make(env_name)
 torch.manual_seed(0)
 state_dim = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]  # 连续动作空间
-print(action_dim)
+
 agent = PPOContinuous(state_dim, hidden_dim, action_dim, actor_lr, critic_lr,
                       lmbda, epochs, eps, gamma, device)
 

@@ -114,6 +114,7 @@ def train(
                 transition_dict['rewards'].append(reward)
                 transition_dict['dones'].append(done)
 
+                obs = next_obs
                 state = next_state
                 
                 # 检查是否结束

@@ -6,10 +6,10 @@ from typing import List, Dict, Optional, Tuple, Any
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotConfig, ROBOT_ID, RobotType
-from utils.grid_map import GridMap, world_to_grid
+from utils.grid_map import GridMap
 from utils.robot import Robot
 from utils.obstacle import Obstacle
-from utils.utils import attack_sight_clear, calc_distance, opposite_team, timer
+from utils.utils import attack_sight_clear, opposite_team, opposite_position, timer
 
 from base.config import env_config
 from base.config.robot_config import BASE_ROBOT_CONFIGS
@@ -108,6 +108,10 @@ class Observation:
         if team == GameTeam.RED:
             robot_obs = {**red_robot_obs, **blue_robot_obs}
         else:
+            for _, robot_obs in red_robot_obs.items():
+                robot_obs.position = opposite_position(robot_obs.position, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+            for _, robot_obs in blue_robot_obs.items():
+                robot_obs.position = opposite_position(robot_obs.position, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
             robot_obs = {**blue_robot_obs, **red_robot_obs}
 
         return np.concatenate([

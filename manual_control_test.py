@@ -24,9 +24,9 @@ elif CURRENT_GAME == GameType.RMUL:
 np.set_printoptions(precision=4, floatmode='fixed')
 
 def main():
-    # 创建环境和渲染器
+    # 创建环境
     game = Game(render_mode="human")
-    # renderer = Renderer(env_config)
+    obs, info = game.reset()
 
     robot_id_list = list(game.env.robots.keys())
     target_id_list = ROBOT_TYPE_LIST
@@ -43,10 +43,6 @@ def main():
         blue_action = {
             robot_id: Action() for robot_id, robot in game.env.robots.items() if robot.team == GameTeam.BLUE
         }
-
-        # blue_action["BLUE_3_STANDARD"].navigation = (6.0, 4.0)
-        # blue_action["BLUE_3_STANDARD"].target = RobotType.STANDARD_3
-        # blue_action["BLUE_3_STANDARD"].attack = True if random.random() < 0.05 else False
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -95,11 +91,10 @@ def main():
                 elif event.key == pygame.K_d:  # D键切换目标
                     control_state["target_id"] = target_id_list[(target_id_list.index(control_state["target_id"]) - 1) % len(target_id_list)]
 
-        # print(red_action)
         # 更新环境
         game.set_render(control_state)
-        observation, reward, terminated, truncated, info = game.step(red_action, blue_action)
-        state = observation.to_array()
+        obs, reward, terminated, truncated, info = game.step(red_action, blue_action)
+        state = obs.to_array()
 
 
 if __name__ == "__main__":

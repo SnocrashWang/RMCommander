@@ -25,16 +25,16 @@ class Obstacle:
         ]
 
         # 创建物理体
-        body = pymunk.Body(body_type=pymunk.Body.STATIC)
-        body.position = self.center
+        self._body = pymunk.Body(body_type=pymunk.Body.STATIC)
+        self._body.position = self.center
         # 设置旋转角度
-        body.angle = self.angle
+        self._body.angle = self.angle
         
         # 创建多边形形状
-        shape = pymunk.Poly(body, self.vertices)
-        shape.elasticity = 0.8
-        shape.friction = 0.5
-
+        self._shape = pymunk.Poly(self._body, self.vertices)
+        self._shape.elasticity = 0.8
+        self._shape.friction = 0.5
+        self._shape.filter = pymunk.ShapeFilter(categories=0b1, mask=0b1)
 
         if physics_engine:
-            physics_engine.add(body, shape)
+            physics_engine.add(self._body, self._shape)

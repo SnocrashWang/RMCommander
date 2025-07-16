@@ -18,24 +18,19 @@ from RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
 
 @dataclass
 class ActionRMUL:
-    navigation_target: Tuple[float, float] = (0.0, 0.0)
-    navigation_set: int = 0
+    velocity: Tuple[float, float] = (0.0, 0.0)
     attack_target: int = 0
     purchase: int = 0
 
     def __post_init__(self):
         """初始化"""
         try:
-            if isinstance(self.navigation_target, np.ndarray):
-                self.navigation_target = tuple(self.navigation_target.astype(float))
+            if isinstance(self.velocity, np.ndarray):
+                self.velocity = tuple(self.velocity.astype(float))
             else:
-                self.navigation_target = tuple(self.navigation_target)
+                self.velocity = tuple(self.velocity)
         except:
-            self.navigation_target = (0.0, 0.0)
-        try:
-            self.navigation_set = int(self.navigation_set)
-        except:
-            self.navigation_set = 0
+            self.velocity = (0.0, 0.0)
         try:
             self.attack_target = int(self.attack_target)
         except:
@@ -48,8 +43,7 @@ class ActionRMUL:
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            *self.navigation_target,
-            self.navigation_set,
+            *self.velocity,
             self.attack_target,
             self.purchase,
         ])
@@ -80,8 +74,8 @@ class GameObsRMUL:
 
 @dataclass
 class RobotObsRMUL:
-    position: Tuple[float, float]
-    # orientation: float
+    position: np.ndarray
+    velocity: np.ndarray
     chassis_property_type: int
     gimbal_property_type: int
     level: int
@@ -93,6 +87,8 @@ class RobotObsRMUL:
         """初始化"""
         self.position = robot.get_position()
         self.position = (self.position[0] / env_config.FIELD_WIDTH, self.position[1] / env_config.FIELD_HEIGHT)
+        self.velocity = np.array(robot.get_velocity())
+        self.velocity = self.velocity / np.linalg.norm(self.velocity) if np.linalg.norm(self.velocity) != 0 else np.array([0, 0])
         self.chassis_property_type = robot.chassis_property_type.value
         self.gimbal_property_type = robot.gimbal_property_type.value
         self.level = robot.level
@@ -104,7 +100,7 @@ class RobotObsRMUL:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
             *self.position,
-            # self.orientation,
+            *self.velocity,
             self.chassis_property_type,
             self.gimbal_property_type,
             self.level,
@@ -266,34 +262,44 @@ class EnvironmentRMUL(Environment):
     
     def _apply_team_action(self, team: GameTeam, action: Dict[str, ActionRMUL]):
         """应用本方动作"""
+        def apply_robot_action_attack(robot: Robot, robot_action: ActionRMUL):
+            target_type = RobotType(robot_action.attack_target)
+            # 目标为空
+            if target_type == RobotType.NONE:
+                return
+            target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
+            # 目标不存在
+            if target_robot is None:
+                return
+            # 判断完整视野
+            if not attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
+                return
+            # 攻击
+            if not robot.attack(target_robot) or target_robot.is_alive:
+                return
+            
+            # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
+            if robot.robot_type == RobotType.SENTRY:
+                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
+                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - killer_level)))
+                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
+                # 经验分享
+                for robot in robot_alive:
+                    robot.update_exp(int(kill_exp / len(robot_alive)))
+            else:
+                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
+                robot.update_exp(int(kill_exp))
+            # 结算胜利进度
+            self._victory_progress[team] += 20
+
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
 
-            # 导航
-            if robot_action.navigation_set:
-                robot.set_target(robot_action.navigation_target)
+            # 设置速度
+            robot.set_velocity(robot_action.velocity)
 
             # 攻击
-            target_type = RobotType(robot_action.attack_target)
-            if target_type != RobotType.NONE:
-                target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
-                if target_robot is not None:
-                    # 判断完整视野
-                    if attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
-                        if robot.attack(target_robot) and not target_robot.is_alive:
-                            # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
-                            if robot.robot_type == RobotType.SENTRY:
-                                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
-                                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - killer_level)))
-                                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
-                                # 经验分享
-                                for robot in robot_alive:
-                                    robot.update_exp(int(kill_exp / len(robot_alive)))
-                            else:
-                                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
-                                robot.update_exp(int(kill_exp))
-                            # 结算胜利进度
-                            self._victory_progress[team] += 20
+            apply_robot_action_attack(robot, robot_action)
 
             # 购买允许发弹量
             if robot_action.purchase and robot.robot_type != RobotType.SENTRY:

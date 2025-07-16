@@ -81,8 +81,9 @@ def train(
         # 性能统计
         time_stats = defaultdict(list)
 
-        obs, info = game.reset()
+        obs, info = game.reset(options={"random": True})
         state = obs.to_array()
+        init_state = state
 
         episode_actions = [] # 记录当前回合的动作序列
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
@@ -148,6 +149,7 @@ def train(
                 'length': len(transition_dict['states']),
                 'reward': sum(transition_dict['rewards']),
                 'game_state': game.env.game_state.value,
+                'init_state': init_state.tolist(),
                 'actions': episode_actions
             }
             with open(os.path.join(log_dir, f'episode_{time_tag}_{episode+1}.json'), 'w') as f:
@@ -177,12 +179,13 @@ def train(
         if (episode + 1) % save_interval == 0:
             agent_train.save(os.path.join(model_dir, f"ppo_agent_{time_tag}_episode_{episode+1}.pt"))
 
+
 if __name__ == "__main__":
     # 设置预训练模型路径（如果需要从预训练模型继续训练）
-    BASE_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
-    # BASE_MODEL = None
-    RIVAL_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
-    # RIVAL_MODEL = None
+    # BASE_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
+    BASE_MODEL = None
+    # RIVAL_MODEL = "models/ppo_agent_20250709_160428_episode_200.pt"
+    RIVAL_MODEL = None
     
     # 对抗训练
     ADVERSARIAL = True

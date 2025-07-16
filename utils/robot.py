@@ -70,12 +70,13 @@ class Robot:
         self._shape = pymunk.Circle(self._body, radius)
         self._shape.elasticity = 0.8
         self._shape.friction = 0.7
+        self._shape.filter = pymunk.ShapeFilter(categories=0b1, mask=0b1)
 
         if physics_engine:
             physics_engine.add(self._body, self._shape)
 
         self.angle : float = 0  # 角度（度）
-        self.target_pos : Tuple[float, float] = None
+        self.target_pos : Tuple[float, float] = (0, 0)
         self.path_points : List[Tuple[float, float]] = []
         self.current_path_idx : int = 0
         self.is_alive : bool = True  # 机器人是否存活
@@ -215,7 +216,6 @@ class Robot:
                 self._body.velocity = (direction.x, direction.y)
         else:
             self._body.velocity = (0, 0)
-            # self.target_pos = None
 
         # 结算热量冷却
         self.heat = max(0, self.heat - self.cool_down * dt)
@@ -230,6 +230,21 @@ class Robot:
         self.defense_debuff = max(self.defense_debuff_dict.values(), default=0.0)
         self.cool_down_buff = min(self.cool_down_buff_dict.values(), default=1.0)
         self.power_buff = max(self.power_buff_dict.values(), default=1.0)
+
+    def apply_observation(self, observation):
+        """
+        【注意！】这是一个非常危险的函数，非特殊情况不要使用！
+        直接将指定的观察值赋值到当前环境中
+        """
+        self._body.position = pymunk.Vec2d(observation.position[0], observation.position[1])
+        self.set_target(tuple(observation.target_position))
+        self.chassis_property_type = CHASSIS_PROPERTY_TYPE(math.ceil(observation.chassis_property_type))
+        self.gimbal_property_type = GIMBAL_PROPERTY_TYPE(math.ceil(observation.gimbal_property_type))
+        self.update_property()
+        self.level = math.ceil(observation.level)
+        self.exp = int(observation.exp_norm * (LEVEL_NEED_EXP[self.level + 1] - LEVEL_NEED_EXP[self.level]) + LEVEL_NEED_EXP[self.level]) if self.level < len(LEVEL_NEED_EXP) else LEVEL_NEED_EXP[self.level]
+        self.hp = int(observation.hp_norm * self.max_hp)
+        self.heat = int(observation.heat_norm * self.max_heat)
 
     def attack(self, target_robot) -> bool:
         """攻击目标机器人
@@ -309,7 +324,3 @@ class Robot:
         """恢复血量"""
         if self.is_alive:
             self.hp = int(min(self.max_hp, self.hp + amount))
-
-    def set_grid_map(self, grid_map: GridMap):
-        """设置网格地图"""
-        self.grid_map = grid_map

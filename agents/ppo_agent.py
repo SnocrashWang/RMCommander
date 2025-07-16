@@ -39,7 +39,6 @@ class PolicyNet(torch.nn.Module):
         )
         
         # 攻击目标分支（离散动作）
-        # 输出维度为1（NONE）+ len(BASE_ROBOT_TYPE_LIST)
         self.attack_target_network = nn.Sequential(
             nn.Linear(128, 64),
             nn.ELU(),

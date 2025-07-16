@@ -62,23 +62,19 @@ class Game(gym.Env):
         robot_action_spaces = {}
         
         for robot_id, robot in self.env.robots.items():
-            # 导航动作：x, y坐标
-            navigation_target_space = spaces.Box(
+            # 速度动作：x, y方向速度
+            velocity_space = spaces.Box(
                 low=np.array([0.0, 0.0], dtype=np.float32),
-                high=np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT], dtype=np.float32),
+                high=np.array([1.0, 1.0], dtype=np.float32),
                 dtype=np.float32
             )
-            
-            # 导航动作：是否导航
-            navigation_set_space = spaces.Discrete(2)  # 0: 不导航, 1: 导航
             
             # 目标动作：攻击目标类型
             attack_target_space = spaces.Discrete(len(RobotType))  # 所有机器人类型
             
             # 组合动作空间
             robot_action_spaces[robot_id] = spaces.Dict({
-                'navigation_target': navigation_target_space,
-                'navigation_set': navigation_set_space,
+                'velocity': velocity_space,
                 'attack_target': attack_target_space,
             })
         
@@ -93,10 +89,10 @@ class Game(gym.Env):
             dtype=np.float32
         )
         
-        # 机器人状态：位置(2) + 属性(2) + 等级(1) + 经验(1) + 血量(1) + 热量(1) = 8维
+        # 机器人状态：位置(2) + 导航点(2) + 属性(2) + 等级(1) + 经验(1) + 血量(1) + 热量(1) = 10维
         robot_state_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.array([0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
         
@@ -123,12 +119,17 @@ class Game(gym.Env):
             dtype=np.float32
         )
     
-    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = {}):
         """重置环境"""
         super().reset(seed=seed)
         
         # 重置底层环境
         self.env.reset()
+
+        if "random" in options and options["random"]:
+            obs_array = self.observation_space.sample()
+            obs = Observation.from_array(obs_array)
+            self.apply_observation(obs)
         
         # 渲染
         if self._render_mode:
@@ -143,6 +144,16 @@ class Game(gym.Env):
         }
         
         return observation, info
+    
+    def apply_observation(self, observation: Observation):
+        """
+        【注意！】这是一个非常危险的函数，非特殊情况不要使用！
+        直接将指定的观察值赋值到当前环境中
+        """
+        self.env.apply_observation(observation)
+        for robot_id, robot_obs in observation.robot_obs.items():
+            robot = self.env.get_robot(robot_id)
+            robot.apply_observation(robot_obs)
     
     def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action], control_steps: int = 1):
         """执行一步动作"""
@@ -188,13 +199,13 @@ class Game(gym.Env):
         """获取观察"""
         # 全局状态向量
         game_state = GameObs(
-            remaining_time=self.env._remaining_time,
+            remaining_time_norm=self.env._remaining_time / env_config.GAME_TIME_LIMIT,
         )
 
         # 机器人状态向量
         robot_state = {}
         for robot_id, robot in self.env.robots.items():
-            robot_state[robot_id] = RobotObs(robot)
+            robot_state[robot_id] = RobotObs.from_robot(robot)
         
         return Observation(game_state, robot_state)
     
@@ -208,17 +219,17 @@ class Game(gym.Env):
         reward_list.append(reward_time)
         reward_weight.append(5)
 
-        # 不可行导航点惩罚
-        if action["RED_3_STANDARD"].navigation_set == 1:
-            col, row = world_to_grid(action["RED_3_STANDARD"].navigation_target)
-            if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
-                reward_navigation_unmovable = -1.0
-            else:
-                reward_navigation_unmovable = 1.0
-        else:
-            reward_navigation_unmovable = 0.0
-        reward_list.append(reward_navigation_unmovable)
-        reward_weight.append(10)
+        # # 不可行导航点惩罚
+        # if action["RED_3_STANDARD"].navigation_set == 1:
+        #     col, row = world_to_grid(action["RED_3_STANDARD"].navigation_target)
+        #     if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
+        #         reward_navigation_unmovable = -1.0
+        #     else:
+        #         reward_navigation_unmovable = 1.0
+        # else:
+        #     reward_navigation_unmovable = 0.0
+        # reward_list.append(reward_navigation_unmovable)
+        # reward_weight.append(10)
 
         # # 导航点差异惩罚
         # try:
@@ -240,18 +251,18 @@ class Game(gym.Env):
         # reward_weight.append(5)
 
         # 血量奖励
-        our_last_hp = sum([self._last_observation.robot_obs["RED_3_STANDARD"].hp])
+        our_last_hp = sum([self._last_observation.robot_obs["RED_3_STANDARD"].hp_norm])
         our_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == team])
-        enemy_last_hp = sum([self._last_observation.robot_obs["BLUE_3_STANDARD"].hp])
+        enemy_last_hp = sum([self._last_observation.robot_obs["BLUE_3_STANDARD"].hp_norm])
         enemy_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == opposite_team(team)])        
         reward_hp = np.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
         reward_list.append(reward_hp)
-        reward_weight.append(20)
+        reward_weight.append(10)
 
         # 距离奖励
-        our_last_position = np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        our_last_position = np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position)
         our_position = self.env.get_robot("RED_3_STANDARD").get_position()
-        enemy_last_position = np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        enemy_last_position = np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position)
         enemy_position = self.env.get_robot("BLUE_3_STANDARD").get_position()
         last_distance = calc_distance(
             our_last_position,
@@ -261,15 +272,24 @@ class Game(gym.Env):
             our_position,
             enemy_last_position
         )
-        reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
+        # reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
+        reward_distance = (last_distance - current_distance) * 100  # 距离减小给予正奖励，距离增加给予负奖励
         reward_list.append(reward_distance)
         reward_weight.append(10)
+
+        # 撞墙惩罚
+        if self.env.physics_engine.shape_query(self.env.robots["RED_3_STANDARD"]._shape):
+            reward_collision = -1
+        else:
+            reward_collision = 1
+        reward_list.append(reward_collision)
+        reward_weight.append(5)
         
         # 游戏结束奖励
         if self.env.game_state == GameState.RED_TEAM_WIN:
-            reward_win = 100.0
+            reward_win = 10.0
         elif self.env.game_state == GameState.BLUE_TEAM_WIN:
-            reward_win = -100.0
+            reward_win = -10.0
         else:
             reward_win = 0.0
         

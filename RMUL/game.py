@@ -234,7 +234,7 @@ class GameRMUL(gym.Env):
         # try:
         #     last_navigation = self._last_action["RED_3_STANDARD"]["navigation_target"]
         # except:
-        #     last_navigation = self.env.robots["RED_3_STANDARD"].position
+        #     last_navigation = self.env.robots["RED_3_STANDARD"].get_position()
         # current_navigation = action["RED_3_STANDARD"]["navigation_target"]
         # navigation_diff = calc_distance(last_navigation, current_navigation)
         # reward_navigation_diff = - (navigation_diff ** 2) / (1 + navigation_diff ** 2)
@@ -256,8 +256,8 @@ class GameRMUL(gym.Env):
         #     self._last_observation[9:11] * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
         # )
         # current_distance = calc_distance(
-        #     self.env.get_robot("RED_3_STANDARD").position,
-        #     self.env.get_robot("BLUE_3_STANDARD").position
+        #     self.env.get_robot("RED_3_STANDARD").get_position(),
+        #     self.env.get_robot("BLUE_3_STANDARD").get_position()
         # )
         # reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
         # reward_list.append(reward_distance)

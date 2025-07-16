@@ -1,3 +1,4 @@
+import pymunk
 import numpy as np
 from dataclasses import dataclass
 from collections import defaultdict
@@ -74,7 +75,7 @@ class RobotObs:
 
     def __init__(self, robot: Robot):
         """初始化"""
-        self.position = robot.position
+        self.position = robot.get_position()
         self.position = (self.position[0] / env_config.FIELD_WIDTH, self.position[1] / env_config.FIELD_HEIGHT)
         self.chassis_property_type = robot.chassis_property_type.value
         self.gimbal_property_type = robot.gimbal_property_type.value
@@ -126,8 +127,12 @@ class Environment:
             obstacle_configs: Optional[List[Dict[str, Any]]] = env_config.OBSTACLES,
             robot_configs: Optional[Dict[str, RobotConfig]] = BASE_ROBOT_CONFIGS,
         ):
-        # 游戏状态
+        # 创建物理引擎
+        self.physics_engine = pymunk.Space()
+        self.physics_engine.gravity = (0, 0)  # 无重力
         self.dt = 1 / env_config.FPS
+
+        # 游戏状态
         self.game_state = GameState.PLAYING
         self.total_time = env_config.GAME_TIME_LIMIT       # 总时长
         self._remaining_time = env_config.GAME_TIME_LIMIT  # 剩余时间
@@ -152,6 +157,7 @@ class Environment:
         for config in self.robot_configs:
             robot = Robot(
                 **config.__dict__,
+                physics_engine=self.physics_engine,
             )
             self.robots[robot.id] = robot
 
@@ -170,11 +176,13 @@ class Environment:
 
     def _create_obstacles(self, obstacles: List[Dict[str, Any]]):
         for obstacle_config in obstacles:
-            self.obstacles.append(Obstacle(obstacle_config))
+            self.obstacles.append(Obstacle(obstacle_config, self.physics_engine))
 
     def reset(self):
         """重置环境"""
         # 销毁现有机器人
+        for robot in self.robots.values():
+            robot.destroy_physics_body(self.physics_engine)
         self.robots.clear()
         
         # 创建新机器人
@@ -189,6 +197,10 @@ class Environment:
 
     def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
         """推进环境仿真"""
+        # 更新物理引擎
+        with timer(self._time_stats, 'physics_engine_step'):
+            self.physics_engine.step(self.dt)
+        
         # 应用动作
         with timer(self._time_stats, 'apply_team_action'):
             self._apply_team_action(GameTeam.RED, red_action)
@@ -241,7 +253,7 @@ class Environment:
             if target_robot is None:
                 return
             # 判断完整视野
-            if not attack_sight_clear(robot.position, target_robot.position, target_robot.radius, self.obstacles, self.robots.values()):
+            if not attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
                 return
             # 攻击
             if not robot.attack(target_robot) or target_robot.is_alive:

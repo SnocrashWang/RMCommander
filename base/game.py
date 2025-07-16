@@ -224,7 +224,7 @@ class Game(gym.Env):
         # try:
         #     last_navigation = self._last_action["RED_3_STANDARD"]["navigation_target"]
         # except:
-        #     last_navigation = self.env.robots["RED_3_STANDARD"].position
+        #     last_navigation = self.env.robots["RED_3_STANDARD"].get_position()
         # current_navigation = action["RED_3_STANDARD"]["navigation_target"]
         # navigation_diff = calc_distance(last_navigation, current_navigation)
         # reward_navigation_diff = - (navigation_diff ** 2) / (1 + navigation_diff ** 2)
@@ -250,9 +250,9 @@ class Game(gym.Env):
 
         # 距离奖励
         our_last_position = np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
-        our_position = self.env.get_robot("RED_3_STANDARD").position
+        our_position = self.env.get_robot("RED_3_STANDARD").get_position()
         enemy_last_position = np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
-        enemy_position = self.env.get_robot("BLUE_3_STANDARD").position
+        enemy_position = self.env.get_robot("BLUE_3_STANDARD").get_position()
         last_distance = calc_distance(
             our_last_position,
             enemy_last_position

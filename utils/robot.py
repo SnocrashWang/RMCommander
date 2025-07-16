@@ -206,6 +206,21 @@ class Robot:
         self.cool_down_buff = min(self.cool_down_buff_dict.values(), default=1.0)
         self.power_buff = max(self.power_buff_dict.values(), default=1.0)
 
+    def apply_observation(self, observation):
+        """
+        【注意！】这是一个非常危险的函数，非特殊情况不要使用！
+        直接将指定的观察值赋值到当前环境中
+        """
+        self._body.position = pymunk.Vec2d(observation.position[0], observation.position[1])
+        self._body.velocity = pymunk.Vec2d(observation.velocity_norm[0], observation.velocity_norm[1])
+        self.chassis_property_type = CHASSIS_PROPERTY_TYPE(math.ceil(observation.chassis_property_type))
+        self.gimbal_property_type = GIMBAL_PROPERTY_TYPE(math.ceil(observation.gimbal_property_type))
+        self.update_property()
+        self.level = math.ceil(observation.level)
+        self.exp = int(observation.exp_norm * (LEVEL_NEED_EXP[self.level + 1] - LEVEL_NEED_EXP[self.level]) + LEVEL_NEED_EXP[self.level]) if self.level < len(LEVEL_NEED_EXP) else LEVEL_NEED_EXP[self.level]
+        self.hp = int(observation.hp_norm * self.max_hp)
+        self.heat = int(observation.heat_norm * self.max_heat)
+
     def attack(self, target_robot) -> bool:
         """攻击目标机器人
         Args:

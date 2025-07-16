@@ -119,12 +119,17 @@ class Game(gym.Env):
             dtype=np.float32
         )
     
-    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = {}):
         """重置环境"""
         super().reset(seed=seed)
         
         # 重置底层环境
         self.env.reset()
+
+        if "random" in options and options["random"]:
+            obs_array = self.observation_space.sample()
+            obs = Observation.from_array(obs_array)
+            self.apply_observation(obs)
         
         # 渲染
         if self._render_mode:
@@ -139,6 +144,16 @@ class Game(gym.Env):
         }
         
         return observation, info
+    
+    def apply_observation(self, observation: Observation):
+        """
+        【注意！】这是一个非常危险的函数，非特殊情况不要使用！
+        直接将指定的观察值赋值到当前环境中
+        """
+        self.env.apply_observation(observation)
+        for robot_id, robot_obs in observation.robot_obs.items():
+            robot = self.env.get_robot(robot_id)
+            robot.apply_observation(robot_obs)
     
     def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action], control_steps: int = 1):
         """执行一步动作"""
@@ -184,13 +199,13 @@ class Game(gym.Env):
         """获取观察"""
         # 全局状态向量
         game_state = GameObs(
-            remaining_time=self.env._remaining_time,
+            remaining_time_norm=self.env._remaining_time / env_config.GAME_TIME_LIMIT,
         )
 
         # 机器人状态向量
         robot_state = {}
         for robot_id, robot in self.env.robots.items():
-            robot_state[robot_id] = RobotObs(robot)
+            robot_state[robot_id] = RobotObs.from_robot(robot)
         
         return Observation(game_state, robot_state)
     
@@ -236,18 +251,18 @@ class Game(gym.Env):
         # reward_weight.append(5)
 
         # 血量奖励
-        our_last_hp = sum([self._last_observation.robot_obs["RED_3_STANDARD"].hp])
+        our_last_hp = sum([self._last_observation.robot_obs["RED_3_STANDARD"].hp_norm])
         our_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == team])
-        enemy_last_hp = sum([self._last_observation.robot_obs["BLUE_3_STANDARD"].hp])
+        enemy_last_hp = sum([self._last_observation.robot_obs["BLUE_3_STANDARD"].hp_norm])
         enemy_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == opposite_team(team)])        
         reward_hp = np.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
         reward_list.append(reward_hp)
         reward_weight.append(10)
 
         # 距离奖励
-        our_last_position = np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        our_last_position = np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position)
         our_position = self.env.get_robot("RED_3_STANDARD").get_position()
-        enemy_last_position = np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
+        enemy_last_position = np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position)
         enemy_position = self.env.get_robot("BLUE_3_STANDARD").get_position()
         last_distance = calc_distance(
             our_last_position,

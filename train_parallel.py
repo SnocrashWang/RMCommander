@@ -6,7 +6,7 @@ import concurrent.futures
 
 from agents.ppo_agent import PPOAgent
 from base.config import env_config
-from base.environment import Action
+from base.environment import Action, Observation
 from base.game import Game
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
@@ -81,7 +81,7 @@ def train(
     def game_worker():
         with timer(time_stats, 'game_worker'):
             game = Game()
-            obs, info = game.reset()
+            obs, info = game.reset(options={"random": True})    # 随机初始化
             state = obs.to_array()
             transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
 
@@ -111,6 +111,7 @@ def train(
                 transition_dict['rewards'].append(reward)
                 transition_dict['dones'].append(done)
 
+                obs = next_obs
                 state = next_state
                 
                 # 检查是否结束
@@ -137,7 +138,8 @@ def train(
                     transition_list.append(transition_dict)
                     info_list.append(info)
                 except Exception as e:
-                    print(f"任务执行出错: {e}")
+                    import traceback
+                    traceback.print_exc()
 
         # 更新策略
         with timer(time_stats, 'update'):

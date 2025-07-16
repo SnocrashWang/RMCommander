@@ -25,9 +25,8 @@ elif CURRENT_GAME == GameType.RMUL:
 np.set_printoptions(precision=4, floatmode='fixed')
 
 def main():
-    # 创建环境和渲染器
+    # 创建环境
     game = Game(render_mode="human")
-    # renderer = Renderer(env_config)
 
     robot_id_list = list(game.env.robots.keys())
     target_id_list = ROBOT_TYPE_LIST
@@ -126,7 +125,7 @@ def main():
             else:
                 blue_action[robot.id].velocity = velocity
 
-        print(red_action, blue_action)
+        # print(red_action, blue_action)
         # 更新环境
         game.set_render(control_state)
         observation, reward, terminated, truncated, info = game.step(red_action, blue_action)

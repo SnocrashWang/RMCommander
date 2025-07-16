@@ -101,7 +101,8 @@ class PPOAgent:
         # 速度
         velocity_dist = Normal(velocity_mean, velocity_std)
         velocity_action = velocity_dist.sample()
-        velocity_action = torch.clamp(velocity_action, -1, 1)
+        velocity_norm = torch.norm(velocity_action)
+        velocity_action = (velocity_action / velocity_norm) if velocity_norm != 0 else torch.tensor([0, 0])
         # 目标选择
         attack_target_dist = Categorical(logits=attack_target_logits)
         attack_target_action = attack_target_dist.sample()
@@ -142,7 +143,7 @@ class PPOAgent:
         with torch.no_grad():
             td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
             td_delta = td_target - self.critic(states)
-            advantage = compute_advantage(self.gamma, self.lmbda, td_delta.cpu()).to(self.device)
+            advantage = compute_advantage(self.gamma, self.lmbda, td_delta)
             old_log_probs = self._get_log_probs(states, actions)  # 使用detach避免梯度冲突
 
         # 获取总样本数并创建索引
@@ -233,11 +234,11 @@ class PPOAgent:
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
 
 def compute_advantage(gamma, lmbda, td_delta):
-    td_delta = td_delta.detach().numpy()
-    advantage_list = []
+    td_delta = td_delta.squeeze(-1)
+    advantages = torch.zeros_like(td_delta)
+    # 反向遍历
     advantage = 0.0
-    for delta in td_delta[::-1]:
-        advantage = gamma * lmbda * advantage + delta
-        advantage_list.append(advantage)
-    advantage_list.reverse()
-    return torch.tensor(np.array(advantage_list), dtype=torch.float)
+    for t in reversed(range(td_delta.size(0))):
+        advantage = gamma * lmbda * advantage + td_delta[t]
+        advantages[t] = advantage
+    return advantages.unsqueeze(-1)

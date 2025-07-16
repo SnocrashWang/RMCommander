@@ -13,7 +13,7 @@ from utils.config.game_config import GameType, GameState
 
 if CURRENT_GAME == GameType.BASE:
     from base.game import Game
-    from base.environment import Action
+    from base.environment import Action, Observation
 elif CURRENT_GAME == GameType.RMUL:
     from RMUL.game import GameRMUL as Game
     from RMUL.environment import ActionRMUL as Action
@@ -36,6 +36,7 @@ def replay_episode(episode_data: Dict[str, Any], delay: float, save_video: bool 
 
     game = Game(render_mode=render_mode)
     _, info = game.reset()
+    game.apply_observation(Observation.from_array(np.array(episode_data['init_state'])))
     
     # 如果保存视频，初始化视频写入器
     video_writer = None

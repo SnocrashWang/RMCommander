@@ -23,8 +23,8 @@ def train(
     log_dir: str = "logs",
     num_episodes: int = 2000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    control_frequency: int = 2,
-    save_interval: int = 100,
+    control_frequency: int = 10,
+    save_interval: int = 10,
 ):
     """
     训练PPO智能体
@@ -81,13 +81,15 @@ def train(
         # 性能统计
         time_stats = defaultdict(list)
 
-        obs, info = game.reset()
+        obs, info = game.reset(options={"random": True})
         state = obs.to_array()
+        init_state = state
 
         episode_actions = [] # 记录当前回合的动作序列
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
 
-        for step in range(max_steps // control_steps):
+        # for step in range(max_steps // control_steps):
+        for step in range(50):
             # 选择动作
             with timer(time_stats, 'act'):
                 red_action = agent_train.take_action(obs.to_array(GameTeam.RED), GameTeam.RED)
@@ -132,6 +134,7 @@ def train(
                 transition_dict['rewards'].append(reward)
                 transition_dict['dones'].append(done)
 
+                obs = next_obs
                 state = next_state
             
             # 检查是否结束
@@ -145,6 +148,7 @@ def train(
                 'length': len(transition_dict['states']),
                 'reward': sum(transition_dict['rewards']),
                 'game_state': game.env.game_state.value,
+                'init_state': init_state.tolist(),
                 'actions': episode_actions
             }
             with open(os.path.join(log_dir, f'episode_{time_tag}_{episode+1}.json'), 'w') as f:
@@ -173,6 +177,7 @@ def train(
         # 保存模型
         if (episode + 1) % save_interval == 0:
             agent_train.save(os.path.join(model_dir, f"ppo_agent_{time_tag}_episode_{episode+1}.pt"))
+
 
 if __name__ == "__main__":
     # 设置预训练模型路径（如果需要从预训练模型继续训练）

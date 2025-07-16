@@ -80,7 +80,8 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
         for id in blue_action.keys():
             blue_action[id].velocity = (-blue_action[id].velocity[0], -blue_action[id].velocity[1])
 
-        # print(red_action, blue_action)
+        print(obs)
+        print(red_action, blue_action)
 
         # 更新环境
         obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)

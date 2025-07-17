@@ -6,7 +6,7 @@ import concurrent.futures
 
 from agents.ppo_agent import PPOAgent
 from base.config import env_config
-from base.environment import Action, Observation
+from base.environment import Action
 from base.game import Game
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID

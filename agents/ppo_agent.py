@@ -124,6 +124,8 @@ class PPOAgent:
         all_rewards = []
         all_next_states = []
         all_dones = []
+        # 记录每个rollout的长度
+        rollout_lengths = []
         
         for trans_dict in transition_dicts:
             all_states.append(trans_dict['states'])
@@ -131,6 +133,7 @@ class PPOAgent:
             all_rewards.append(trans_dict['rewards'])
             all_next_states.append(trans_dict['next_states'])
             all_dones.append(trans_dict['dones'])
+            rollout_lengths.append(len(trans_dict['dones']))
         
         # 转换为张量
         states = torch.tensor(np.vstack(all_states), dtype=torch.float).to(self.device)
@@ -143,7 +146,14 @@ class PPOAgent:
         with torch.no_grad():
             td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
             td_delta = td_target - self.critic(states)
-            advantage = compute_advantage(self.gamma, self.lmbda, td_delta)
+            # 分割每个rollout的td_delta
+            td_delta_split = torch.split(td_delta, rollout_lengths)
+            advantages_list = []
+            for td in td_delta_split:
+                # 对每个rollout独立计算优势
+                advantages_list.append(compute_advantage(self.gamma, self.lmbda, td))
+            # 合并所有rollout的优势函数
+            advantage = torch.cat(advantages_list, dim=0)
             old_log_probs = self._get_log_probs(states, actions)  # 使用detach避免梯度冲突
 
         # 获取总样本数并创建索引

@@ -88,8 +88,7 @@ def train(
         episode_actions = [] # 记录当前回合的动作序列
         transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
 
-        # for step in range(max_steps // control_steps):
-        for step in range(50):
+        for step in range(max_steps // control_steps):
             # 选择动作
             with timer(time_stats, 'act'):
                 red_action = agent_train.take_action(obs.to_array(GameTeam.RED), GameTeam.RED)

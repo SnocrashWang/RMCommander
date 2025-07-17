@@ -154,10 +154,11 @@ class Game(gym.Env):
         for robot_id, robot_obs in observation.robot_obs.items():
             robot = self.env.get_robot(robot_id)
             robot.apply_observation(robot_obs)
+        self._last_observation = self._get_obs()
     
     def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action], control_steps: int = 1):
         """执行一步动作"""
-        reward = 0
+        reward_list = []
         for _ in range(control_steps):
             # 记录帧开始时间
             self._frame_start_time = time.perf_counter()
@@ -169,7 +170,7 @@ class Game(gym.Env):
             observation = self._get_obs()
             
             # 计算奖励（以红队视角）
-            reward += self._get_reward(GameTeam.RED, red_action)
+            reward_list.append(self._get_reward(GameTeam.RED, red_action))
             
             # 判断是否结束
             terminated = self._is_terminated()
@@ -193,7 +194,7 @@ class Game(gym.Env):
             'render_image': render_image,
         }
         
-        return observation, reward, terminated, truncated, info
+        return observation, sum(reward_list) / len(reward_list), terminated, truncated, info
     
     def _get_obs(self) -> Observation:
         """获取观察"""

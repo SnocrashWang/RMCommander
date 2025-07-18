@@ -360,6 +360,5 @@ class Game(gym.Env):
         """关闭环境"""
         if hasattr(self, 'renderer') and self._renderer is not None:
             # 关闭pygame显示
-            import pygame
             pygame.display.quit()
-            pygame.quit()
+        pygame.quit()

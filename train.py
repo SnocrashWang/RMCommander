@@ -155,7 +155,7 @@ def train(
         
         # 更新策略
         with timer(time_stats, 'update'):
-            agent_train.update([transition_dict])
+            agent_train.update(transition_dict)
         
         # 打印训练进度
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")

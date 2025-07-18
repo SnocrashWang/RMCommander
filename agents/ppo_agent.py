@@ -43,7 +43,7 @@ class PolicyNet(torch.nn.Module):
         # 速度（连续）
         velocity_mean = self.velocity_mean(features)
         velocity_std = torch.exp(self.velocity_log_std)
-        
+
         # 目标选择（离散）
         attack_target_logits = self.attack_target_network(features)
         
@@ -101,8 +101,8 @@ class PPOAgent:
         # 速度
         velocity_dist = Normal(velocity_mean, velocity_std)
         velocity_action = velocity_dist.sample()
-        velocity_norm = torch.norm(velocity_action)
-        velocity_action = (velocity_action / velocity_norm) if velocity_norm != 0 else torch.tensor([0, 0])
+        # velocity_norm = torch.norm(velocity_action)
+        # velocity_action = (velocity_action / velocity_norm) if velocity_norm != 0 else torch.tensor([0, 0])
         # 目标选择
         attack_target_dist = Categorical(logits=attack_target_logits)
         attack_target_action = attack_target_dist.sample()
@@ -116,7 +116,40 @@ class PPOAgent:
 
         return actions
 
-    def update(self, transition_dicts):
+    def update(self, transition_dict):
+        """更新策略"""
+        states = torch.tensor(np.array(transition_dict['states']), dtype=torch.float).to(self.device)
+        actions = torch.tensor(np.array(transition_dict['actions']), dtype=torch.float).to(self.device)
+        rewards = torch.tensor(np.array(transition_dict['rewards']), dtype=torch.float).view(-1, 1).to(self.device)
+        next_states = torch.tensor(np.array(transition_dict['next_states']), dtype=torch.float).to(self.device)
+        dones = torch.tensor(np.array(transition_dict['dones']), dtype=torch.float).view(-1, 1).to(self.device)
+        
+        # 计算old_log_probs，使用detach()避免梯度冲突
+        with torch.no_grad():
+            td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
+            td_delta = td_target - self.critic(states)
+            advantage = compute_advantage(self.gamma, self.lmbda, td_delta)
+            old_log_probs = self._get_log_probs(states, actions)
+
+        for _ in range(self.epochs):
+            log_probs = self._get_log_probs(states, actions)
+            log_ratio = log_probs - old_log_probs
+            # log_ratio = torch.clamp(log_ratio, min=-10, max=10)  # 限制在 e^{-10}~e^{10} 范围内
+            ratio = torch.exp(log_ratio)
+            surr1 = ratio * advantage
+            surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * advantage  # 截断
+            actor_loss = torch.mean(-torch.min(surr1, surr2))  # PPO损失函数
+            critic_loss = torch.mean(F.mse_loss(self.critic(states), td_target))
+            self.actor_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
+            actor_loss.backward()
+            critic_loss.backward()
+            # torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 10)
+            # torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 10)
+            self.actor_optimizer.step()
+            self.critic_optimizer.step()
+
+    def update_multi_rollout(self, transition_dicts):
         """更新策略，支持多个rollout和shuffle"""
         # 合并所有rollout的数据
         all_states = []
@@ -219,11 +252,11 @@ class PPOAgent:
         # 计算各个动作的log概率
         # 对于正态分布，log_prob会返回与输入相同形状的张量
         velocity_log_probs = velocity_action_dists.log_prob(velocity_actions)
-        attack_target_log_probs = attack_target_action_dists.log_prob(attack_target_actions)
+        attack_target_log_probs = attack_target_action_dists.log_prob(attack_target_actions.squeeze(0))
 
         # 将所有log概率相加
         log_probs = (velocity_log_probs.sum(dim=-1) # 将速度的log概率在最后一个维度上求和（因为它是2维的）
-                     + attack_target_log_probs)
+                     + attack_target_log_probs).unsqueeze(-1)
         return log_probs
     
     def save(self, path: str):

@@ -72,7 +72,6 @@ class PPOContinuous:
                                                td_delta.cpu()).to(self.device)
         mu, std = self.actor(states)
         action_dists = torch.distributions.Normal(mu.detach(), std.detach())
-        print(action_dists)
         # 动作是正态分布
         old_log_probs = action_dists.log_prob(actions)
 

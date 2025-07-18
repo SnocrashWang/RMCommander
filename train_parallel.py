@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 from tqdm import tqdm
 from collections import defaultdict
+import multiprocessing
 import concurrent.futures
 
 from agents.ppo_agent import PPOAgent
@@ -12,6 +13,47 @@ from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.utils import timer
 
+def game_worker(max_steps, control_steps, agent_train, agent_test, adversarial, rival_model):
+    game = Game()
+    obs, info = game.reset(options={"random": True})    # 随机初始化
+    state = obs.to_array()
+    transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
+
+    for step in range(max_steps // control_steps):
+        # 选择动作
+        red_action = agent_train.take_action(obs.to_array(GameTeam.RED), GameTeam.RED)
+        if adversarial:
+            # 对抗训练，蓝方使用红方模型
+            blue_action = agent_train.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
+        elif rival_model is not None:
+            # 蓝方使用对手模型
+            blue_action = agent_test.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
+        else:
+            blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
+        # 翻转蓝方速度
+        for id in blue_action.keys():
+            blue_action[id].velocity = (-blue_action[id].velocity[0], -blue_action[id].velocity[1])
+        
+        # 执行动作
+        next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
+        next_state = next_obs.to_array()
+        done = terminated or truncated
+
+        transition_dict['states'].append(state)
+        transition_dict['actions'].append(red_action["RED_3_STANDARD"].to_array())
+        transition_dict['next_states'].append(next_state)
+        transition_dict['rewards'].append(reward)
+        transition_dict['dones'].append(done)
+
+        obs = next_obs
+        state = next_state
+        
+        # 检查是否结束
+        if done:
+            break
+    game.close()
+    del game
+    return transition_dict, info
 
 def train(
     base_model: str = None,
@@ -58,6 +100,8 @@ def train(
             state_dim=state_size,
             device=device
         )
+    else:
+        agent_test = None
     # 如果指定了预训练模型，则加载它
     if base_model is not None:
         if os.path.exists(base_model):
@@ -78,48 +122,6 @@ def train(
     # 性能统计
     time_stats = defaultdict(list)
     
-    def game_worker():
-        with timer(time_stats, 'game_worker'):
-            game = Game()
-            obs, info = game.reset(options={"random": True})    # 随机初始化
-            state = obs.to_array()
-            transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
-
-            for step in range(max_steps // control_steps):
-                # 选择动作
-                red_action = agent_train.take_action(obs.to_array(GameTeam.RED), GameTeam.RED)
-                if adversarial:
-                    # 对抗训练，蓝方使用红方模型
-                    blue_action = agent_train.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
-                elif rival_model is not None:
-                    # 蓝方使用对手模型
-                    blue_action = agent_test.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
-                else:
-                    blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
-                # 翻转蓝方速度
-                for id in blue_action.keys():
-                    blue_action[id].velocity = (-blue_action[id].velocity[0], -blue_action[id].velocity[1])
-                
-                # 执行动作
-                next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
-                next_state = next_obs.to_array()
-                done = terminated or truncated
-
-                transition_dict['states'].append(state)
-                transition_dict['actions'].append(red_action["RED_3_STANDARD"].to_array())
-                transition_dict['next_states'].append(next_state)
-                transition_dict['rewards'].append(reward)
-                transition_dict['dones'].append(done)
-
-                obs = next_obs
-                state = next_state
-                
-                # 检查是否结束
-                if done:
-                    break
-
-        return transition_dict, info
-    
     # 训练循环
     for episode in tqdm(range(num_episodes), dynamic_ncols=True):
         # 结果列表
@@ -127,9 +129,17 @@ def train(
         info_list = []
 
         # 使用线程池执行任务
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
             # 提交所有任务到线程池
-            futures = [executor.submit(game_worker) for _ in range(batch_size)]
+            futures = [executor.submit(
+                game_worker,
+                max_steps,
+                control_steps,
+                agent_train,
+                agent_test,
+                adversarial,
+                rival_model
+            ) for _ in range(batch_size)]
             
             # 等待所有任务完成
             for future in concurrent.futures.as_completed(futures):
@@ -143,7 +153,7 @@ def train(
 
         # 更新策略
         with timer(time_stats, 'update'):
-            agent_train.update(transition_list)
+            agent_train.update_multi_rollout(transition_list)
         
         # 打印训练进度
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")
@@ -183,6 +193,8 @@ if __name__ == "__main__":
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
     DEVICE = None
     
+    multiprocessing.set_start_method('spawn')
+
     train(
         base_model=BASE_MODEL,
         rival_model=RIVAL_MODEL,

@@ -143,8 +143,10 @@ class Observation:
         else:
             for _, robot_obs in red_robot_obs.items():
                 robot_obs.position = opposite_position(robot_obs.position, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                robot_obs.target_position_norm = (-robot_obs.target_position_norm[0], -robot_obs.target_position_norm[1])
             for _, robot_obs in blue_robot_obs.items():
                 robot_obs.position = opposite_position(robot_obs.position, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                robot_obs.target_position_norm = (-robot_obs.target_position_norm[0], -robot_obs.target_position_norm[1])
             robot_obs = {**blue_robot_obs, **red_robot_obs}
 
         return np.concatenate([

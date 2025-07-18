@@ -46,9 +46,10 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
     video_writer = None
     if save_video:
         # 获取第一帧来确定视频尺寸
-        frame = info['render_image']
+        frame = info['render_images'][0]
         height, width = frame.shape[:2]
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video_path = os.path.join(video_path, model_file.replace('\\', '/').split("/")[-1].split('.')[0] + ".mp4")
         video_writer = cv2.VideoWriter(video_path, fourcc, game.metadata['render_fps'], (width, height))
         print(f"视频将保存到: {video_path}")
     
@@ -88,10 +89,11 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
 
         # 如果保存视频，保存当前帧
         if video_writer:
-            frame = pygame.surfarray.array3d(pygame.display.get_surface())
-            frame = frame.transpose([1, 0, 2])  # 转置以匹配cv2的格式
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # 转换颜色空间
-            video_writer.write(frame)
+            frames = info['render_images']
+            for frame in frames:
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # 转换颜色空间
+                video_writer.write(frame)
+            continue
 
         # 计算本帧消耗的时间
         time_cost = time.perf_counter() - frame_start

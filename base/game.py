@@ -144,7 +144,7 @@ class Game(gym.Env):
         # 获取初始观察
         observation = self._get_obs()
         info = {
-            'render_image': render_image,
+            'render_images': [render_image],
         }
         
         return observation, info
@@ -162,6 +162,7 @@ class Game(gym.Env):
     def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action], control_steps: int = 1):
         """执行一步动作"""
         reward = 0
+        render_images = []
         for _ in range(control_steps):
             # 记录帧开始时间
             self._frame_start_time = time.perf_counter()
@@ -181,9 +182,7 @@ class Game(gym.Env):
             
             # 渲染
             if self._render_mode:
-                render_image = self.render()
-            else:
-                render_image = None
+                render_images.append(self.render())
 
             if terminated or truncated:
                 break
@@ -194,7 +193,7 @@ class Game(gym.Env):
             'remaining_time': self.env._remaining_time,
             'red_hp': {robot_id: robot.hp for robot_id, robot in self.env.robots.items() if robot.team == GameTeam.RED},
             'blue_hp': {robot_id: robot.hp for robot_id, robot in self.env.robots.items() if robot.team == GameTeam.BLUE},
-            'render_image': render_image,
+            'render_images': render_images,
         }
         
         return observation, reward, terminated, truncated, info

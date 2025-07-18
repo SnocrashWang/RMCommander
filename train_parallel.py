@@ -162,8 +162,8 @@ def train(
         blue_wins = sum([1 for info in info_list if info['game_state'] == GameState.BLUE_TEAM_WIN])
         # draws = sum([1 for info in info_list if info['game_state'] == GameState.DRAW])
         tqdm.write(f"比赛结果: Red {red_wins:>3} : Blue {blue_wins:>3}")
-        remaining_time_list = [info['remaining_time'] for info in info_list]
-        tqdm.write(f"剩余时间: {sum(remaining_time_list)/len(remaining_time_list):.3f}s")
+        done_list = [len(transition_dict['dones']) for transition_dict in transition_list]
+        tqdm.write(f"平均回合: {sum(done_list)/len(done_list):.3f}")
         reward_list = [sum(transition['rewards']) for transition in transition_list]
         tqdm.write(f"平均奖励: {sum(reward_list)/len(reward_list):.3f}")
         

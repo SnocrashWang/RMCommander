@@ -112,6 +112,7 @@ class PPOAgent:
         # 导航目标
         navigation_target_dist = Normal(navigation_target_mean, navigation_target_std)
         navigation_target_action = navigation_target_dist.sample()
+        navigation_target_action = torch.clip(navigation_target_action, -1, 1)
         # 导航移动
         navigation_set_dist = Categorical(logits=navigation_set_logits)
         navigation_set_action = navigation_set_dist.sample()

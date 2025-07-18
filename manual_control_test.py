@@ -12,6 +12,7 @@ from visualization.config import render_config
 if CURRENT_GAME == GameType.BASE:
     from base.game import Game
     from base.environment import Action
+    from base.config import env_config
     from base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 elif CURRENT_GAME == GameType.RMUL:
     from RMUL.game import GameRMUL as Game
@@ -51,15 +52,14 @@ def main():
 
             # 鼠标左键点击，设置第一个机器人目标点
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mouse_pos = pygame.mouse.get_pos()  # 屏幕坐标
-                # 转换为世界坐标
-                world_x = mouse_pos[0] / render_config.SCALE
-                world_y = mouse_pos[1] / render_config.SCALE
+                mouse_pos = np.array(pygame.mouse.get_pos())  # 屏幕坐标
+                # 转换为归一化坐标
+                navigation_target_norm = mouse_pos * 2 / render_config.SCALE / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]) - 1
                 if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
-                    red_action[control_state["robot_id"]].navigation_target = (world_x, world_y)
+                    red_action[control_state["robot_id"]].navigation_target_norm = tuple(navigation_target_norm)
                     red_action[control_state["robot_id"]].navigation_set = 1
                 else:
-                    blue_action[control_state["robot_id"]].navigation_target = (world_x, world_y)
+                    blue_action[control_state["robot_id"]].navigation_target_norm = tuple(navigation_target_norm)
                     blue_action[control_state["robot_id"]].navigation_set = 1
 
             # 按键事件

@@ -112,10 +112,6 @@ class PPOAgent:
         # 导航目标
         navigation_target_dist = Normal(navigation_target_mean, navigation_target_std)
         navigation_target_action = navigation_target_dist.sample()
-        x = (navigation_target_action[0] + 1) * env_config.FIELD_WIDTH / 2
-        y = (navigation_target_action[1] + 1) * env_config.FIELD_HEIGHT / 2
-        x = torch.clamp(x, 0, env_config.FIELD_WIDTH)
-        y = torch.clamp(y, 0, env_config.FIELD_HEIGHT)
         # 导航移动
         navigation_set_dist = Categorical(logits=navigation_set_logits)
         navigation_set_action = navigation_set_dist.sample()
@@ -125,7 +121,7 @@ class PPOAgent:
 
         actions = {
             ROBOT_ID[team][robot_type]: Action(
-                navigation_target=(x.item(), y.item()),
+                navigation_target_norm=navigation_target_action.cpu().numpy(),
                 navigation_set=navigation_set_action.item(),
                 attack_target=attack_target_action.item()
             ) for robot_type in BASE_ROBOT_TYPE_LIST
@@ -133,7 +129,40 @@ class PPOAgent:
 
         return actions
 
-    def update(self, transition_dicts):
+    def update(self, transition_dict):
+        """更新策略"""
+        states = torch.tensor(np.array(transition_dict['states']), dtype=torch.float).to(self.device)
+        actions = torch.tensor(np.array(transition_dict['actions']), dtype=torch.float).to(self.device)
+        rewards = torch.tensor(np.array(transition_dict['rewards']), dtype=torch.float).view(-1, 1).to(self.device)
+        next_states = torch.tensor(np.array(transition_dict['next_states']), dtype=torch.float).to(self.device)
+        dones = torch.tensor(np.array(transition_dict['dones']), dtype=torch.float).view(-1, 1).to(self.device)
+        
+        # 计算old_log_probs，使用detach()避免梯度冲突
+        with torch.no_grad():
+            td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
+            td_delta = td_target - self.critic(states)
+            advantage = compute_advantage(self.gamma, self.lmbda, td_delta)
+            old_log_probs = self._get_log_probs(states, actions)
+
+        for _ in range(self.epochs):
+            log_probs = self._get_log_probs(states, actions)
+            log_ratio = log_probs - old_log_probs
+            # log_ratio = torch.clamp(log_ratio, min=-10, max=10)  # 限制在 e^{-10}~e^{10} 范围内
+            ratio = torch.exp(log_ratio)
+            surr1 = ratio * advantage
+            surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * advantage  # 截断
+            actor_loss = torch.mean(-torch.min(surr1, surr2))  # PPO损失函数
+            critic_loss = torch.mean(F.mse_loss(self.critic(states), td_target))
+            self.actor_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
+            actor_loss.backward()
+            critic_loss.backward()
+            # torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 10)
+            # torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 10)
+            self.actor_optimizer.step()
+            self.critic_optimizer.step()
+
+    def update_multi_rollout(self, transition_dicts):
         """更新策略，支持多个rollout和shuffle"""
         # 合并所有rollout的数据
         all_states = []
@@ -141,6 +170,8 @@ class PPOAgent:
         all_rewards = []
         all_next_states = []
         all_dones = []
+        # 记录每个rollout的长度
+        rollout_lengths = []
         
         for trans_dict in transition_dicts:
             all_states.append(trans_dict['states'])
@@ -148,6 +179,7 @@ class PPOAgent:
             all_rewards.append(trans_dict['rewards'])
             all_next_states.append(trans_dict['next_states'])
             all_dones.append(trans_dict['dones'])
+            rollout_lengths.append(len(trans_dict['dones']))
         
         # 转换为张量
         states = torch.tensor(np.vstack(all_states), dtype=torch.float).to(self.device)
@@ -160,7 +192,14 @@ class PPOAgent:
         with torch.no_grad():
             td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
             td_delta = td_target - self.critic(states)
-            advantage = compute_advantage(self.gamma, self.lmbda, td_delta)
+            # 分割每个rollout的td_delta
+            td_delta_split = torch.split(td_delta, rollout_lengths)
+            advantages_list = []
+            for td in td_delta_split:
+                # 对每个rollout独立计算优势
+                advantages_list.append(compute_advantage(self.gamma, self.lmbda, td))
+            # 合并所有rollout的优势函数
+            advantage = torch.cat(advantages_list, dim=0)
             old_log_probs = self._get_log_probs(states, actions)  # 使用detach避免梯度冲突
 
         # 获取总样本数并创建索引
@@ -228,13 +267,13 @@ class PPOAgent:
         # 计算各个动作的log概率
         # 对于正态分布，log_prob会返回与输入相同形状的张量
         navigation_target_log_probs = navigation_target_action_dists.log_prob(navigation_target_actions)
-        navigation_set_log_probs = navigation_set_action_dists.log_prob(navigation_set_actions)
-        attack_target_log_probs = attack_target_action_dists.log_prob(attack_target_actions)
+        navigation_set_log_probs = navigation_set_action_dists.log_prob(navigation_set_actions.squeeze(0))
+        attack_target_log_probs = attack_target_action_dists.log_prob(attack_target_actions.squeeze(0))
 
         # 将所有log概率相加
         log_probs = (navigation_target_log_probs.sum(dim=-1) # 将导航目标的log概率在最后一个维度上求和（因为它是2维的x,y坐标）
                      + navigation_set_log_probs
-                     + attack_target_log_probs)
+                     + attack_target_log_probs).unsqueeze(-1)
         return log_probs
     
     def save(self, path: str):

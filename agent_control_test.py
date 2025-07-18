@@ -78,7 +78,7 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
         blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
         # 翻转蓝方导航点
         for id in blue_action.keys():
-            blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+            blue_action[id].navigation_target_norm = (-blue_action[id].navigation_target_norm[0], -blue_action[id].navigation_target_norm[1])
 
         # print(red_action, blue_action)
 

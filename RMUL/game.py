@@ -83,7 +83,7 @@ class GameRMUL(gym.Env):
             
             # 组合动作空间
             robot_action_spaces[robot_id] = spaces.Dict({
-                'navigation_target': navigation_target_space,
+                'navigation_target_norm': navigation_target_space,
                 'navigation_set': navigation_set_space,
                 'attack_target': attack_target_space,
                 'purchase': purchase_space,
@@ -220,7 +220,7 @@ class GameRMUL(gym.Env):
 
         # # 不可行导航点惩罚
         # if action["RED_3_STANDARD"]["navigation_set"] == 1:
-        #     col, row = world_to_grid(action["RED_3_STANDARD"]["navigation_target"])
+        #     col, row = world_to_grid(action["RED_3_STANDARD"]["navigation_target_norm"])
         #     if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
         #         reward_navigation_unmovable = -1.0
         #     else:
@@ -232,10 +232,10 @@ class GameRMUL(gym.Env):
 
         # # 导航点差异惩罚
         # try:
-        #     last_navigation = self._last_action["RED_3_STANDARD"]["navigation_target"]
+        #     last_navigation = self._last_action["RED_3_STANDARD"]["navigation_target_norm"]
         # except:
         #     last_navigation = self.env.robots["RED_3_STANDARD"].get_position()
-        # current_navigation = action["RED_3_STANDARD"]["navigation_target"]
+        # current_navigation = action["RED_3_STANDARD"]["navigation_target_norm"]
         # navigation_diff = calc_distance(last_navigation, current_navigation)
         # reward_navigation_diff = - (navigation_diff ** 2) / (1 + navigation_diff ** 2)
         # reward_list.append(reward_navigation_diff)

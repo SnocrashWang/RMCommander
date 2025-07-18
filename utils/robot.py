@@ -2,6 +2,7 @@ import pygame
 import pymunk
 import math
 import time
+import numpy as np
 from typing import List, Dict, Tuple, Optional
 from utils.config.exp_prop_config import *
 from utils.config.bullet_config import *
@@ -231,13 +232,13 @@ class Robot:
         self.cool_down_buff = min(self.cool_down_buff_dict.values(), default=1.0)
         self.power_buff = max(self.power_buff_dict.values(), default=1.0)
 
-    def apply_observation(self, observation):
+    def apply_observation(self, observation, env_config):
         """
         【注意！】这是一个非常危险的函数，非特殊情况不要使用！
         直接将指定的观察值赋值到当前环境中
         """
         self._body.position = pymunk.Vec2d(observation.position[0], observation.position[1])
-        self.set_target(tuple(observation.target_position))
+        self.set_target(tuple((np.array(observation.target_position_norm) + 1) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]) / 2))
         self.chassis_property_type = CHASSIS_PROPERTY_TYPE(math.ceil(observation.chassis_property_type))
         self.gimbal_property_type = GIMBAL_PROPERTY_TYPE(math.ceil(observation.gimbal_property_type))
         self.update_property()

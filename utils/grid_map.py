@@ -35,7 +35,7 @@ class GridMap:
         if 0 <= col < self.grid_cols and 0 <= row < self.grid_rows:
             return self.grid_blocked[col][row]
         else:
-            raise ValueError(f"Invalid grid coordinates: ({col}, {row})")
+            raise ValueError(f"Invalid grid coordinates: ({col}, {row}) out of ({self.grid_cols}, {self.grid_rows})")
 
     def mark_obstacles(self, obstacles):
         for obs in obstacles:
@@ -191,8 +191,13 @@ def a_star(grid_map, start: Tuple[int, int], goal: Tuple[int, int]):
             return reconstruct_path(came_from, current)
         for d in dirs:
             neighbor = (current[0] + d[0], current[1] + d[1])
-            if grid_map.is_blocked(*neighbor):
+            try:
+                if grid_map.is_blocked(*neighbor):
+                    continue
+            except ValueError:
                 continue
+            except Exception as e:
+                raise e
             tentative_g = g_score[current] + math.hypot(d[0], d[1])
             if neighbor not in g_score or tentative_g < g_score[neighbor]:
                 came_from[neighbor] = current

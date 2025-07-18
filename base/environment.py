@@ -19,19 +19,19 @@ from base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 
 @dataclass
 class Action:
-    navigation_target: Tuple[float, float] = (0.0, 0.0)
+    navigation_target_norm: Tuple[float, float] = (0.0, 0.0)
     navigation_set: int = 0
     attack_target: int = 0
 
     def __post_init__(self):
         """初始化"""
         try:
-            if isinstance(self.navigation_target, np.ndarray):
-                self.navigation_target = tuple(self.navigation_target.astype(float))
+            if isinstance(self.navigation_target_norm, np.ndarray):
+                self.navigation_target_norm = tuple(self.navigation_target_norm.astype(float))
             else:
-                self.navigation_target = tuple(self.navigation_target)
+                self.navigation_target_norm = tuple(self.navigation_target_norm)
         except:
-            self.navigation_target = (0.0, 0.0)
+            self.navigation_target_norm = (0.0, 0.0)
         try:
             self.navigation_set = int(self.navigation_set)
         except:
@@ -44,7 +44,7 @@ class Action:
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            *self.navigation_target,
+            *self.navigation_target_norm,
             self.navigation_set,
             self.attack_target
         ])
@@ -69,7 +69,7 @@ class GameObs:
 @dataclass
 class RobotObs:
     position: np.ndarray
-    target_position: np.ndarray
+    target_position_norm: np.ndarray
     chassis_property_type: int
     gimbal_property_type: int
     level: int
@@ -81,7 +81,7 @@ class RobotObs:
     def from_robot(cls, robot: Robot):
         return cls(
             position=np.array(robot.get_position()),
-            target_position=np.array(robot.target_pos),
+            target_position_norm=np.array(robot.target_pos) / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]),
             chassis_property_type=robot.chassis_property_type.value,
             gimbal_property_type=robot.gimbal_property_type.value,
             level=robot.level,
@@ -94,8 +94,8 @@ class RobotObs:
     def from_array(cls, array: np.ndarray):
         assert array.shape == (10,)
         return cls(
-            position=tuple(array[:2] * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])),
-            target_position=tuple(array[2:4] * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])),
+            position=array[:2] * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]),
+            target_position_norm=array[2:4],
             chassis_property_type=math.ceil(array[4]),
             gimbal_property_type=math.ceil(array[5]),
             level=math.ceil(array[6]),
@@ -108,7 +108,7 @@ class RobotObs:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
             *(self.position / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])),
-            *(self.target_position / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])),
+            *(self.target_position_norm),
             self.chassis_property_type,
             self.gimbal_property_type,
             self.level,
@@ -309,7 +309,8 @@ class Environment:
 
             # 设置导航点
             if robot_action.navigation_set == 1:
-                robot.set_target(robot_action.navigation_target)
+                navigation_target = (np.array(robot_action.navigation_target_norm) + 1) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]) / 2
+                robot.set_target(tuple(navigation_target))
 
             # 攻击
             apply_robot_action_attack(robot, robot_action)

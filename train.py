@@ -102,20 +102,20 @@ def train(
                     blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
                 # 翻转蓝方导航点
                 for id in blue_action.keys():
-                    blue_action[id].navigation_target = opposite_position(blue_action[id].navigation_target, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                    blue_action[id].navigation_target_norm = (-blue_action[id].navigation_target_norm[0], -blue_action[id].navigation_target_norm[1])
             
             # 记录动作
             frame_action = {
                 'red_action': {
                     robot_id: {
-                        'navigation_target': list(action.navigation_target),
+                        'navigation_target_norm': list(action.navigation_target_norm),
                         'navigation_set': action.navigation_set,
                         'attack_target': action.attack_target
                     } for robot_id, action in red_action.items()
                 },
                 'blue_action': {
                     robot_id: {
-                        'navigation_target': list(action.navigation_target),
+                        'navigation_target_norm': list(action.navigation_target_norm),
                         'navigation_set': action.navigation_set,
                         'attack_target': action.attack_target
                     } for robot_id, action in blue_action.items()
@@ -157,7 +157,7 @@ def train(
         
         # 更新策略
         with timer(time_stats, 'update'):
-            agent_train.update([transition_dict])
+            agent_train.update(transition_dict)
         
         # 打印训练进度
         tqdm.write(f"回合 {episode + 1}/{num_episodes}")

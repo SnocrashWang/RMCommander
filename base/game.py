@@ -91,7 +91,7 @@ class Game(gym.Env):
         
         # 机器人状态：位置(2) + 导航点(2) + 属性(2) + 等级(1) + 经验(1) + 血量(1) + 热量(1) = 10维
         robot_state_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
+            low=np.array([0.0, 0.0, -1.0, -1.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
             high=np.array([1.0, 1.0, 1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
@@ -153,7 +153,7 @@ class Game(gym.Env):
         self.env.apply_observation(observation)
         for robot_id, robot_obs in observation.robot_obs.items():
             robot = self.env.get_robot(robot_id)
-            robot.apply_observation(robot_obs)
+            robot.apply_observation(robot_obs, env_config)
     
     def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action], control_steps: int = 1):
         """执行一步动作"""
@@ -183,6 +183,7 @@ class Game(gym.Env):
 
             if terminated or truncated:
                 break
+            exit()
         
         # 信息
         info = {
@@ -221,7 +222,7 @@ class Game(gym.Env):
 
         # # 不可行导航点惩罚
         # if action["RED_3_STANDARD"].navigation_set == 1:
-        #     col, row = world_to_grid(action["RED_3_STANDARD"].navigation_target)
+        #     col, row = world_to_grid(action["RED_3_STANDARD"].navigation_target_norm)
         #     if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
         #         reward_navigation_unmovable = -1.0
         #     else:
@@ -233,10 +234,10 @@ class Game(gym.Env):
 
         # # 导航点差异惩罚
         # try:
-        #     last_navigation = self._last_action["RED_3_STANDARD"]["navigation_target"]
+        #     last_navigation = self._last_action["RED_3_STANDARD"]["navigation_target_norm"]
         # except:
         #     last_navigation = self.env.robots["RED_3_STANDARD"].get_position()
-        # current_navigation = action["RED_3_STANDARD"]["navigation_target"]
+        # current_navigation = action["RED_3_STANDARD"]["navigation_target_norm"]
         # navigation_diff = calc_distance(last_navigation, current_navigation)
         # reward_navigation_diff = - (navigation_diff ** 2) / (1 + navigation_diff ** 2)
         # reward_list.append(reward_navigation_diff)

@@ -2,7 +2,7 @@ import math
 import pygame
 import time
 from contextlib import contextmanager
-from typing import List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from utils.config.game_config import GameTeam
 from utils.obstacle import Obstacle
@@ -43,6 +43,15 @@ def calc_distance(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
 def opposite_position(p: Tuple[float, float], field_width: float, field_height: float) -> Tuple[float, float]:
     """计算相反位置"""
     return field_width - p[0], field_height - p[1]
+
+def mirror_navigation_target_actions(action: Dict[str, Any]) -> Dict[str, Any]:
+    """镜像归一化导航点，用于把蓝方视角 action 转回世界坐标系。"""
+    for robot_action in action.values():
+        if not hasattr(robot_action, "navigation_target_norm"):
+            continue
+        x, y = robot_action.navigation_target_norm
+        robot_action.navigation_target_norm = (-x, -y)
+    return action
 
 def draw_dashed_line(
     surface: pygame.Surface,

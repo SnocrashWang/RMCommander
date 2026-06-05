@@ -12,7 +12,7 @@ from utils.config.game_config import GameTeam, GameType
 from agents.ppo_agent import PPOAgent
 from utils.config.robot_config import RobotType
 from utils.grid_map import world_to_grid
-from utils.utils import opposite_position
+from utils.utils import calc_distance, mirror_navigation_target_actions
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
@@ -29,7 +29,61 @@ elif CURRENT_GAME == GameType.RMUL:
 #     from RMUC.config import env_config
 
 
-def agent_control(model_file: str, delay: float, control_frequency: float, save_video: bool, video_path: str):
+def is_valid_base_position(game: Game, position):
+    try:
+        col, row = world_to_grid(position)
+        return not game.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row)
+    except ValueError:
+        return False
+
+
+def sample_base_position(game: Game, x_range, y_range):
+    for _ in range(1000):
+        position = (random.uniform(*x_range), random.uniform(*y_range))
+        if is_valid_base_position(game, position):
+            return position
+    raise RuntimeError("failed to sample a valid start position")
+
+
+def apply_base_random_start(game: Game):
+    """在 BASE 1v1 场景中随机放置红蓝双方。"""
+    red = game.env.get_robot("RED_3_STANDARD")
+    blue = game.env.get_robot("BLUE_3_STANDARD")
+
+    red_pos = sample_base_position(game, (0.4, 2.2), (0.4, 4.6))
+    blue_pos = sample_base_position(game, (2.8, 4.6), (0.4, 4.6))
+    while calc_distance(red_pos, blue_pos) < 2.0:
+        blue_pos = sample_base_position(game, (2.8, 4.6), (0.4, 4.6))
+
+    for robot, position in ((red, red_pos), (blue, blue_pos)):
+        robot._body.position = position
+        robot._body.velocity = (0, 0)
+        robot.target_pos = position
+        robot.path_points = []
+        robot.current_path_idx = 0
+
+
+def reset_game(game: Game, random_start: bool):
+    obs, info = game.reset()
+    if random_start:
+        if CURRENT_GAME != GameType.BASE:
+            raise NotImplementedError("--random-start 目前只支持 BASE 规则")
+        apply_base_random_start(game)
+        obs = game._get_obs()
+        if game._render_mode:
+            info["render_images"] = [game.render()]
+    return obs, info
+
+
+def agent_control(
+    model_file: str,
+    delay: float,
+    control_frequency: float,
+    save_video: bool,
+    video_path: str,
+    deterministic: bool,
+    random_start: bool,
+):
     # 初始化
     if save_video:
         render_mode = "rgb_array"
@@ -40,7 +94,7 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
 
     # 创建环境和渲染器
     game = Game(render_mode=render_mode)
-    obs, info = game.reset()
+    obs, info = reset_game(game, random_start)
     
     # 如果保存视频，初始化视频写入器
     video_writer = None
@@ -75,11 +129,10 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
         frame_start = time.perf_counter()
         
         # 动作
-        red_action = agent.take_action(obs.to_array(GameTeam.RED), GameTeam.RED)
-        blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
+        red_action = agent.take_action(obs.to_array(GameTeam.RED), GameTeam.RED, deterministic=deterministic)
+        blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE, deterministic=deterministic)
         # 翻转蓝方导航点
-        for id in blue_action.keys():
-            blue_action[id].navigation_target_norm = (-blue_action[id].navigation_target_norm[0], -blue_action[id].navigation_target_norm[1])
+        blue_action = mirror_navigation_target_actions(blue_action)
 
         print(red_action, blue_action)
 
@@ -108,7 +161,7 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
             # 按键事件
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
-                    obs, info = game.reset()
+                    obs, info = reset_game(game, random_start)
                     print("Environment reset")
                 elif event.key == pygame.K_ESCAPE:
                     running = False
@@ -127,9 +180,19 @@ def main():
     parser.add_argument('-v', '--video', action='store_true', help='是否保存为视频')
     parser.add_argument('--control_frequency', type=float, default=2, help='控制频率（Hz）')
     parser.add_argument('--video_dir', type=str, default='videos', help='视频保存目录')
+    parser.add_argument('--deterministic', action='store_true', help='使用确定性策略进行评估')
+    parser.add_argument('--random-start', action='store_true', help='使用随机初始位置（目前仅支持 BASE）')
     args = parser.parse_args()
 
-    agent_control(args.model_file, args.delay, args.control_frequency, args.video, args.video_dir)
+    agent_control(
+        args.model_file,
+        args.delay,
+        args.control_frequency,
+        args.video,
+        args.video_dir,
+        args.deterministic,
+        args.random_start,
+    )
 
 if __name__ == "__main__":
     main()

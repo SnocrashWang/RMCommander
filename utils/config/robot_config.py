@@ -50,3 +50,4 @@ class RobotConfig:
     radius: float = 0.25
     max_ammo: int = 200
     ammo_allowed: int = 0
+    enable_exp: bool = True

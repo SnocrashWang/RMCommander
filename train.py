@@ -12,7 +12,7 @@ from rules.base.game import Game
 from utils.config.game_config import GameTeam
 from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.grid_map import world_to_grid
-from utils.utils import timer, opposite_position
+from utils.utils import mirror_navigation_target_actions, timer
 
 def train(
     base_model: str = None,
@@ -101,8 +101,7 @@ def train(
                 else:
                     blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
                 # 翻转蓝方导航点
-                for id in blue_action.keys():
-                    blue_action[id].navigation_target_norm = (-blue_action[id].navigation_target_norm[0], -blue_action[id].navigation_target_norm[1])
+                blue_action = mirror_navigation_target_actions(blue_action)
             
             # 记录动作
             frame_action = {

@@ -16,25 +16,43 @@ from rules.base.game import Game
 from utils.config.game_config import GameState, GameTeam
 from utils.config.robot_config import RobotType
 from utils.grid_map import world_to_grid
-from utils.utils import attack_sight_clear, calc_distance
+from utils.utils import attack_sight_clear, calc_distance, mirror_navigation_target_actions
 
 
 RED_ID = "RED_3_STANDARD"
 BLUE_ID = "BLUE_3_STANDARD"
+DEFAULT_BLUE_FIXED_NAV_WORLD = (1.0, 2.5)
 
 
 def force_stage_a_action(action: Dict[str, Action]) -> Dict[str, Action]:
+    """Stage A 中用于隔离导航学习的动作钳制。"""
     robot_action = action[RED_ID]
     robot_action.navigation_set = 1
     robot_action.attack_target = RobotType.STANDARD_3.value
     return action
 
 
-def make_blue_action(mode: str) -> Dict[str, Action]:
+def world_to_navigation_norm(position: Tuple[float, float]) -> Tuple[float, float]:
+    return (
+        position[0] * 2 / env_config.FIELD_WIDTH - 1,
+        position[1] * 2 / env_config.FIELD_HEIGHT - 1,
+    )
+
+
+def make_blue_action(mode: str, fixed_nav_world: Tuple[float, float]) -> Dict[str, Action]:
+    """脚本蓝方：静止或只进行固定攻击。"""
     if mode == "attack":
         return {
             BLUE_ID: Action(
                 navigation_set=0,
+                attack_target=RobotType.STANDARD_3.value,
+            )
+        }
+    if mode == "fixed_nav_attack":
+        return {
+            BLUE_ID: Action(
+                navigation_target_norm=world_to_navigation_norm(fixed_nav_world),
+                navigation_set=1,
                 attack_target=RobotType.STANDARD_3.value,
             )
         }
@@ -64,6 +82,7 @@ def sample_position(game: Game, x_range: Tuple[float, float], y_range: Tuple[flo
 
 
 def apply_random_start(game: Game):
+    """在可行区域内随机放置双方，用来减少固定开局导致的过拟合。"""
     red = game.env.get_robot(RED_ID)
     blue = game.env.get_robot(BLUE_ID)
 
@@ -84,7 +103,8 @@ def apply_random_start(game: Game):
     blue.current_path_idx = 0
 
 
-def stage_a_reward(game: Game, before, after) -> float:
+def diagnostic_reward(game: Game, before, after) -> float:
+    """共享诊断奖励：只描述接近、伤害、视野和胜负，不追求最终战术完备。"""
     red_pos_before, blue_pos_before, red_hp_before, blue_hp_before = before
     red_pos_after, blue_pos_after, red_hp_after, blue_hp_after = after
 
@@ -118,11 +138,21 @@ def stage_a_reward(game: Game, before, after) -> float:
     return reward
 
 
+def action_head_reward(action: Action) -> float:
+    """轻量鼓励基础动作头，避免奖励过大压过真正的战斗结果。"""
+    reward = 0.0
+    reward += 0.10 if action.navigation_set == 1 else -0.10
+    reward += 0.30 if action.attack_target == RobotType.STANDARD_3.value else -0.30
+    return reward
+
+
 def rollout(
     agent: PPOAgent,
     control_steps: int,
     blue_mode: str,
     random_start: bool,
+    force_actions: bool,
+    blue_fixed_nav_world: Tuple[float, float],
     deterministic: bool = False,
     train: bool = False,
 ):
@@ -142,13 +172,24 @@ def rollout(
     max_decision_steps = env_config.GAME_TIME_LIMIT * env_config.FPS // control_steps + 1
     for _ in range(max_decision_steps):
         red_action = agent.take_action(state, GameTeam.RED, deterministic=deterministic)
-        red_action = force_stage_a_action(red_action)
-        blue_action = make_blue_action(blue_mode)
+        if force_actions:
+            red_action = force_stage_a_action(red_action)
+        if blue_mode == "self":
+            # Stage B：蓝方也使用当前 agent，但输入蓝方视角观测。
+            blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE, deterministic=deterministic)
+            if force_actions:
+                blue_robot_action = blue_action[BLUE_ID]
+                blue_robot_action.navigation_set = 1
+                blue_robot_action.attack_target = RobotType.STANDARD_3.value
+            blue_action = mirror_navigation_target_actions(blue_action)
+        else:
+            blue_action = make_blue_action(blue_mode, blue_fixed_nav_world)
 
         before = robot_snapshot(game)
         next_obs, _, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
         after = robot_snapshot(game)
-        reward = stage_a_reward(game, before, after)
+        reward = diagnostic_reward(game, before, after)
+        reward += action_head_reward(red_action[RED_ID])
         next_state = next_obs.to_array(GameTeam.RED)
         done = terminated or truncated
 
@@ -186,7 +227,15 @@ def rollout(
     return transition_dict, result
 
 
-def evaluate(agent: PPOAgent, episodes: int, control_steps: int, blue_mode: str, random_start: bool):
+def evaluate(
+    agent: PPOAgent,
+    episodes: int,
+    control_steps: int,
+    blue_mode: str,
+    random_start: bool,
+    force_actions: bool,
+    blue_fixed_nav_world: Tuple[float, float],
+):
     results = []
     for _ in range(episodes):
         _, result = rollout(
@@ -194,6 +243,8 @@ def evaluate(agent: PPOAgent, episodes: int, control_steps: int, blue_mode: str,
             control_steps=control_steps,
             blue_mode=blue_mode,
             random_start=random_start,
+            force_actions=force_actions,
+            blue_fixed_nav_world=blue_fixed_nav_world,
             deterministic=True,
             train=False,
         )
@@ -211,10 +262,31 @@ def evaluate(agent: PPOAgent, episodes: int, control_steps: int, blue_mode: str,
     }
 
 
+def resolve_stage_defaults(args):
+    """根据阶段补默认配置；命令行显式传入的选项仍可覆盖。"""
+    if args.random_start is None:
+        args.random_start = args.stage == "c"
+    if args.stage == "a":
+        if args.blue_mode == "auto":
+            args.blue_mode = "idle"
+    elif args.stage == "b":
+        if args.blue_mode == "auto":
+            args.blue_mode = "self"
+        args.force_actions = False
+    elif args.stage == "c":
+        if args.blue_mode == "auto":
+            args.blue_mode = "fixed_nav_attack"
+        args.force_actions = False
+    else:
+        raise ValueError(f"unknown stage: {args.stage}")
+
+
 def train(args):
+    resolve_stage_defaults(args)
     os.makedirs(args.model_dir, exist_ok=True)
     os.makedirs(args.log_dir, exist_ok=True)
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_name = f"stage_{args.stage}_agent_{time_tag}"
 
     game = Game()
     agent = PPOAgent(state_dim=game.observation_space.shape[0], device=args.device)
@@ -223,14 +295,18 @@ def train(args):
         agent.load(args.base_model)
 
     control_steps = int(Game.metadata["render_fps"] // args.control_frequency)
+    blue_fixed_nav_world = tuple(args.blue_fixed_nav)
     history = []
 
     for episode in range(1, args.episodes + 1):
+        # 这里仍是单 rollout 更新，目的是快速诊断策略是否能学到最小行为。
         transition_dict, result = rollout(
             agent,
             control_steps=control_steps,
             blue_mode=args.blue_mode,
             random_start=args.random_start,
+            force_actions=args.force_actions,
+            blue_fixed_nav_world=blue_fixed_nav_world,
             deterministic=False,
             train=True,
         )
@@ -239,7 +315,15 @@ def train(args):
         history.append(result)
 
         if episode == 1 or episode % args.eval_interval == 0:
-            eval_result = evaluate(agent, args.eval_episodes, control_steps, args.blue_mode, args.random_start)
+            eval_result = evaluate(
+                agent,
+                args.eval_episodes,
+                control_steps,
+                args.blue_mode,
+                args.random_start,
+                args.force_actions,
+                blue_fixed_nav_world,
+            )
             print(
                 f"episode={episode} "
                 f"train_state={result['game_state']} "
@@ -250,35 +334,53 @@ def train(args):
             )
             history.append({"episode": episode, "eval": eval_result})
 
-    model_path = os.path.join(args.model_dir, f"stage_a_agent_{time_tag}.pt")
-    log_path = os.path.join(args.log_dir, f"stage_a_{time_tag}.json")
+        if args.save_interval > 0 and episode % args.save_interval == 0:
+            # 诊断训练不只看最后模型，中间 checkpoint 往往更有参考价值。
+            checkpoint_path = os.path.join(args.model_dir, f"{run_name}_episode_{episode}.pt")
+            agent.save(checkpoint_path)
+
+    model_path = os.path.join(args.model_dir, f"{run_name}.pt")
+    log_path = os.path.join(args.log_dir, f"stage_{args.stage}_{time_tag}.json")
     agent.save(model_path)
     with open(log_path, "w", encoding="utf-8") as f:
         json.dump(
             {
                 "args": vars(args),
                 "model_path": model_path,
+                "blue_fixed_nav_world": blue_fixed_nav_world,
                 "history": history,
             },
             f,
             indent=2,
             ensure_ascii=False,
         )
-    final_eval = evaluate(agent, args.eval_episodes, control_steps, args.blue_mode, args.random_start)
+    final_eval = evaluate(
+        agent,
+        args.eval_episodes,
+        control_steps,
+        args.blue_mode,
+        args.random_start,
+        args.force_actions,
+        blue_fixed_nav_world,
+    )
     print(json.dumps({"model_path": model_path, "log_path": log_path, "final_eval": final_eval}, indent=2))
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Stage A diagnostic PPO training for base 1v1.")
+    parser = argparse.ArgumentParser(description="Staged diagnostic PPO training for base 1v1.")
+    parser.add_argument("--stage", choices=["a", "b", "c"], default="a")
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--eval-interval", type=int, default=10)
     parser.add_argument("--eval-episodes", type=int, default=5)
     parser.add_argument("--control-frequency", type=float, default=2)
-    parser.add_argument("--blue-mode", choices=["idle", "attack"], default="idle")
-    parser.add_argument("--random-start", action="store_true")
+    parser.add_argument("--blue-mode", choices=["auto", "idle", "attack", "self", "fixed_nav_attack"], default="auto")
+    parser.add_argument("--random-start", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--force-actions", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--blue-fixed-nav", type=float, nargs=2, default=DEFAULT_BLUE_FIXED_NAV_WORLD)
     parser.add_argument("--base-model", type=str, default=None)
     parser.add_argument("--model-dir", type=str, default="models")
     parser.add_argument("--log-dir", type=str, default="logs")
+    parser.add_argument("--save-interval", type=int, default=100)
     parser.add_argument("--device", type=str, default=None)
     train(parser.parse_args())
 

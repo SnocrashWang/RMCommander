@@ -152,7 +152,8 @@ class PPOAgent:
             td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
             td_delta = td_target - self.critic(states)
             advantage = compute_advantage(self.gamma, self.lmbda, td_delta)
-            advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
+            advantage_std = advantage.std(unbiased=False)
+            advantage = (advantage - advantage.mean()) / (advantage_std + 1e-8)
             old_log_probs, old_entropy = self._get_log_probs(states, actions)
 
         for _ in range(self.epochs):
@@ -211,7 +212,8 @@ class PPOAgent:
                 advantages_list.append(compute_advantage(self.gamma, self.lmbda, td))
             # 合并所有rollout的优势函数
             advantage = torch.cat(advantages_list, dim=0)
-            advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
+            advantage_std = advantage.std(unbiased=False)
+            advantage = (advantage - advantage.mean()) / (advantage_std + 1e-8)
             old_log_probs, old_entropy = self._get_log_probs(states, actions)  # 使用detach避免梯度冲突
 
         # 获取总样本数并创建索引

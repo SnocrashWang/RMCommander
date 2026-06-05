@@ -23,6 +23,7 @@ class Robot:
         radius: float,
         max_ammo: int,
         ammo_allowed: int,
+        enable_exp: bool = True,
         physics_engine: Optional[pymunk.Space] = None,
     ):
         # 全局属性
@@ -35,6 +36,7 @@ class Robot:
         self.exp : int = 0
         self.chassis_property_type : CHASSIS_PROPERTY_TYPE = chassis_property_type
         self.gimbal_property_type : GIMBAL_PROPERTY_TYPE = gimbal_property_type
+        self.enable_exp = enable_exp
 
         # 英雄
         if self.robot_type == RobotType.HERO:
@@ -137,6 +139,8 @@ class Robot:
 
     def update_exp(self, exp: int):
         """更新经验"""
+        if not self.enable_exp:
+            return
         self.exp = min(self.exp + exp, LEVEL_NEED_EXP[len(LEVEL_NEED_EXP)])
         # 升级
         if self.exp >= LEVEL_NEED_EXP[min(self.level + 1, len(LEVEL_NEED_EXP))] and self.level < len(LEVEL_NEED_EXP):

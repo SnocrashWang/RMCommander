@@ -143,6 +143,8 @@ class Game(gym.Env):
         
         # 获取初始观察
         observation = self._get_obs()
+        self._last_observation = self._get_obs()
+        self._last_action = None
         info = {
             'render_images': [render_image],
         }

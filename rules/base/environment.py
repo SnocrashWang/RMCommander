@@ -1,6 +1,7 @@
 import pymunk
 import math
 import numpy as np
+import copy
 from dataclasses import dataclass
 from collections import defaultdict
 from typing import List, Dict, Optional, Tuple, Any
@@ -136,8 +137,8 @@ class Observation:
 
     def to_array(self, team: GameTeam = GameTeam.RED) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
-        red_robot_obs = {robot_id: robot_obs for robot_id, robot_obs in self.robot_obs.copy().items() if robot_id.startswith("RED")}
-        blue_robot_obs = {robot_id: robot_obs for robot_id, robot_obs in self.robot_obs.copy().items() if robot_id.startswith("BLUE")}
+        red_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("RED")}
+        blue_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("BLUE")}
         if team == GameTeam.RED:
             robot_obs = {**red_robot_obs, **blue_robot_obs}
         else:

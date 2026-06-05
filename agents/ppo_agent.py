@@ -105,20 +105,29 @@ class PPOAgent:
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
     
     @torch.no_grad()
-    def take_action(self, state, team: GameTeam) -> Dict[str, Action]:
+    def take_action(self, state, team: GameTeam, deterministic: bool = False) -> Dict[str, Action]:
         state = torch.tensor(state, dtype=torch.float).to(self.device)
         navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(state)
         # print(navigation_target_mean, navigation_target_std)
         # 导航目标
-        navigation_target_dist = Normal(navigation_target_mean, navigation_target_std)
-        navigation_target_action = navigation_target_dist.sample()
+        if deterministic:
+            navigation_target_action = navigation_target_mean
+        else:
+            navigation_target_dist = Normal(navigation_target_mean, navigation_target_std)
+            navigation_target_action = navigation_target_dist.sample()
         navigation_target_action = torch.clip(navigation_target_action, -1, 1)
         # 导航移动
-        navigation_set_dist = Categorical(logits=navigation_set_logits)
-        navigation_set_action = navigation_set_dist.sample()
+        if deterministic:
+            navigation_set_action = torch.argmax(navigation_set_logits, dim=-1)
+        else:
+            navigation_set_dist = Categorical(logits=navigation_set_logits)
+            navigation_set_action = navigation_set_dist.sample()
         # 目标选择
-        attack_target_dist = Categorical(logits=attack_target_logits)
-        attack_target_action = attack_target_dist.sample()
+        if deterministic:
+            attack_target_action = torch.argmax(attack_target_logits, dim=-1)
+        else:
+            attack_target_dist = Categorical(logits=attack_target_logits)
+            attack_target_action = attack_target_dist.sample()
 
         actions = {
             ROBOT_ID[team][robot_type]: Action(
@@ -143,6 +152,7 @@ class PPOAgent:
             td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
             td_delta = td_target - self.critic(states)
             advantage = compute_advantage(self.gamma, self.lmbda, td_delta)
+            advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
             old_log_probs, old_entropy = self._get_log_probs(states, actions)
 
         for _ in range(self.epochs):
@@ -201,6 +211,7 @@ class PPOAgent:
                 advantages_list.append(compute_advantage(self.gamma, self.lmbda, td))
             # 合并所有rollout的优势函数
             advantage = torch.cat(advantages_list, dim=0)
+            advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
             old_log_probs, old_entropy = self._get_log_probs(states, actions)  # 使用detach避免梯度冲突
 
         # 获取总样本数并创建索引

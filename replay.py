@@ -12,11 +12,11 @@ from config import CURRENT_GAME
 from utils.config.game_config import GameType, GameState
 
 if CURRENT_GAME == GameType.BASE:
-    from base.game import Game
-    from base.environment import Action, Observation
+    from rules.base.game import Game
+    from rules.base.environment import Action, Observation
 elif CURRENT_GAME == GameType.RMUL:
-    from RMUL.game import GameRMUL as Game
-    from RMUL.environment import ActionRMUL as Action
+    from rules.RMUL.game import GameRMUL as Game
+    from rules.RMUL.environment import ActionRMUL as Action
 
 
 def load_episode(log_file: str) -> Dict[str, Any]:

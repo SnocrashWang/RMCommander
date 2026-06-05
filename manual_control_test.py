@@ -10,14 +10,14 @@ from utils.config.robot_config import RobotType
 from visualization.config import render_config
 
 if CURRENT_GAME == GameType.BASE:
-    from base.game import Game
-    from base.environment import Action
-    from base.config import env_config
-    from base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
+    from rules.base.game import Game
+    from rules.base.environment import Action
+    from rules.base.config import env_config
+    from rules.base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 elif CURRENT_GAME == GameType.RMUL:
-    from RMUL.game import GameRMUL as Game
-    from RMUL.environment import ActionRMUL as Action
-    from RMUL.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
+    from rules.RMUL.game import GameRMUL as Game
+    from rules.RMUL.environment import ActionRMUL as Action
+    from rules.RMUL.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 # elif CURRENT_GAME == GameType.RMUC:
     # from RMUC.game import GameRMUC as Game
     # from RMUC.config.robot_config import RMUC_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST

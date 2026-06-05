@@ -15,15 +15,15 @@ from utils.grid_map import world_to_grid
 from utils.utils import opposite_position
 
 if CURRENT_GAME == GameType.BASE:
-    from base.game import Game
-    from base.environment import Action
-    from base.config import env_config
-    from base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
+    from rules.base.game import Game
+    from rules.base.environment import Action
+    from rules.base.config import env_config
+    from rules.base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 elif CURRENT_GAME == GameType.RMUL:
-    from RMUL.game import GameRMUL as Game
-    from RMUL.environment import ActionRMUL as Action
-    from RMUL.config import env_config
-    from RMUL.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
+    from rules.RMUL.game import GameRMUL as Game
+    from rules.RMUL.environment import ActionRMUL as Action
+    from rules.RMUL.config import env_config
+    from rules.RMUL.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 # elif CURRENT_GAME == GameType.RMUC:
 #     from RMUC.environment import EnvironmentRMUC, Action
 #     from RMUC.config import env_config
@@ -81,7 +81,7 @@ def agent_control(model_file: str, delay: float, control_frequency: float, save_
         for id in blue_action.keys():
             blue_action[id].navigation_target_norm = (-blue_action[id].navigation_target_norm[0], -blue_action[id].navigation_target_norm[1])
 
-        # print(red_action, blue_action)
+        print(red_action, blue_action)
 
         # 更新环境
         obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)

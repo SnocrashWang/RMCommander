@@ -6,9 +6,9 @@ from collections import defaultdict
 import random
 
 from agents.ppo_agent import PPOAgent
-from base.config import env_config
-from base.environment import Action
-from base.game import Game
+from rules.base.config import env_config
+from rules.base.environment import Action
+from rules.base.game import Game
 from utils.config.game_config import GameTeam
 from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.grid_map import world_to_grid

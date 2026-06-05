@@ -6,9 +6,9 @@ import multiprocessing
 import concurrent.futures
 
 from agents.ppo_agent import PPOAgent
-from base.config import env_config
-from base.environment import Action
-from base.game import Game
+from rules.base.config import env_config
+from rules.base.environment import Action
+from rules.base.game import Game
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.utils import timer
@@ -62,11 +62,11 @@ def train(
     device: str = None,
     model_dir: str = "models",
     log_dir: str = "logs",
-    batch_size: int = 16,
+    batch_size: int = 64,
     num_workers: int = 4,
-    num_episodes: int = 2000,
+    num_episodes: int = 1000,
     max_steps: int = env_config.GAME_TIME_LIMIT * env_config.FPS,
-    control_frequency: int = 10,
+    control_frequency: int = 2,
     save_interval: int = 50,
 ):
     """
@@ -188,7 +188,7 @@ if __name__ == "__main__":
     RIVAL_MODEL = None
     
     # 对抗训练
-    ADVERSARIAL = False
+    ADVERSARIAL = True
 
     # 设置训练设备（None表示自动选择，'cuda'表示使用GPU，'cpu'表示使用CPU）
     DEVICE = None

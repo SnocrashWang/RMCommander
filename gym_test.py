@@ -1,5 +1,5 @@
 import gymnasium as gym
-from base.game import RoboMasterGym
+from rules.base.game import RoboMasterGym
 
 # env = gym.make("LunarLander-v3", render_mode="human")
 # env = gym.make("Pendulum-v1", render_mode="human", g=9.81)  # default g=10.0

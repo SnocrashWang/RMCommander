@@ -5,15 +5,15 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional, Tuple
 
-from base.environment import Environment
+from rules.base.environment import Environment
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotConfig, RobotType, ROBOT_ID
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.robot import Robot
 from utils.utils import point_in_polygon, opposite_team, has_line_of_sight, attack_sight_clear
 
-from RMUL.config import env_config
-from RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
+from rules.RMUL.config import env_config
+from rules.RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
 
 
 @dataclass

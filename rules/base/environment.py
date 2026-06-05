@@ -13,8 +13,8 @@ from utils.robot import Robot
 from utils.obstacle import Obstacle
 from utils.utils import attack_sight_clear, calc_distance, opposite_team, opposite_position, timer
 
-from base.config import env_config
-from base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
+from rules.base.config import env_config
+from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 
 
 @dataclass

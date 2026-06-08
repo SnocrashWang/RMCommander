@@ -174,6 +174,9 @@ class GameRMUL(gym.Env):
             
             # 获取观察
             observation = self._get_obs()
+            np.set_printoptions(precision=3, suppress=True)
+            print(observation.to_array(GameTeam.RED))
+            print(observation.to_array(GameTeam.BLUE))
             
             # 计算奖励（以红队视角）
             reward += self._get_reward(GameTeam.RED, red_action)

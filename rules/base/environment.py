@@ -79,8 +79,7 @@ class GameObs:
 
 @dataclass
 class RobotObs:
-    position: np.ndarray
-    target_position_norm: np.ndarray
+    position_norm: np.ndarray
     chassis_property_type: int
     gimbal_property_type: int
     level: int
@@ -91,8 +90,7 @@ class RobotObs:
     @classmethod
     def from_robot(cls, robot: Robot):
         return cls(
-            position=np.array(robot.get_position()),
-            target_position_norm=np.array(robot.target_pos) / np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]),
+            position_norm=np.array(robot.get_position()) / np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]) * 2 - 1,
             chassis_property_type=robot.chassis_property_type.value,
             gimbal_property_type=robot.gimbal_property_type.value,
             level=robot.level,
@@ -103,23 +101,21 @@ class RobotObs:
 
     @classmethod
     def from_array(cls, array: np.ndarray):
-        assert array.shape == (10,)
+        assert array.shape == (8,)
         return cls(
-            position=array[:2] * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]),
-            target_position_norm=array[2:4],
-            chassis_property_type=math.ceil(array[4]),
-            gimbal_property_type=math.ceil(array[5]),
-            level=math.ceil(array[6]),
-            exp_norm=array[7],
-            hp_norm=array[8],
-            heat_norm=array[9],
+            position_norm=array[:2],
+            chassis_property_type=math.ceil(array[2]),
+            gimbal_property_type=math.ceil(array[3]),
+            level=math.ceil(array[4]),
+            exp_norm=array[5],
+            hp_norm=array[6],
+            heat_norm=array[7],
         )
 
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            *(self.position / np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT])),
-            *(self.target_position_norm),
+            *self.position_norm,
             self.chassis_property_type,
             self.gimbal_property_type,
             self.level,
@@ -141,8 +137,8 @@ class Observation:
         for team in [GameTeam.RED, GameTeam.BLUE]:
             for robot_type in BASE_ROBOT_TYPE_LIST:
                 robot_id = ROBOT_ID[team][robot_type]
-                robot_obs[robot_id] = RobotObs.from_array(robot_array[:10])
-                robot_array = robot_array[10:]
+                robot_obs[robot_id] = RobotObs.from_array(robot_array[:8])
+                robot_array = robot_array[8:]
         return cls(game_obs, robot_obs)
 
     def to_array(self, team: GameTeam = GameTeam.RED) -> np.ndarray:
@@ -150,14 +146,14 @@ class Observation:
         red_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("RED")}
         blue_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("BLUE")}
         if team == GameTeam.RED:
+            # 先己方，后对方
             robot_obs = {**red_robot_obs, **blue_robot_obs}
         else:
+            # 调换红蓝方的坐标方向
             for _, robot_obs in red_robot_obs.items():
-                robot_obs.position = opposite_position(robot_obs.position, BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT)
-                robot_obs.target_position_norm = (-robot_obs.target_position_norm[0], -robot_obs.target_position_norm[1])
+                robot_obs.position_norm *= -1
             for _, robot_obs in blue_robot_obs.items():
-                robot_obs.position = opposite_position(robot_obs.position, BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT)
-                robot_obs.target_position_norm = (-robot_obs.target_position_norm[0], -robot_obs.target_position_norm[1])
+                robot_obs.position_norm *= -1
             robot_obs = {**blue_robot_obs, **red_robot_obs}
 
         return np.concatenate([

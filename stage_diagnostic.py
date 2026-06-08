@@ -5,6 +5,7 @@ import random
 from collections import Counter
 from datetime import datetime
 from typing import Dict, Tuple
+from tqdm import tqdm
 
 import numpy as np
 import torch
@@ -21,7 +22,6 @@ from utils.utils import attack_sight_clear, calc_distance, mirror_navigation_tar
 
 RED_ID = "RED_3_STANDARD"
 BLUE_ID = "BLUE_3_STANDARD"
-DEFAULT_BLUE_FIXED_NAV_WORLD = (1.0, 2.5)
 SCRIPT_SWITCH_INTERVAL_RANGE = (3.0, 5.0)
 
 
@@ -44,11 +44,10 @@ def world_to_navigation_norm(position: Tuple[float, float]) -> Tuple[float, floa
 class ScriptBlueController:
     """Stage C 脚本蓝方：周期性随机切换自旋和导航点。"""
 
-    def __init__(self, game: Game, fixed_nav_world: Tuple[float, float]):
+    def __init__(self, game: Game):
         self.game = game
-        self.fixed_nav_world = fixed_nav_world
         self.spin_enabled = False
-        self.nav_world = fixed_nav_world
+        self.nav_world = self._sample_blue_nav_world()
         self.next_spin_switch_time = 0.0
         self.next_nav_switch_time = 0.0
         self.spin_switches = 0
@@ -58,7 +57,7 @@ class ScriptBlueController:
         return elapsed_time + random.uniform(*SCRIPT_SWITCH_INTERVAL_RANGE)
 
     def _sample_blue_nav_world(self) -> Tuple[float, float]:
-        return sample_position(self.game, (0.6, 4.4), (0.4, 4.6))
+        return sample_position(self.game, (0.5, 4.5), (0.5, 4.5))
 
     def make_action(self, elapsed_time: float) -> Dict[str, Action]:
         if elapsed_time >= self.next_spin_switch_time:
@@ -81,25 +80,32 @@ class ScriptBlueController:
         }
 
 
-def make_blue_action(mode: str, fixed_nav_world: Tuple[float, float]) -> Dict[str, Action]:
+def make_blue_action(
+    mode: str,
+    script_blue_controller: ScriptBlueController = None,
+    elapsed_time: float = 0.0,
+) -> Dict[str, Action]:
     """脚本蓝方：静止或只进行固定攻击。"""
-    if mode == "attack":
+    if mode == "idle":
+        return {
+            BLUE_ID: Action(
+                navigation_set=0,
+                attack_target=RobotType.NONE.value,
+                spin=0,
+            )
+        }
+    elif mode == "attack":
         return {
             BLUE_ID: Action(
                 navigation_set=0,
                 attack_target=RobotType.STANDARD_3.value,
-                spin=0,
+                spin=1,
             )
         }
-    if mode == "fixed_nav_attack":
-        return {
-            BLUE_ID: Action(
-                navigation_target_norm=world_to_navigation_norm(fixed_nav_world),
-                navigation_set=1,
-                attack_target=RobotType.STANDARD_3.value,
-                spin=0,
-            )
-        }
+    elif mode == "nav_attack":
+        if script_blue_controller is None:
+            return {BLUE_ID: Action()}
+        return script_blue_controller.make_action(elapsed_time)
     return {BLUE_ID: Action()}
 
 
@@ -120,7 +126,10 @@ def is_valid_position(game: Game, position: Tuple[float, float]) -> bool:
 def sample_position(game: Game, x_range: Tuple[float, float], y_range: Tuple[float, float]) -> Tuple[float, float]:
     for _ in range(1000):
         position = (random.uniform(*x_range), random.uniform(*y_range))
-        if is_valid_position(game, position):
+        if game is not None:
+            if is_valid_position(game, position):
+                return position
+        else:
             return position
     raise RuntimeError("failed to sample a valid start position")
 
@@ -147,7 +156,7 @@ def apply_random_start(game: Game):
     blue.current_path_idx = 0
 
 
-def diagnostic_reward(game: Game, before, after) -> float:
+def diagnostic_reward(game: Game, stage, before, after) -> float:
     """共享诊断奖励：只描述接近、伤害、视野和胜负，不追求最终战术完备。"""
     red_pos_before, blue_pos_before, red_hp_before, blue_hp_before = before
     red_pos_after, blue_pos_after, red_hp_after, blue_hp_after = after
@@ -169,11 +178,16 @@ def diagnostic_reward(game: Game, before, after) -> float:
     )
 
     reward = 0.0
-    reward += 1.0 * distance_gain
-    reward += 0.10 * enemy_damage
-    reward -= 0.10 * self_damage
-    reward += 0.03 if has_los else 0.0
-    reward -= 0.1
+    if stage == "a":
+        reward += 1.0 * distance_gain
+        reward += 0.03 if has_los else 0.0
+        reward += 0.10 * enemy_damage
+        reward -= 0.10 * self_damage
+        reward -= 0.1   # 时间惩罚
+    if stage == "b":
+        reward += 0.10 * enemy_damage
+        reward -= 0.10 * self_damage
+        reward -= 0.2
 
     if game.env.game_state == GameState.RED_TEAM_WIN:
         reward += 20.0
@@ -198,7 +212,9 @@ def navigation_validity_reward(game: Game, action: Action) -> float:
     except ValueError:
         is_blocked = True
 
-    return -1.0 if is_blocked else 1.0
+    # 合法导航点只给很小奖励，非法点仍然明显惩罚。
+    # 否则模型可以靠每步输出任意合法点获得很高回报，却完全不接敌。
+    return -1.0 if is_blocked else 0.05
 
 
 def action_head_reward(action: Action) -> float:
@@ -212,10 +228,9 @@ def action_head_reward(action: Action) -> float:
 def rollout(
     agent: PPOAgent,
     control_steps: int,
+    stage: str,
     blue_mode: str,
     random_start: bool,
-    force_actions: bool,
-    blue_fixed_nav_world: Tuple[float, float],
     deterministic: bool = False,
     train: bool = False,
 ):
@@ -225,7 +240,6 @@ def rollout(
         apply_random_start(game)
         obs = game._get_obs()
     state = obs.to_array(GameTeam.RED)
-    script_blue_controller = ScriptBlueController(game, blue_fixed_nav_world)
     transition_dict = {"states": [], "actions": [], "next_states": [], "rewards": [], "dones": []}
     target_counts = Counter()
     nav_counts = Counter()
@@ -234,34 +248,32 @@ def rollout(
     total_reward = 0.0
     steps = 0
     damage_done = 0
+    script_blue_controller = ScriptBlueController(game) if blue_mode == "nav_attack" else None
 
     max_decision_steps = env_config.GAME_TIME_LIMIT * env_config.FPS // control_steps + 1
     for _ in range(max_decision_steps):
         elapsed_time = env_config.GAME_TIME_LIMIT - game.env._remaining_time
         red_action = agent.take_action(state, GameTeam.RED, deterministic=deterministic)
-        if force_actions:
-            red_action = force_stage_a_action(red_action)
         if blue_mode == "self":
-            # Stage B：蓝方也使用当前 agent，但输入蓝方视角观测。
+            # 蓝方也使用当前 agent，但输入蓝方视角观测。
             blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE, deterministic=deterministic)
-            if force_actions:
-                blue_robot_action = blue_action[BLUE_ID]
-                blue_robot_action.navigation_set = 1
-                blue_robot_action.attack_target = RobotType.STANDARD_3.value
-                blue_robot_action.spin = 0
             blue_action = mirror_navigation_target_actions(blue_action)
         else:
-            if blue_mode == "fixed_nav_attack":
-                blue_action = script_blue_controller.make_action(elapsed_time)
-            else:
-                blue_action = make_blue_action(blue_mode, blue_fixed_nav_world)
+            blue_action = make_blue_action(blue_mode, script_blue_controller, elapsed_time)
 
         before = robot_snapshot(game)
         next_obs, _, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
         after = robot_snapshot(game)
-        reward = diagnostic_reward(game, before, after)
+        reward = diagnostic_reward(game, stage, before, after)
         reward += navigation_validity_reward(game, red_action[RED_ID])
-        reward += action_head_reward(red_action[RED_ID])
+        if stage == "a":
+            reward += action_head_reward(red_action[RED_ID])
+        elif stage == "b":
+            pass
+        elif stage == "c":
+            pass
+        elif stage == "d":
+            pass
         next_state = next_obs.to_array(GameTeam.RED)
         done = terminated or truncated
 
@@ -269,7 +281,6 @@ def rollout(
         target_counts[red_action[RED_ID].attack_target] += 1
         nav_counts[red_action[RED_ID].navigation_set] += 1
         spin_counts[red_action[RED_ID].spin] += 1
-        blue_spin_counts[blue_action[BLUE_ID].spin] += 1
         damage_done += max(0, before[3] - after[3])
 
         if train:
@@ -295,12 +306,11 @@ def rollout(
         "damage_done": damage_done,
         "steps": steps,
         "reward": total_reward,
-        "target_counts": dict(target_counts),
-        "nav_counts": dict(nav_counts),
-        "spin_counts": dict(spin_counts),
-        "blue_spin_counts": dict(blue_spin_counts),
-        "blue_spin_switches": script_blue_controller.spin_switches,
-        "blue_nav_switches": script_blue_controller.nav_switches,
+        "red_action_statics": {
+            "target_counts": dict(target_counts),
+            "nav_counts": dict(nav_counts),
+            "spin_counts": dict(spin_counts),
+        }
     }
     game.close()
     return transition_dict, result
@@ -312,18 +322,15 @@ def evaluate(
     control_steps: int,
     blue_mode: str,
     random_start: bool,
-    force_actions: bool,
-    blue_fixed_nav_world: Tuple[float, float],
 ):
     results = []
     for _ in range(episodes):
         _, result = rollout(
             agent,
             control_steps=control_steps,
+            stage="",
             blue_mode=blue_mode,
             random_start=random_start,
-            force_actions=force_actions,
-            blue_fixed_nav_world=blue_fixed_nav_world,
             deterministic=True,
             train=False,
         )
@@ -331,14 +338,13 @@ def evaluate(
     wins = Counter(result["game_state"] for result in results)
     return {
         "episodes": episodes,
-        "wins": dict(wins),
+        "wins": dict(sorted(wins.items())),
         "avg_reward": float(np.mean([r["reward"] for r in results])),
         "avg_damage_done": float(np.mean([r["damage_done"] for r in results])),
         "avg_steps": float(np.mean([r["steps"] for r in results])),
         "avg_elapsed_time": float(np.mean([r["elapsed_time"] for r in results])),
         "avg_red_hp": float(np.mean([r["red_hp"] for r in results])),
         "avg_blue_hp": float(np.mean([r["blue_hp"] for r in results])),
-        "samples": results[:5],
     }
 
 
@@ -351,18 +357,18 @@ def resolve_stage_defaults(args):
             args.blue_mode = "idle"
     elif args.stage == "b":
         if args.blue_mode == "auto":
-            args.blue_mode = "self"
-        args.force_actions = False
+            args.blue_mode = "nav_attack"
     elif args.stage == "c":
         if args.blue_mode == "auto":
-            args.blue_mode = "fixed_nav_attack"
-        args.force_actions = False
+            args.blue_mode = random.choice(["attack", "nav_attack", "self"])
+    elif args.stage == "d":
+        if args.blue_mode == "auto":
+            args.blue_mode = "self"
     else:
         raise ValueError(f"unknown stage: {args.stage}")
 
 
 def train(args):
-    resolve_stage_defaults(args)
     os.makedirs(args.model_dir, exist_ok=True)
     os.makedirs(args.log_dir, exist_ok=True)
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -375,18 +381,16 @@ def train(args):
         agent.load(args.base_model)
 
     control_steps = int(Game.metadata["render_fps"] // args.control_frequency)
-    blue_fixed_nav_world = tuple(args.blue_fixed_nav)
     history = []
 
-    for episode in range(1, args.episodes + 1):
-        # 这里仍是单 rollout 更新，目的是快速诊断策略是否能学到最小行为。
+    for episode in tqdm(range(1, args.episodes + 1)):
+        resolve_stage_defaults(args)
         transition_dict, result = rollout(
             agent,
             control_steps=control_steps,
+            stage=args.stage,
             blue_mode=args.blue_mode,
             random_start=args.random_start,
-            force_actions=args.force_actions,
-            blue_fixed_nav_world=blue_fixed_nav_world,
             deterministic=False,
             train=True,
         )
@@ -401,17 +405,13 @@ def train(args):
                 control_steps,
                 args.blue_mode,
                 args.random_start,
-                args.force_actions,
-                blue_fixed_nav_world,
             )
-            print(
-                f"episode={episode} "
-                f"train_state={result['game_state']} "
-                f"train_damage={result['damage_done']} "
-                f"eval_wins={eval_result['wins']} "
-                f"eval_damage={eval_result['avg_damage_done']:.2f} "
-                f"eval_time={eval_result['avg_elapsed_time']:.2f}s "
-                f"eval_blue_hp={eval_result['avg_blue_hp']:.2f}"
+            tqdm.write(
+                f"episode={episode}\t"
+                f"eval_results={eval_result['wins']}\t"
+                f"avg_damage={eval_result['avg_damage_done']:.2f}\t"
+                f"avg_time={eval_result['avg_elapsed_time']:.2f}s\t"
+                f"avg_blue_hp={eval_result['avg_blue_hp']:.2f}"
             )
             history.append({"episode": episode, "eval": eval_result})
 
@@ -428,7 +428,6 @@ def train(args):
             {
                 "args": vars(args),
                 "model_path": model_path,
-                "blue_fixed_nav_world": blue_fixed_nav_world,
                 "history": history,
             },
             f,
@@ -441,23 +440,19 @@ def train(args):
         control_steps,
         args.blue_mode,
         args.random_start,
-        args.force_actions,
-        blue_fixed_nav_world,
     )
     print(json.dumps({"model_path": model_path, "log_path": log_path, "final_eval": final_eval}, indent=2))
 
 
 def main():
     parser = argparse.ArgumentParser(description="Staged diagnostic PPO training for base 1v1.")
-    parser.add_argument("--stage", choices=["a", "b", "c"], default="a")
+    parser.add_argument("--stage", choices=["a", "b", "c", "d"], default="a")
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--eval-interval", type=int, default=10)
     parser.add_argument("--eval-episodes", type=int, default=5)
     parser.add_argument("--control-frequency", type=float, default=2)
-    parser.add_argument("--blue-mode", choices=["auto", "idle", "attack", "self", "fixed_nav_attack"], default="auto")
-    parser.add_argument("--random-start", action=argparse.BooleanOptionalAction, default=None)
-    parser.add_argument("--force-actions", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--blue-fixed-nav", type=float, nargs=2, default=DEFAULT_BLUE_FIXED_NAV_WORLD)
+    parser.add_argument("--blue-mode", choices=["auto", "self", "idle", "attack", "nav_attack"], default="auto")
+    parser.add_argument("--random-start", action=argparse.BooleanOptionalAction, default=None, help="是否在每局开始时随机放置双方")
     parser.add_argument("--base-model", type=str, default=None)
     parser.add_argument("--model-dir", type=str, default="models")
     parser.add_argument("--log-dir", type=str, default="logs")

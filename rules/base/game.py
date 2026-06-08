@@ -95,8 +95,8 @@ class Game(gym.Env):
         
         # 机器人状态：位置(2) + 导航点(2) + 属性(2) + 等级(1) + 经验(1) + 血量(1) + 热量(1) = 10维
         robot_state_space = spaces.Box(
-            low=np.array([0.0, 0.0, -1.0, -1.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.array([0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
         
@@ -266,9 +266,9 @@ class Game(gym.Env):
         reward_weight.append(10)
 
         # 距离奖励
-        our_last_position = np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position)
+        our_last_position = (np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position_norm) + 1) / 2 * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT])
         our_position = self.env.get_robot("RED_3_STANDARD").get_position()
-        enemy_last_position = np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position)
+        enemy_last_position = (np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position_norm) + 1) / 2 * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT])
         enemy_position = self.env.get_robot("BLUE_3_STANDARD").get_position()
         last_distance = calc_distance(
             our_last_position,

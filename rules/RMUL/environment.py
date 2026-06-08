@@ -2,6 +2,7 @@ import pymunk
 import numpy as np
 import math
 import time
+import copy
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional, Tuple
 
@@ -13,7 +14,7 @@ from utils.robot import Robot
 from utils.utils import point_in_polygon, opposite_team, has_line_of_sight, attack_sight_clear
 
 from rules.rmul.config import env_config as RMUL_ENV_CONFIG
-from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS
+from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS, RMUL_ROBOT_TYPE_LIST
 
 
 @dataclass
@@ -93,20 +94,18 @@ class GameObsRMUL:
 
 @dataclass
 class RobotObsRMUL:
-    position: np.ndarray
-    target_position_norm: np.ndarray
+    position_norm: np.ndarray
     chassis_property_type: int
     gimbal_property_type: int
     level: int
     exp_norm: float
     hp_norm: float
     heat_norm: float
-        
+
     @classmethod
     def from_robot(cls, robot: Robot):
         return cls(
-            position=np.array(robot.get_position()),
-            target_position_norm=np.array(robot.target_pos) / np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]),
+            position_norm=np.array(robot.get_position()) / np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]) * 2 - 1,
             chassis_property_type=robot.chassis_property_type.value,
             gimbal_property_type=robot.gimbal_property_type.value,
             level=robot.level,
@@ -117,23 +116,21 @@ class RobotObsRMUL:
 
     @classmethod
     def from_array(cls, array: np.ndarray):
-        assert array.shape == (10,)
+        assert array.shape == (8,)
         return cls(
-            position=array[:2] * np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]),
-            target_position_norm=array[2:4],
-            chassis_property_type=math.ceil(array[4]),
-            gimbal_property_type=math.ceil(array[5]),
-            level=math.ceil(array[6]),
-            exp_norm=array[7],
-            hp_norm=array[8],
-            heat_norm=array[9],
+            position_norm=array[:2],
+            chassis_property_type=math.ceil(array[2]),
+            gimbal_property_type=math.ceil(array[3]),
+            level=math.ceil(array[4]),
+            exp_norm=array[5],
+            hp_norm=array[6],
+            heat_norm=array[7],
         )
 
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            *(self.position / np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT])),
-            *(self.target_position_norm),
+            *self.position_norm,
             self.chassis_property_type,
             self.gimbal_property_type,
             self.level,
@@ -144,19 +141,39 @@ class RobotObsRMUL:
 
 @dataclass
 class ObservationRMUL:
-    # TODO
     game_obs: GameObsRMUL
     robot_obs: Dict[str, RobotObsRMUL]
-    
-    def to_array(self) -> np.ndarray:
+
+    @classmethod
+    def from_array(cls, array: np.ndarray):
+        game_obs = GameObsRMUL.from_array(array[:3])
+        robot_array = array[3:]
+        robot_obs = {}
+        for team in [GameTeam.RED, GameTeam.BLUE]:
+            for robot_type in RMUL_ROBOT_TYPE_LIST:
+                robot_id = ROBOT_ID[team][robot_type]
+                robot_obs[robot_id] = RobotObsRMUL.from_array(robot_array[:8])
+                robot_array = robot_array[8:]
+        return cls(game_obs, robot_obs)
+
+    def to_array(self, team: GameTeam = GameTeam.RED) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
+        red_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("RED")}
+        blue_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("BLUE")}
+        if team == GameTeam.RED:
+            # 先己方，后对方
+            robot_obs = {**red_robot_obs, **blue_robot_obs}
+        else:
+            # 调换红蓝方的坐标方向
+            for _, robot_obs in red_robot_obs.items():
+                robot_obs.position_norm *= -1
+            for _, robot_obs in blue_robot_obs.items():
+                robot_obs.position_norm *= -1
+            robot_obs = {**blue_robot_obs, **red_robot_obs}
+
         return np.concatenate([
             self.game_obs.to_array(),
-            *[robot_obs.to_array() for _, robot_obs in sorted(
-                self.robot_obs.items(),
-                key=lambda x: (x[0].split('_')[0], -int(x[0].split('_')[1])),
-                reverse=True
-            )]
+            *[robot_obs.to_array() for _, robot_obs in robot_obs.items()]
         ])
 
 class EnvironmentRMUL(Environment):

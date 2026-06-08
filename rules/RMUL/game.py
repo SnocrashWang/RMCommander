@@ -14,16 +14,15 @@ from utils.grid_map import world_to_grid
 from utils.utils import meters_to_pixels, calc_distance, opposite_team
 from visualization.renderer import Renderer
 
-from rules.RMUL.config import env_config
-from rules.RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
-from rules.RMUL.environment import ActionRMUL, ObservationRMUL, GameObsRMUL, RobotObsRMUL, EnvironmentRMUL
+from rules.rmul.config import env_config as RMUL_ENV_CONFIG
+from rules.rmul.environment import ActionRMUL, ObservationRMUL, GameObsRMUL, RobotObsRMUL, EnvironmentRMUL
 
 
 class GameRMUL(gym.Env):
    
     metadata = {
         "render_modes": ["human", "rgb_array"],
-        "render_fps": env_config.FPS,
+        "render_fps": RMUL_ENV_CONFIG.FPS,
     }
     
     def __init__(
@@ -33,18 +32,13 @@ class GameRMUL(gym.Env):
         super().__init__()
 
         # 创建底层环境
-        self.env = EnvironmentRMUL(
-            env_config=env_config,
-            obstacle_configs=env_config.OBSTACLES,
-            robot_configs=RMUL_ROBOT_CONFIGS
-        )
-
-        self.dt = 1 / env_config.FPS
+        self.env = EnvironmentRMUL()
+        self.dt = 1 / RMUL_ENV_CONFIG.FPS
         
         # 渲染
         self._render_mode = render_mode
         self._screen = None
-        self._frame_start_time = None
+        self._frame_start_time = time.perf_counter()
         self._renderer = None
         if self._render_mode:
             self._init_render()
@@ -67,8 +61,8 @@ class GameRMUL(gym.Env):
         for robot_id, robot in self.env.robots.items():
             # 导航动作：x, y坐标
             navigation_target_space = spaces.Box(
-                low=np.array([0.0, 0.0], dtype=np.float32),
-                high=np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT], dtype=np.float32),
+                low=np.array([-1.0, -1.0], dtype=np.float32),
+                high=np.array([1.0, 1.0], dtype=np.float32),
                 dtype=np.float32
             )
             
@@ -82,10 +76,13 @@ class GameRMUL(gym.Env):
             purchase_space = spaces.Discrete(2)  # 0: 不购买, 1: 购买
             
             # 组合动作空间
+            spin_space = spaces.Discrete(2)
+
             robot_action_spaces[robot_id] = spaces.Dict({
                 'navigation_target_norm': navigation_target_space,
                 'navigation_set': navigation_set_space,
                 'attack_target': attack_target_space,
+                'spin': spin_space,
                 'purchase': purchase_space,
             })
         
@@ -155,6 +152,16 @@ class GameRMUL(gym.Env):
         
         return observation, info
     
+    def apply_observation(self, observation: ObservationRMUL):
+        """
+        【注意！】这是一个非常危险的函数，非特殊情况不要使用！
+        直接将指定的观察值赋值到当前环境中
+        """
+        self.env.apply_observation(observation)
+        for robot_id, robot_obs in observation.robot_obs.items():
+            robot = self.env.get_robot(robot_id)
+            robot.apply_observation(robot_obs, RMUL_ENV_CONFIG)
+
     def step(self, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL], control_steps: int = 1):
         """执行一步动作"""
         reward = 0
@@ -197,14 +204,15 @@ class GameRMUL(gym.Env):
         """获取观察"""
         # 全局状态向量
         game_state = GameObsRMUL(
-            remaining_time=self.env._remaining_time,
-            victory_progress=self.env._victory_progress,
+            remaining_time_norm=self.env._remaining_time / RMUL_ENV_CONFIG.GAME_TIME_LIMIT,
+            victory_progress_red_norm=self.env._victory_progress[GameTeam.RED] / RMUL_ENV_CONFIG.OCCUPATION_TARGET,
+            victory_progress_blue_norm=self.env._victory_progress[GameTeam.BLUE] / RMUL_ENV_CONFIG.OCCUPATION_TARGET,
         )
 
         # 机器人状态向量
         robot_state = {}
         for robot_id, robot in self.env.robots.items():
-            robot_state[robot_id] = RobotObsRMUL(robot)
+            robot_state[robot_id] = RobotObsRMUL.from_robot(robot)
         
         return ObservationRMUL(game_state, robot_state)
     
@@ -293,14 +301,14 @@ class GameRMUL(gym.Env):
             if self._render_mode == "human":
                 pygame.display.init()
                 self._screen = pygame.display.set_mode(
-                    (meters_to_pixels(env_config.FIELD_WIDTH), meters_to_pixels(env_config.FIELD_HEIGHT))
+                    (meters_to_pixels(RMUL_ENV_CONFIG.FIELD_WIDTH), meters_to_pixels(RMUL_ENV_CONFIG.FIELD_HEIGHT))
                 )
             elif self._render_mode == "rgb_array":
-                self._screen = pygame.Surface((meters_to_pixels(env_config.FIELD_WIDTH), meters_to_pixels(env_config.FIELD_HEIGHT)))
+                self._screen = pygame.Surface((meters_to_pixels(RMUL_ENV_CONFIG.FIELD_WIDTH), meters_to_pixels(RMUL_ENV_CONFIG.FIELD_HEIGHT)))
             else:
                 raise ValueError(f"Invalid render mode: {self._render_mode}")
         if self._renderer is None:
-            self._renderer = Renderer(env_config)
+            self._renderer = Renderer(RMUL_ENV_CONFIG)
 
     def set_render(self, control_state):
         self._renderer.control_state = control_state

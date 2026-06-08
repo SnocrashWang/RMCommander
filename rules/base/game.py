@@ -12,7 +12,7 @@ from utils.grid_map import world_to_grid
 from utils.utils import meters_to_pixels, calc_distance, opposite_team
 from visualization.renderer import Renderer
 
-from rules.base.config import env_config
+from rules.base.config import env_config as BASE_ENV_CONFIG
 from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 from rules.base.environment import Action, GameObs, RobotObs, Observation, Environment
 
@@ -20,7 +20,7 @@ class Game(gym.Env):
    
     metadata = {
         "render_modes": ["human", "rgb_array"],
-        "render_fps": env_config.FPS,
+        "render_fps": BASE_ENV_CONFIG.FPS,
     }
     
     def __init__(
@@ -30,13 +30,9 @@ class Game(gym.Env):
         super().__init__()
 
         # 创建底层环境
-        self.env = Environment(
-            env_config=env_config,
-            obstacle_configs=env_config.OBSTACLES,
-            robot_configs=BASE_ROBOT_CONFIGS
-        )
+        self.env = Environment()
 
-        self.dt = 1 / env_config.FPS
+        self.dt = 1 / BASE_ENV_CONFIG.FPS
         
         # 渲染
         self._render_mode = render_mode
@@ -163,7 +159,7 @@ class Game(gym.Env):
         self.env.apply_observation(observation)
         for robot_id, robot_obs in observation.robot_obs.items():
             robot = self.env.get_robot(robot_id)
-            robot.apply_observation(robot_obs, env_config)
+            robot.apply_observation(robot_obs, BASE_ENV_CONFIG)
     
     def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action], control_steps: int = 1):
         """执行一步动作"""
@@ -208,7 +204,7 @@ class Game(gym.Env):
         """获取观察"""
         # 全局状态向量
         game_state = GameObs(
-            remaining_time_norm=self.env._remaining_time / env_config.GAME_TIME_LIMIT,
+            remaining_time_norm=self.env._remaining_time / BASE_ENV_CONFIG.GAME_TIME_LIMIT,
         )
 
         # 机器人状态向量
@@ -230,7 +226,7 @@ class Game(gym.Env):
 
         # 不可行导航点惩罚
         if action["RED_3_STANDARD"].navigation_set == 1:
-            navigation_target = (np.array(action["RED_3_STANDARD"].navigation_target_norm) + 1) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]) / 2
+            navigation_target = (np.array(action["RED_3_STANDARD"].navigation_target_norm) + 1) * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]) / 2
             col, row = world_to_grid(navigation_target)
             if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
                 reward_navigation_unmovable = -1.0
@@ -333,14 +329,14 @@ class Game(gym.Env):
             if self._render_mode == "human":
                 pygame.display.init()
                 self._screen = pygame.display.set_mode(
-                    (meters_to_pixels(env_config.FIELD_WIDTH), meters_to_pixels(env_config.FIELD_HEIGHT))
+                    (meters_to_pixels(BASE_ENV_CONFIG.FIELD_WIDTH), meters_to_pixels(BASE_ENV_CONFIG.FIELD_HEIGHT))
                 )
             elif self._render_mode == "rgb_array":
-                self._screen = pygame.Surface((meters_to_pixels(env_config.FIELD_WIDTH), meters_to_pixels(env_config.FIELD_HEIGHT)))
+                self._screen = pygame.Surface((meters_to_pixels(BASE_ENV_CONFIG.FIELD_WIDTH), meters_to_pixels(BASE_ENV_CONFIG.FIELD_HEIGHT)))
             else:
                 raise ValueError(f"Invalid render mode: {self._render_mode}")
         if self._renderer is None:
-            self._renderer = Renderer(env_config)
+            self._renderer = Renderer(BASE_ENV_CONFIG)
 
     def set_render(self, control_state):
         self._renderer.control_state = control_state

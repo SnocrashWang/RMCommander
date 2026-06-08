@@ -12,29 +12,39 @@ from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.robot import Robot
 from utils.utils import point_in_polygon, opposite_team, has_line_of_sight, attack_sight_clear
 
-from rules.RMUL.config import env_config
-from rules.RMUL.config.robot_config import RMUL_ROBOT_CONFIGS
+from rules.rmul.config import env_config as RMUL_ENV_CONFIG
+from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS
 
 
 @dataclass
 class ActionRMUL:
-    velocity: Tuple[float, float] = (0.0, 0.0)
+    navigation_target_norm: Tuple[float, float] = (0.0, 0.0)
+    navigation_set: int = 0
     attack_target: int = 0
+    spin: int = 0
     purchase: int = 0
 
     def __post_init__(self):
         """初始化"""
         try:
-            if isinstance(self.velocity, np.ndarray):
-                self.velocity = tuple(self.velocity.astype(float))
+            if isinstance(self.navigation_target_norm, np.ndarray):
+                self.navigation_target_norm = tuple(self.navigation_target_norm.astype(float))
             else:
-                self.velocity = tuple(self.velocity)
+                self.navigation_target_norm = tuple(self.navigation_target_norm)
         except:
-            self.velocity = (0.0, 0.0)
+            self.navigation_target_norm = (0.0, 0.0)
+        try:
+            self.navigation_set = int(self.navigation_set)
+        except:
+            self.navigation_set = 0
         try:
             self.attack_target = int(self.attack_target)
         except:
             self.attack_target = 0
+        try:
+            self.spin = int(self.spin)
+        except:
+            self.spin = 0
         try:
             self.purchase = int(self.purchase)
         except:
@@ -43,31 +53,40 @@ class ActionRMUL:
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            *self.velocity,
+            *self.navigation_target_norm,
+            self.navigation_set,
             self.attack_target,
+            self.spin,
             self.purchase,
         ])
 
+    def get_target_position(self) -> Tuple[float, float]:
+        """获取导航目标的实际坐标"""
+        return (np.array(self.navigation_target_norm) + 1) * np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]) / 2
+
 @dataclass
 class GameObsRMUL:
-    remaining_time: float
-    victory_progress_red: float
-    victory_progress_blue: float
+    remaining_time_norm: float
+    victory_progress_red_norm: float
+    victory_progress_blue_norm: float
     # economics_red: int
     # economics_blue: int
 
-    def __init__(self, remaining_time: float, victory_progress: Dict[GameTeam, float]):
-        """初始化"""
-        self.remaining_time = remaining_time / env_config.GAME_TIME_LIMIT
-        self.victory_progress_red = victory_progress[GameTeam.RED] / env_config.OCCUPATION_TARGET
-        self.victory_progress_blue = victory_progress[GameTeam.BLUE] / env_config.OCCUPATION_TARGET
+    @classmethod
+    def from_array(cls, array: np.ndarray):
+        assert array.shape == (3,)
+        return cls(
+            remaining_time_norm=array[0],
+            victory_progress_red_norm=array[1],
+            victory_progress_blue_norm=array[2],
+        )
 
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            self.remaining_time,
-            self.victory_progress_red,
-            self.victory_progress_blue,
+            self.remaining_time_norm,
+            self.victory_progress_red_norm,
+            self.victory_progress_blue_norm,
             # self.economics_red,
             # self.economics_blue,
         ])
@@ -75,42 +94,57 @@ class GameObsRMUL:
 @dataclass
 class RobotObsRMUL:
     position: np.ndarray
-    velocity: np.ndarray
+    target_position_norm: np.ndarray
     chassis_property_type: int
     gimbal_property_type: int
     level: int
-    exp: float
-    hp: float
-    heat: float
+    exp_norm: float
+    hp_norm: float
+    heat_norm: float
+        
+    @classmethod
+    def from_robot(cls, robot: Robot):
+        return cls(
+            position=np.array(robot.get_position()),
+            target_position_norm=np.array(robot.target_pos) / np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]),
+            chassis_property_type=robot.chassis_property_type.value,
+            gimbal_property_type=robot.gimbal_property_type.value,
+            level=robot.level,
+            exp_norm=(robot.exp - LEVEL_NEED_EXP[robot.level]) / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1,
+            hp_norm=robot.hp / robot.max_hp,
+            heat_norm=robot.heat / robot.max_heat,
+        )
 
-    def __init__(self, robot: Robot):
-        """初始化"""
-        self.position = robot.get_position()
-        self.position = (self.position[0] / env_config.FIELD_WIDTH, self.position[1] / env_config.FIELD_HEIGHT)
-        self.velocity = np.array(robot.get_velocity())
-        self.velocity = self.velocity / np.linalg.norm(self.velocity) if np.linalg.norm(self.velocity) != 0 else np.array([0, 0])
-        self.chassis_property_type = robot.chassis_property_type.value
-        self.gimbal_property_type = robot.gimbal_property_type.value
-        self.level = robot.level
-        self.exp = robot.exp / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1
-        self.hp = robot.hp / robot.max_hp
-        self.heat = robot.heat / robot.max_heat
+    @classmethod
+    def from_array(cls, array: np.ndarray):
+        assert array.shape == (10,)
+        return cls(
+            position=array[:2] * np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]),
+            target_position_norm=array[2:4],
+            chassis_property_type=math.ceil(array[4]),
+            gimbal_property_type=math.ceil(array[5]),
+            level=math.ceil(array[6]),
+            exp_norm=array[7],
+            hp_norm=array[8],
+            heat_norm=array[9],
+        )
 
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            *self.position,
-            *self.velocity,
+            *(self.position / np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT])),
+            *(self.target_position_norm),
             self.chassis_property_type,
             self.gimbal_property_type,
             self.level,
-            self.exp,
-            self.hp,
-            self.heat,
+            self.exp_norm,
+            self.hp_norm,
+            self.heat_norm,
         ])
 
 @dataclass
 class ObservationRMUL:
+    # TODO
     game_obs: GameObsRMUL
     robot_obs: Dict[str, RobotObsRMUL]
     
@@ -126,39 +160,35 @@ class ObservationRMUL:
         ])
 
 class EnvironmentRMUL(Environment):
-    def __init__(
-            self,
-            env_config = env_config,
-            obstacle_configs: Optional[List[Dict[str, Any]]] = env_config.OBSTACLES,
-            robot_configs: Optional[Dict[str, RobotConfig]] = RMUL_ROBOT_CONFIGS,
-        ):
+    def __init__(self):
         # 创建物理引擎
+        self.env_config = RMUL_ENV_CONFIG
         self.physics_engine = pymunk.Space()
         self.physics_engine.gravity = (0, 0)  # 无重力
-        self.dt = 1 / env_config.FPS
+        self.dt = 1 / self.env_config.FPS
 
         # 游戏状态
         self.game_state = GameState.PLAYING
-        self.total_time = env_config.GAME_TIME_LIMIT       # 总时长
-        self._remaining_time = env_config.GAME_TIME_LIMIT  # 剩余时间
+        self.total_time = self.env_config.GAME_TIME_LIMIT       # 总时长
+        self._remaining_time = self.env_config.GAME_TIME_LIMIT  # 剩余时间
 
         # 创建障碍物
         self.obstacles = []
-        self._create_obstacles(obstacle_configs)
+        self._create_obstacles(self.env_config.OBSTACLES)
 
         # 创建增益区
         self.buff_zone = {}
-        self.buff_zone["center"] = env_config.CENTER_ZONE_VERTICES
-        self.buff_zone["boot_red"] = env_config.BOOT_ZONE_RED_VERTICES
-        self.buff_zone["boot_blue"] = env_config.BOOT_ZONE_BLUE_VERTICES
+        self.buff_zone["center"] = self.env_config.CENTER_ZONE_VERTICES
+        self.buff_zone["boot_red"] = self.env_config.BOOT_ZONE_RED_VERTICES
+        self.buff_zone["boot_blue"] = self.env_config.BOOT_ZONE_BLUE_VERTICES
 
         # 创建机器人
         self.robots: Dict[str, Robot] = {}
-        self.robot_configs = robot_configs
+        self.robot_configs = RMUL_ROBOT_CONFIGS
         self._create_robots()
         
         # 为每个机器人创建网格地图
-        self._init_robot_grid_maps(env_config)
+        self._init_robot_grid_maps(self.env_config)
 
         # 游戏机制
         self._economics = {GameTeam.RED: 0, GameTeam.BLUE: 0}           # 经济
@@ -176,8 +206,11 @@ class EnvironmentRMUL(Environment):
         self.physics_engine.step(dt)
 
         # 应用动作
-        self._apply_team_action(GameTeam.RED, red_action)
-        self._apply_team_action(GameTeam.BLUE, blue_action)
+        # 为了使结算效果与红蓝先后解耦，我们先统一应用运动动作，再应用攻击动作
+        self._apply_team_motion(red_action)
+        self._apply_team_motion(blue_action)
+        self._apply_team_attack(GameTeam.RED, red_action)
+        self._apply_team_attack(GameTeam.BLUE, blue_action)
 
         # 更新机器人状态
         for robot in self.robots.values():
@@ -227,7 +260,7 @@ class EnvironmentRMUL(Environment):
         # 检查胜利条件
         red_progress = self._victory_progress[GameTeam.RED]
         blue_progress = self._victory_progress[GameTeam.BLUE]
-        target = env_config.OCCUPATION_TARGET
+        target = self.env_config.OCCUPATION_TARGET
 
         # 结算落后奖励
         if blue_progress - red_progress >= 70 and not self._laggard_bonus_taken["red_lag_70"]:
@@ -259,54 +292,52 @@ class EnvironmentRMUL(Environment):
                 self.game_state = GameState.BLUE_TEAM_WIN
             else:
                 self.game_state = GameState.DRAW
-    
-    def _apply_team_action(self, team: GameTeam, action: Dict[str, ActionRMUL]):
-        """应用本方动作"""
-        def apply_robot_action_attack(robot: Robot, robot_action: ActionRMUL):
+
+    def _apply_team_motion(self, action: Dict[str, ActionRMUL]):
+        super()._apply_team_motion(action)
+
+    def _apply_robot_attack(self, robot_attacker: Robot, robot_target: Robot):
+        super()._apply_robot_attack(robot_attacker, robot_target)
+
+    def _apply_team_attack(self, team: GameTeam, action: Dict[str, ActionRMUL]):
+        """应用攻击动作。"""
+        for robot_id, robot_action in action.items():
+            # 攻击者
+            robot_attacker = self.get_robot(robot_id)
+            # 攻击目标类型
             target_type = RobotType(robot_action.attack_target)
             # 目标为空
             if target_type == RobotType.NONE:
-                return
-            target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
-            # 目标不存在
-            if target_robot is None:
-                return
-            # 判断完整视野
-            if not attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
-                return
-            # 攻击
-            if not robot.attack(target_robot) or target_robot.is_alive:
-                return
-            
-            # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
-            if robot.robot_type == RobotType.SENTRY:
-                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
-                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - killer_level)))
-                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
-                # 经验分享
-                for robot in robot_alive:
-                    robot.update_exp(int(kill_exp / len(robot_alive)))
-            else:
-                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
-                robot.update_exp(int(kill_exp))
-            # 结算胜利进度
-            self._victory_progress[team] += 20
+                continue
+            # 被攻击者
+            robot_target = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
+            self._apply_robot_attack(robot_attacker, robot_target)
 
+            # 被攻击目标阵亡
+            if not robot_target.is_alive:
+                # 结算击杀经验
+                if robot.robot_type == RobotType.SENTRY:
+                    killer_level = self.get_robot(ROBOT_ID[team][RobotType.STANDARD_3]).level
+                    kill_exp = 50 * robot_target.level * (1 + max(0, 0.2 * (robot_target.level - killer_level)))
+                    robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
+                    # 经验分享
+                    for robot in robot_alive:
+                        robot.update_exp(int(kill_exp / len(robot_alive)))
+                else:
+                    kill_exp = 50 * robot_target.level * (1 + max(0, 0.2 * (robot_target.level - robot_attacker.level)))
+                    robot.update_exp(int(kill_exp))
+                # 结算胜利进度
+                self._victory_progress[team] += 20
+
+        # 购买允许发弹量
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
-
-            # 设置速度
-            robot.set_velocity(robot_action.velocity)
-
-            # 攻击
-            apply_robot_action_attack(robot, robot_action)
-
-            # 购买允许发弹量
             if robot_action.purchase and robot.robot_type != RobotType.SENTRY:
                 if self._economics[team] >= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM:
                     if point_in_polygon(robot.get_position(), self.buff_zone["boot_red"] if team == GameTeam.RED else self.buff_zone["boot_blue"]):
                         robot.ammo_allowed += robot.bullet.PURCHASE_NUM
                         self._economics[team] -= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM
+
 
     # # TODO: 奖励函数
     # def _calculate_reward(self) -> float:

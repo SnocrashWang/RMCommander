@@ -14,7 +14,7 @@ from utils.robot import Robot
 from utils.obstacle import Obstacle
 from utils.utils import attack_sight_clear, calc_distance, opposite_team, opposite_position, timer
 
-from rules.base.config import env_config
+from rules.base.config import env_config as BASE_ENV_CONFIG
 from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 
 
@@ -56,6 +56,10 @@ class Action:
             self.spin,
         ])
 
+    def get_target_position(self) -> Tuple[float, float]:
+        """获取导航目标的实际坐标"""
+        return (np.array(self.navigation_target_norm) + 1) * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]) / 2
+
 @dataclass
 class GameObs:
     remaining_time_norm: float
@@ -88,7 +92,7 @@ class RobotObs:
     def from_robot(cls, robot: Robot):
         return cls(
             position=np.array(robot.get_position()),
-            target_position_norm=np.array(robot.target_pos) / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]),
+            target_position_norm=np.array(robot.target_pos) / np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]),
             chassis_property_type=robot.chassis_property_type.value,
             gimbal_property_type=robot.gimbal_property_type.value,
             level=robot.level,
@@ -101,7 +105,7 @@ class RobotObs:
     def from_array(cls, array: np.ndarray):
         assert array.shape == (10,)
         return cls(
-            position=array[:2] * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]),
+            position=array[:2] * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]),
             target_position_norm=array[2:4],
             chassis_property_type=math.ceil(array[4]),
             gimbal_property_type=math.ceil(array[5]),
@@ -114,7 +118,7 @@ class RobotObs:
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
-            *(self.position / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])),
+            *(self.position / np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT])),
             *(self.target_position_norm),
             self.chassis_property_type,
             self.gimbal_property_type,
@@ -149,10 +153,10 @@ class Observation:
             robot_obs = {**red_robot_obs, **blue_robot_obs}
         else:
             for _, robot_obs in red_robot_obs.items():
-                robot_obs.position = opposite_position(robot_obs.position, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                robot_obs.position = opposite_position(robot_obs.position, BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT)
                 robot_obs.target_position_norm = (-robot_obs.target_position_norm[0], -robot_obs.target_position_norm[1])
             for _, robot_obs in blue_robot_obs.items():
-                robot_obs.position = opposite_position(robot_obs.position, env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)
+                robot_obs.position = opposite_position(robot_obs.position, BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT)
                 robot_obs.target_position_norm = (-robot_obs.target_position_norm[0], -robot_obs.target_position_norm[1])
             robot_obs = {**blue_robot_obs, **red_robot_obs}
 
@@ -162,33 +166,29 @@ class Observation:
         ])
 
 class Environment:
-    def __init__(
-            self,
-            env_config = env_config,
-            obstacle_configs: Optional[List[Dict[str, Any]]] = env_config.OBSTACLES,
-            robot_configs: Optional[Dict[str, RobotConfig]] = BASE_ROBOT_CONFIGS,
-        ):
+    def __init__(self):
         # 创建物理引擎
+        self.env_config = BASE_ENV_CONFIG
         self.physics_engine = pymunk.Space()
         self.physics_engine.gravity = (0, 0)  # 无重力
-        self.dt = 1 / env_config.FPS
+        self.dt = 1 / BASE_ENV_CONFIG.FPS
 
         # 游戏状态
         self.game_state = GameState.PLAYING
-        self.total_time = env_config.GAME_TIME_LIMIT       # 总时长
-        self._remaining_time = env_config.GAME_TIME_LIMIT  # 剩余时间
+        self.total_time = self.env_config.GAME_TIME_LIMIT       # 总时长
+        self._remaining_time = self.env_config.GAME_TIME_LIMIT  # 剩余时间
 
         # 创建障碍物
         self.obstacles = []
-        self._create_obstacles(obstacle_configs)
+        self._create_obstacles(self.env_config.OBSTACLES)
 
         # 创建机器人
         self.robots: Dict[str, Robot] = {}
-        self.robot_configs = robot_configs
+        self.robot_configs = BASE_ROBOT_CONFIGS
         self._create_robots()
         
         # 为每个机器人创建网格地图
-        self._init_robot_grid_maps(env_config)
+        self._init_robot_grid_maps(self.env_config)
 
         # 性能统计
         self._time_stats = defaultdict(list)
@@ -230,11 +230,11 @@ class Environment:
         self._create_robots()
         
         # 为每个机器人创建网格地图
-        self._init_robot_grid_maps(env_config)
+        self._init_robot_grid_maps(self.env_config)
         
         # 重置游戏状态
         self.game_state = GameState.PLAYING
-        self._remaining_time = env_config.GAME_TIME_LIMIT
+        self._remaining_time = self.env_config.GAME_TIME_LIMIT
 
     def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
         """推进环境仿真"""
@@ -294,10 +294,21 @@ class Environment:
 
             # 设置导航点
             if robot_action.navigation_set == 1:
-                navigation_target = (np.array(robot_action.navigation_target_norm) + 1) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]) / 2
+                navigation_target = robot_action.get_target_position()
                 robot.set_target(tuple(navigation_target))
 
             robot.refresh_motion_speed()
+
+    def _apply_robot_attack(self, robot_attacker: Robot, robot_target: Robot):
+        # 目标不存在
+        if robot_target is None:
+            return
+        # 判断完整视野
+        if not attack_sight_clear(robot_attacker.get_position(), robot_target.get_position(), robot_target.radius, self.obstacles, self.robots.values()):
+            return
+        # 攻击
+        if not robot_attacker.attack(robot_target):
+            return
 
     def _apply_team_attack(self, team: GameTeam, action: Dict[str, Action]):
         """应用攻击动作。"""
@@ -308,30 +319,10 @@ class Environment:
             target_type = RobotType(robot_action.attack_target)
             # 目标为空
             if target_type == RobotType.NONE:
-                return
+                continue
             # 被攻击者
             robot_target = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
-            # 目标不存在
-            if robot_target is None:
-                return
-            # 判断完整视野
-            if not attack_sight_clear(robot_attacker.get_position(), robot_target.get_position(), robot_target.radius, self.obstacles, self.robots.values()):
-                return
-            # 攻击
-            if not robot_attacker.attack(robot_target) or robot_target.is_alive:
-                return
-
-            # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
-            if robot_attacker.robot_type == RobotType.SENTRY:
-                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
-                kill_exp = 50 * robot_target.level * (1 + max(0, 0.2 * (robot_target.level - killer_level)))
-                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
-                # 经验分享
-                for robot in robot_alive:
-                    robot.update_exp(int(kill_exp / len(robot_alive)))
-            else:
-                kill_exp = 50 * robot_target.level * (1 + max(0, 0.2 * (robot_target.level - robot_attacker.level)))
-                robot_attacker.update_exp(int(kill_exp))
+            self._apply_robot_attack(robot_attacker, robot_target)
 
     def apply_observation(self, observation: Observation):
         """
@@ -339,7 +330,7 @@ class Environment:
         直接将指定的观察值赋值到当前环境中
         """
         # 游戏状态
-        self._remaining_time = observation.game_obs.remaining_time_norm * env_config.GAME_TIME_LIMIT
+        self._remaining_time = observation.game_obs.remaining_time_norm * self.env_config.GAME_TIME_LIMIT
     
     def get_top_bar_info(self) -> Dict[str, Any]:
         """获取渲染顶部信息"""

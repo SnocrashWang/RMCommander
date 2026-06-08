@@ -20,10 +20,10 @@ if CURRENT_GAME == GameType.BASE:
     from rules.base.config import env_config
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 elif CURRENT_GAME == GameType.RMUL:
-    from rules.RMUL.game import GameRMUL as Game
-    from rules.RMUL.environment import ActionRMUL as Action
-    from rules.RMUL.config import env_config
-    from rules.RMUL.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
+    from rules.rmul.game import GameRMUL as Game
+    from rules.rmul.environment import ActionRMUL as Action
+    from rules.rmul.config import env_config
+    from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 # elif CURRENT_GAME == GameType.RMUC:
 #     from RMUC.environment import EnvironmentRMUC, Action
 #     from RMUC.config import env_config

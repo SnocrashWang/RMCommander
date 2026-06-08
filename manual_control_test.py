@@ -15,10 +15,10 @@ if CURRENT_GAME == GameType.BASE:
     from rules.base.config import env_config
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 elif CURRENT_GAME == GameType.RMUL:
-    from rules.RMUL.game import GameRMUL as Game
-    from rules.RMUL.environment import ActionRMUL as Action
-    from rules.RMUL.config import env_config
-    from rules.RMUL.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
+    from rules.rmul.game import GameRMUL as Game
+    from rules.rmul.environment import ActionRMUL as Action
+    from rules.rmul.config import env_config
+    from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 # elif CURRENT_GAME == GameType.RMUC:
     # from RMUC.game import GameRMUC as Game
     # from RMUC.config.robot_config import RMUC_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
@@ -28,7 +28,7 @@ np.set_printoptions(precision=4, floatmode='fixed')
 def main():
     # 创建环境
     game = Game(render_mode="human")
-    obs, info = game.reset()
+    # obs, info = game.reset()
 
     robot_id_list = list(game.env.robots.keys())
     target_id_list = ROBOT_TYPE_LIST
@@ -57,7 +57,6 @@ def main():
                 mouse_pos = np.array(pygame.mouse.get_pos())  # 屏幕坐标
                 # 转换为归一化坐标
                 navigation_target_norm = mouse_pos * 2 / render_config.SCALE / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]) - 1
-                print(navigation_target_norm)
                 if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
                     red_action[control_state["robot_id"]].navigation_target_norm = tuple(navigation_target_norm)
                     red_action[control_state["robot_id"]].navigation_set = 1

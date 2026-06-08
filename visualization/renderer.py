@@ -3,8 +3,8 @@ import pygame
 from visualization.config import render_config
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameState, GameTeam
-from utils.config.robot_config import ROBOT_ID
-from utils.utils import meters_to_pixels, draw_dashed_line, second2minute, get_tangent_points, opposite_team
+from utils.config.robot_config import RobotType, ROBOT_ID
+from utils.utils import meters_to_pixels, draw_dashed_line, second2minute, get_tangent_points, opposite_team, rotate_point_np
 
 
 class Renderer:
@@ -140,16 +140,30 @@ class Renderer:
         # 绘制机器人主体
         pygame.draw.circle(self.screen_robot, render_config.ROBOT_COLORS[robot.team], (x, y), radius)
 
-        # 绘制炮塔（小方形）
-        turret_size = scale * 0.6
-        turret_rect = pygame.Rect(x - turret_size/2, y - turret_size/2, turret_size, turret_size)
-        pygame.draw.rect(self.screen_robot, (30, 30, 30), turret_rect)
+        # 绘制装甲板
+        armor_length = scale * (0.8 if robot.robot_type == RobotType.HERO else 0.4)
+        armor_width = scale * 0.05
+        for i in range(4):
+            armor_angle = robot.angle_chassis + i * math.pi / 2
+            armor_center = (x, y + radius)
+            armor_points = [
+                (armor_center[0] + armor_length, armor_center[1] + armor_width),
+                (armor_center[0] + armor_length, armor_center[1] - armor_width),
+                (armor_center[0] - armor_length, armor_center[1] - armor_width),
+                (armor_center[0] - armor_length, armor_center[1] + armor_width),
+            ]
+            rotated_armor_points = [rotate_point_np(point, (x, y), armor_angle) for point in armor_points]
+            # rotated_armor_points = armor_points
+            pygame.draw.polygon(self.screen_robot, render_config.ARMOR_COLORS[robot.team], rotated_armor_points)
+
+        # 绘制炮塔
+        turret_size = scale * 0.4
+        pygame.draw.circle(self.screen_robot, (30, 30, 30), (x, y), turret_size)
 
         # 绘制炮管
-        angle_rad = math.radians(robot.angle)
         barrel_length = scale * 0.8
-        end_x = x + barrel_length * math.cos(angle_rad)
-        end_y = y + barrel_length * math.sin(angle_rad)
+        end_x = x + barrel_length * math.cos(robot.angle_gimbal)
+        end_y = y + barrel_length * math.sin(robot.angle_gimbal)
         pygame.draw.line(self.screen_robot, (30, 30, 30), (x, y), (end_x, end_y), int(2))
 
         # 绘制机器人标识（使用小字体）
@@ -293,12 +307,14 @@ class Renderer:
             "W/S: Switch robot",
             "A/D: Switch target",
             "Q: Attack once",
+            "SPACE: Toggle spin",
             "E: Purchase ammo",
             f"Movable Grid: {'ON' if control_state.get('show_grid', False) else 'OFF'}",
+            f"Spin: {'ON' if control_state.get('spin', False) else 'OFF'}",
         ]
         select = {
-            "solo": [0, 1, 2, 3, 4, 7, 9],
-            "RMUL": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "solo": [0, 1, 2, 3, 4, 7, 8, 10, 11],
+            "RMUL": [0, 1, 2, 3, 4, 5, 6, 7, 9, 10],
         }
 
         controls_displayed = [controls[i] for i in select[env_name]]

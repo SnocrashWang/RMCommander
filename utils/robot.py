@@ -20,6 +20,7 @@ class Robot:
         gimbal_property_type: GIMBAL_PROPERTY_TYPE,
         forward_speed_efficiency: float,
         rotation_speed_efficiency: float,
+        forward_rotation_allocation: float,
         radius: float,
         max_ammo: int,
         ammo_allowed: int,
@@ -37,6 +38,10 @@ class Robot:
         self.chassis_property_type : CHASSIS_PROPERTY_TYPE = chassis_property_type
         self.gimbal_property_type : GIMBAL_PROPERTY_TYPE = gimbal_property_type
         self.enable_exp = enable_exp
+        self.forward_speed_efficiency = forward_speed_efficiency
+        self.rotation_speed_efficiency = rotation_speed_efficiency
+        self.forward_rotation_allocation = min(1.0, max(0.0, forward_rotation_allocation))
+        self.spin_enabled : bool = False
 
         # 英雄
         if self.robot_type == RobotType.HERO:
@@ -63,8 +68,8 @@ class Robot:
         
         # 物理属性
         self.radius : float = radius
-        self.forward_speed : float = self.power * forward_speed_efficiency
-        self.rotation_speed : float = self.power * rotation_speed_efficiency
+        self.forward_speed : float = 0.0
+        self.rotation_speed : float = 0.0
 
         # 创建物理实体
         self._body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, radius))
@@ -78,7 +83,8 @@ class Robot:
         if physics_engine:
             physics_engine.add(self._body, self._shape)
 
-        self.angle : float = 0  # 角度（度）
+        self.angle_gimbal : float = 0  # 角度（弧度）
+        self.angle_chassis : float = 0  # 角度（弧度）
         self.target_pos : Tuple[float, float] = (0, 0)
         self.path_points : List[Tuple[float, float]] = []
         self.current_path_idx : int = 0
@@ -125,7 +131,8 @@ class Robot:
         info = {
             "id": self.id,
             "position": self.get_position(),
-            "angle": self.angle,
+            "angle_gimbal": self.angle_gimbal,
+            # "angle_chassis": self.angle_chassis,
             "is_alive": self.is_alive,
             "level": self.level,
             "hp": self.hp,
@@ -155,6 +162,37 @@ class Robot:
         self.power : int = self.chassis_property[self.level]["POWER"]
         self.max_heat : int = self.gimbal_property[self.level]["HEAT"]
         self.cool_down : int = self.gimbal_property[self.level]["COOL_DOWN"]
+
+    def set_spin(self, spin_enabled: bool):
+        """设置是否启用自旋防御姿态。"""
+        self.spin_enabled = bool(spin_enabled)
+
+    def _resolve_motion_speed(self, moving: bool):
+        """根据平移/自旋组合解算本帧平移速度和旋转速度。"""
+        if moving and self.spin_enabled:
+            forward_power = self.power * (1 - self.forward_rotation_allocation)
+            rotation_power = self.power * self.forward_rotation_allocation
+        elif moving:
+            forward_power = self.power
+            rotation_power = 0.0
+        elif self.spin_enabled:
+            forward_power = 0.0
+            rotation_power = self.power
+        else:
+            forward_power = 0.0
+            rotation_power = 0.0
+
+        self.forward_speed = forward_power * self.forward_speed_efficiency
+        self.rotation_speed = rotation_power * self.rotation_speed_efficiency
+
+    def refresh_motion_speed(self):
+        """刷新当前动作组合对应的速度，用于攻击结算前启用自旋防御。"""
+        moving = False
+        if self.is_alive and self.path_points and self.current_path_idx < len(self.path_points):
+            next_point = self.path_points[self.current_path_idx]
+            current_pos = pygame.math.Vector2(self.get_position())
+            moving = (pygame.math.Vector2(next_point) - current_pos).length() >= 0.05
+        self._resolve_motion_speed(moving)
 
     def get_position(self):
         """获取位置"""
@@ -192,6 +230,9 @@ class Robot:
         if not self.is_alive:
             if self._body is not None:
                 self._body.velocity = (0, 0)
+                self._body.angular_velocity = 0
+            self.forward_speed = 0.0
+            self.rotation_speed = 0.0
             # 结算复活进度
             self.revive_progress = min(self.revive_progress + self.revive_efficiency * dt, self.revive_target)
             if self.revive_progress >= self.revive_target:
@@ -210,17 +251,28 @@ class Robot:
             self.defense_buff_dict.pop("revive", None)
 
         # 沿路径移动
+        moving = False
         if self.path_points and self.current_path_idx < len(self.path_points):
             next_point = self.path_points[self.current_path_idx]
             current_pos = pygame.math.Vector2(self.get_position())
             direction = pygame.math.Vector2(next_point) - current_pos
             if direction.length() < 0.05:
                 self.current_path_idx += 1
+                self._body.velocity = (0, 0)
             else:
+                moving = True
+                self._resolve_motion_speed(moving=True)
                 direction = direction.normalize() * self.forward_speed
                 self._body.velocity = (direction.x, direction.y)
         else:
             self._body.velocity = (0, 0)
+
+        if not moving:
+            self._resolve_motion_speed(moving=False)
+
+        self._body.angular_velocity = self.rotation_speed
+        if self.rotation_speed > 0:
+            self.angle_chassis = self.angle_chassis + self.rotation_speed * dt
 
         # 结算热量冷却
         self.heat = max(0, self.heat - self.cool_down * dt)
@@ -273,7 +325,7 @@ class Robot:
         current_pos = self.get_position()
         dx = target_pos[0] - current_pos[0]
         dy = target_pos[1] - current_pos[1]
-        self.angle = math.degrees(math.atan2(dy, dx))
+        self.angle_gimbal = math.atan2(dy, dx)
 
         # 检查是否可以攻击
         if self.ammo <= 0 or self.ammo_allowed <= 0 or self.heat + self.bullet.HEAT > self.max_heat:
@@ -312,18 +364,21 @@ class Robot:
             int: 实际受到的伤害值
         """
         if not self.is_alive:
-            return False
+            return 0
 
         # 受击刷新战斗状态
         self.last_in_combat_time = time.time()
 
-        # TODO: 考虑命中
-        damage = int(min(damage * max(0, 1 - self.defense_buff + self.defense_debuff), self.hp))
-        self.hp = self.hp - damage
+        # 自旋防御：旋转越快，实际受到伤害的概率越低。
+        if self.rotation_speed > 0 and np.random.random() > math.exp(-self.rotation_speed / 10):
+            return 0
+
+        real_damage = int(min(damage * max(0, 1 - self.defense_buff + self.defense_debuff), self.hp))
+        self.hp = self.hp - real_damage
         if self.hp <= 0:
             self.is_alive = False
             self.gun_locked = True
-        return damage
+        return real_damage
 
     def heal(self, amount: int):
         """恢复血量"""

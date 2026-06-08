@@ -22,6 +22,7 @@ from utils.utils import attack_sight_clear, calc_distance, mirror_navigation_tar
 RED_ID = "RED_3_STANDARD"
 BLUE_ID = "BLUE_3_STANDARD"
 DEFAULT_BLUE_FIXED_NAV_WORLD = (1.0, 2.5)
+SCRIPT_SWITCH_INTERVAL_RANGE = (3.0, 5.0)
 
 
 def force_stage_a_action(action: Dict[str, Action]) -> Dict[str, Action]:
@@ -29,6 +30,7 @@ def force_stage_a_action(action: Dict[str, Action]) -> Dict[str, Action]:
     robot_action = action[RED_ID]
     robot_action.navigation_set = 1
     robot_action.attack_target = RobotType.STANDARD_3.value
+    robot_action.spin = 0
     return action
 
 
@@ -39,6 +41,46 @@ def world_to_navigation_norm(position: Tuple[float, float]) -> Tuple[float, floa
     )
 
 
+class ScriptBlueController:
+    """Stage C 脚本蓝方：周期性随机切换自旋和导航点。"""
+
+    def __init__(self, game: Game, fixed_nav_world: Tuple[float, float]):
+        self.game = game
+        self.fixed_nav_world = fixed_nav_world
+        self.spin_enabled = False
+        self.nav_world = fixed_nav_world
+        self.next_spin_switch_time = 0.0
+        self.next_nav_switch_time = 0.0
+        self.spin_switches = 0
+        self.nav_switches = 0
+
+    def _sample_next_switch_time(self, elapsed_time: float) -> float:
+        return elapsed_time + random.uniform(*SCRIPT_SWITCH_INTERVAL_RANGE)
+
+    def _sample_blue_nav_world(self) -> Tuple[float, float]:
+        return sample_position(self.game, (0.6, 4.4), (0.4, 4.6))
+
+    def make_action(self, elapsed_time: float) -> Dict[str, Action]:
+        if elapsed_time >= self.next_spin_switch_time:
+            self.spin_enabled = bool(random.getrandbits(1))
+            self.next_spin_switch_time = self._sample_next_switch_time(elapsed_time)
+            self.spin_switches += 1
+
+        if elapsed_time >= self.next_nav_switch_time:
+            self.nav_world = self._sample_blue_nav_world()
+            self.next_nav_switch_time = self._sample_next_switch_time(elapsed_time)
+            self.nav_switches += 1
+
+        return {
+            BLUE_ID: Action(
+                navigation_target_norm=world_to_navigation_norm(self.nav_world),
+                navigation_set=1,
+                attack_target=RobotType.STANDARD_3.value,
+                spin=int(self.spin_enabled),
+            )
+        }
+
+
 def make_blue_action(mode: str, fixed_nav_world: Tuple[float, float]) -> Dict[str, Action]:
     """脚本蓝方：静止或只进行固定攻击。"""
     if mode == "attack":
@@ -46,6 +88,7 @@ def make_blue_action(mode: str, fixed_nav_world: Tuple[float, float]) -> Dict[st
             BLUE_ID: Action(
                 navigation_set=0,
                 attack_target=RobotType.STANDARD_3.value,
+                spin=0,
             )
         }
     if mode == "fixed_nav_attack":
@@ -54,6 +97,7 @@ def make_blue_action(mode: str, fixed_nav_world: Tuple[float, float]) -> Dict[st
                 navigation_target_norm=world_to_navigation_norm(fixed_nav_world),
                 navigation_set=1,
                 attack_target=RobotType.STANDARD_3.value,
+                spin=0,
             )
         }
     return {BLUE_ID: Action()}
@@ -129,13 +173,32 @@ def diagnostic_reward(game: Game, before, after) -> float:
     reward += 0.10 * enemy_damage
     reward -= 0.10 * self_damage
     reward += 0.03 if has_los else 0.0
-    reward -= 0.01
+    reward -= 0.1
 
     if game.env.game_state == GameState.RED_TEAM_WIN:
         reward += 20.0
     elif game.env.game_state == GameState.BLUE_TEAM_WIN:
         reward -= 20.0
     return reward
+
+
+def navigation_validity_reward(game: Game, action: Action) -> float:
+    """复用 base 奖励中的导航点可行性判断：可行给奖，不可行惩罚。"""
+    if action.navigation_set != 1:
+        return 0.0
+
+    navigation_target = (np.array(action.navigation_target_norm) + 1) * np.array([
+        env_config.FIELD_WIDTH,
+        env_config.FIELD_HEIGHT,
+    ]) / 2
+
+    try:
+        col, row = world_to_grid(navigation_target)
+        is_blocked = game.env.get_robot(RED_ID).grid_map.is_blocked(col, row)
+    except ValueError:
+        is_blocked = True
+
+    return -1.0 if is_blocked else 1.0
 
 
 def action_head_reward(action: Action) -> float:
@@ -162,15 +225,19 @@ def rollout(
         apply_random_start(game)
         obs = game._get_obs()
     state = obs.to_array(GameTeam.RED)
+    script_blue_controller = ScriptBlueController(game, blue_fixed_nav_world)
     transition_dict = {"states": [], "actions": [], "next_states": [], "rewards": [], "dones": []}
     target_counts = Counter()
     nav_counts = Counter()
+    spin_counts = Counter()
+    blue_spin_counts = Counter()
     total_reward = 0.0
     steps = 0
     damage_done = 0
 
     max_decision_steps = env_config.GAME_TIME_LIMIT * env_config.FPS // control_steps + 1
     for _ in range(max_decision_steps):
+        elapsed_time = env_config.GAME_TIME_LIMIT - game.env._remaining_time
         red_action = agent.take_action(state, GameTeam.RED, deterministic=deterministic)
         if force_actions:
             red_action = force_stage_a_action(red_action)
@@ -181,14 +248,19 @@ def rollout(
                 blue_robot_action = blue_action[BLUE_ID]
                 blue_robot_action.navigation_set = 1
                 blue_robot_action.attack_target = RobotType.STANDARD_3.value
+                blue_robot_action.spin = 0
             blue_action = mirror_navigation_target_actions(blue_action)
         else:
-            blue_action = make_blue_action(blue_mode, blue_fixed_nav_world)
+            if blue_mode == "fixed_nav_attack":
+                blue_action = script_blue_controller.make_action(elapsed_time)
+            else:
+                blue_action = make_blue_action(blue_mode, blue_fixed_nav_world)
 
         before = robot_snapshot(game)
         next_obs, _, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
         after = robot_snapshot(game)
         reward = diagnostic_reward(game, before, after)
+        reward += navigation_validity_reward(game, red_action[RED_ID])
         reward += action_head_reward(red_action[RED_ID])
         next_state = next_obs.to_array(GameTeam.RED)
         done = terminated or truncated
@@ -196,6 +268,8 @@ def rollout(
         executed_action = red_action[RED_ID].to_array()
         target_counts[red_action[RED_ID].attack_target] += 1
         nav_counts[red_action[RED_ID].navigation_set] += 1
+        spin_counts[red_action[RED_ID].spin] += 1
+        blue_spin_counts[blue_action[BLUE_ID].spin] += 1
         damage_done += max(0, before[3] - after[3])
 
         if train:
@@ -215,6 +289,7 @@ def rollout(
     result = {
         "game_state": game.env.game_state.name,
         "remaining_time": game.env._remaining_time,
+        "elapsed_time": game.env.total_time - game.env._remaining_time,
         "red_hp": game.env.get_robot(RED_ID).hp,
         "blue_hp": game.env.get_robot(BLUE_ID).hp,
         "damage_done": damage_done,
@@ -222,6 +297,10 @@ def rollout(
         "reward": total_reward,
         "target_counts": dict(target_counts),
         "nav_counts": dict(nav_counts),
+        "spin_counts": dict(spin_counts),
+        "blue_spin_counts": dict(blue_spin_counts),
+        "blue_spin_switches": script_blue_controller.spin_switches,
+        "blue_nav_switches": script_blue_controller.nav_switches,
     }
     game.close()
     return transition_dict, result
@@ -256,6 +335,7 @@ def evaluate(
         "avg_reward": float(np.mean([r["reward"] for r in results])),
         "avg_damage_done": float(np.mean([r["damage_done"] for r in results])),
         "avg_steps": float(np.mean([r["steps"] for r in results])),
+        "avg_elapsed_time": float(np.mean([r["elapsed_time"] for r in results])),
         "avg_red_hp": float(np.mean([r["red_hp"] for r in results])),
         "avg_blue_hp": float(np.mean([r["blue_hp"] for r in results])),
         "samples": results[:5],
@@ -330,6 +410,7 @@ def train(args):
                 f"train_damage={result['damage_done']} "
                 f"eval_wins={eval_result['wins']} "
                 f"eval_damage={eval_result['avg_damage_done']:.2f} "
+                f"eval_time={eval_result['avg_elapsed_time']:.2f}s "
                 f"eval_blue_hp={eval_result['avg_blue_hp']:.2f}"
             )
             history.append({"episode": episode, "eval": eval_result})

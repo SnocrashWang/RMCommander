@@ -29,6 +29,10 @@ ROBOT_COLORS = {
     GameTeam.RED: (255, 120, 120),
     GameTeam.BLUE: (120, 120, 255)
 }
+ARMOR_COLORS = {
+    GameTeam.RED: (255, 40, 40),
+    GameTeam.BLUE: (40, 40, 255)
+}
 
 # 其他配置
 COLOR_BACKGROUND = COLOR_WHITE              # 背景

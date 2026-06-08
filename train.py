@@ -109,14 +109,16 @@ def train(
                     robot_id: {
                         'navigation_target_norm': list(action.navigation_target_norm),
                         'navigation_set': action.navigation_set,
-                        'attack_target': action.attack_target
+                        'attack_target': action.attack_target,
+                        'spin': action.spin,
                     } for robot_id, action in red_action.items()
                 },
                 'blue_action': {
                     robot_id: {
                         'navigation_target_norm': list(action.navigation_target_norm),
                         'navigation_set': action.navigation_set,
-                        'attack_target': action.attack_target
+                        'attack_target': action.attack_target,
+                        'spin': action.spin,
                     } for robot_id, action in blue_action.items()
                 }
             }

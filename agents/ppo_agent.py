@@ -45,6 +45,13 @@ class PolicyNet(torch.nn.Module):
             nn.Linear(64, len(RobotType))  # 输出可能目标的logits
         )
 
+        # 自旋分支（离散动作）
+        self.spin_network = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ELU(),
+            nn.Linear(64, 2)  # 输出是否自旋的logits
+        )
+
     def forward(self, x):
         features = self.shared_network(x)
         
@@ -57,8 +64,11 @@ class PolicyNet(torch.nn.Module):
         
         # 目标选择（离散）
         attack_target_logits = self.attack_target_network(features)
+
+        # 自旋（离散）
+        spin_logits = self.spin_network(features)
         
-        return navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits
+        return navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits, spin_logits
 
 
 class ValueNet(torch.nn.Module):
@@ -107,7 +117,7 @@ class PPOAgent:
     @torch.no_grad()
     def take_action(self, state, team: GameTeam, deterministic: bool = False) -> Dict[str, Action]:
         state = torch.tensor(state, dtype=torch.float).to(self.device)
-        navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(state)
+        navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits, spin_logits = self.actor(state)
         # print(navigation_target_mean, navigation_target_std)
         # 导航目标
         if deterministic:
@@ -128,12 +138,19 @@ class PPOAgent:
         else:
             attack_target_dist = Categorical(logits=attack_target_logits)
             attack_target_action = attack_target_dist.sample()
+        # 自旋选择
+        if deterministic:
+            spin_action = torch.argmax(spin_logits, dim=-1)
+        else:
+            spin_dist = Categorical(logits=spin_logits)
+            spin_action = spin_dist.sample()
 
         actions = {
             ROBOT_ID[team][robot_type]: Action(
                 navigation_target_norm=navigation_target_action.cpu().numpy(),
                 navigation_set=navigation_set_action.item(),
-                attack_target=attack_target_action.item()
+                attack_target=attack_target_action.item(),
+                spin=spin_action.item(),
             ) for robot_type in BASE_ROBOT_TYPE_LIST
         }
 
@@ -267,33 +284,38 @@ class PPOAgent:
                 self.critic_optimizer.step()
 
     def _get_log_probs(self, states, actions):
-        navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits = self.actor(states)
+        navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits, spin_logits = self.actor(states)
 
         navigation_target_action_dists = torch.distributions.Normal(navigation_target_mean, navigation_target_std)
         navigation_set_action_dists = torch.distributions.Categorical(logits=navigation_set_logits)
         attack_target_action_dists = torch.distributions.Categorical(logits=attack_target_logits)
+        spin_action_dists = torch.distributions.Categorical(logits=spin_logits)
 
         # 提取动作的不同部分
         navigation_target_actions = actions[:, 0:2]
-        navigation_set_actions = actions[:, 2]
-        attack_target_actions = actions[:, 3]
+        navigation_set_actions = actions[:, 2].long()
+        attack_target_actions = actions[:, 3].long()
+        spin_actions = actions[:, 4].long() if actions.shape[1] > 4 else torch.zeros_like(attack_target_actions)
 
         # 计算各个动作的log概率
         # 对于正态分布，log_prob会返回与输入相同形状的张量
         navigation_target_log_probs = navigation_target_action_dists.log_prob(navigation_target_actions)
         navigation_set_log_probs = navigation_set_action_dists.log_prob(navigation_set_actions.squeeze(0))
         attack_target_log_probs = attack_target_action_dists.log_prob(attack_target_actions.squeeze(0))
+        spin_log_probs = spin_action_dists.log_prob(spin_actions.squeeze(0))
 
         # 计算熵（用于熵正则化）
         navigation_target_entropy = navigation_target_action_dists.entropy().sum(dim=-1)
         navigation_set_entropy = navigation_set_action_dists.entropy()
         attack_target_entropy = attack_target_action_dists.entropy()
-        entropy = (navigation_target_entropy + navigation_set_entropy + attack_target_entropy).unsqueeze(-1)
+        spin_entropy = spin_action_dists.entropy()
+        entropy = (navigation_target_entropy + navigation_set_entropy + attack_target_entropy + spin_entropy).unsqueeze(-1)
 
         # 将所有log概率相加
         log_probs = (navigation_target_log_probs.sum(dim=-1) # 将导航目标的log概率在最后一个维度上求和（因为它是2维的x,y坐标）
                      + navigation_set_log_probs
-                     + attack_target_log_probs).unsqueeze(-1)
+                     + attack_target_log_probs
+                     + spin_log_probs).unsqueeze(-1)
         return log_probs, entropy
     
     def save(self, path: str):
@@ -308,10 +330,24 @@ class PPOAgent:
     def load(self, path: str):
         """加载模型"""
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
-        self.actor.load_state_dict(checkpoint['actor_state_dict'])
-        self.critic.load_state_dict(checkpoint['critic_state_dict'])
-        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
-        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+        self._load_matching_state_dict(self.actor, checkpoint['actor_state_dict'])
+        self._load_matching_state_dict(self.critic, checkpoint['critic_state_dict'])
+        try:
+            self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
+            self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+        except ValueError:
+            print("优化器状态与当前模型结构不匹配，已跳过优化器状态加载")
+
+    @staticmethod
+    def _load_matching_state_dict(module, state_dict):
+        current_state = module.state_dict()
+        matched_state = {
+            key: value
+            for key, value in state_dict.items()
+            if key in current_state and current_state[key].shape == value.shape
+        }
+        current_state.update(matched_state)
+        module.load_state_dict(current_state)
 
 def compute_advantage(gamma, lmbda, td_delta):
     td_delta = td_delta.squeeze(-1)

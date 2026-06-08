@@ -1,6 +1,7 @@
 import math
 import pygame
 import time
+import numpy as np
 from contextlib import contextmanager
 from typing import Any, Dict, List, Tuple
 
@@ -342,3 +343,22 @@ def attack_sight_clear(
             return False
 
     return True
+
+def rotate_point_np(point: Tuple[float, float], center: Tuple[float, float], radians: float) -> Tuple[float, float]:
+    """计算绕指定点逆时针旋转的坐标"""
+    x, y = point
+    cx, cy = center
+
+    c = np.cos(radians)
+    s = np.sin(radians)
+
+    matrix = np.array([
+        [c, -s, cx - cx * c + cy * s],
+        [s,  c, cy - cx * s - cy * c],
+        [0,  0, 1],
+    ])
+
+    p = np.array([x, y, 1])
+    rotated = matrix @ p
+
+    return float(rotated[0]), float(rotated[1])

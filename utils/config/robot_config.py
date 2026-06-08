@@ -45,8 +45,9 @@ class RobotConfig:
     init_pos: Tuple[float, float]
     chassis_property_type: CHASSIS_PROPERTY_TYPE = CHASSIS_PROPERTY_TYPE.DEFAULT
     gimbal_property_type: GIMBAL_PROPERTY_TYPE = GIMBAL_PROPERTY_TYPE.DEFAULT
-    forward_speed_efficiency: float = 0.02
-    rotation_speed_efficiency: float = 2.0
+    forward_speed_efficiency: float = 0.02          # 平移效率，单位是 (m/s) / W
+    rotation_speed_efficiency: float = 0.1          # 自旋效率，单位是 (rad/s) / W
+    forward_rotation_allocation: float = 0.5        # 前进/旋转同时进行时的功率分配比例，范围是 (0, 1)，0 表示将功率全部分配到平移，1 表示将功率全部分配到旋转
     radius: float = 0.25
     max_ammo: int = 200
     ammo_allowed: int = 0

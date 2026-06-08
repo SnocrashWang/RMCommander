@@ -74,12 +74,16 @@ class Game(gym.Env):
             
             # 目标动作：攻击目标类型
             attack_target_space = spaces.Discrete(len(RobotType))  # 所有机器人类型
+
+            # 自旋动作：是否启用原地自旋/平移自旋
+            spin_space = spaces.Discrete(2)  # 0: 不自旋, 1: 自旋
             
             # 组合动作空间
             robot_action_spaces[robot_id] = spaces.Dict({
                 'navigation_target_norm': navigation_target_space,
                 'navigation_set': navigation_set_space,
                 'attack_target': attack_target_space,
+                'spin': spin_space,
             })
         
         self.action_space = spaces.Dict(robot_action_spaces)

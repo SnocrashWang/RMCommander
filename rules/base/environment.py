@@ -23,6 +23,7 @@ class Action:
     navigation_target_norm: Tuple[float, float] = (0.0, 0.0)
     navigation_set: int = 0
     attack_target: int = 0
+    spin: int = 0
 
     def __post_init__(self):
         """初始化"""
@@ -41,13 +42,18 @@ class Action:
             self.attack_target = int(self.attack_target)
         except:
             self.attack_target = 0
+        try:
+            self.spin = int(self.spin)
+        except:
+            self.spin = 0
 
     def to_array(self) -> np.ndarray:
         """将所有的属性值转换为一个NumPy数组"""
         return np.array([
             *self.navigation_target_norm,
             self.navigation_set,
-            self.attack_target
+            self.attack_target,
+            self.spin,
         ])
 
 @dataclass
@@ -238,8 +244,11 @@ class Environment:
         
         # 应用动作
         with timer(self._time_stats, 'apply_team_action'):
-            self._apply_team_action(GameTeam.RED, red_action)
-            self._apply_team_action(GameTeam.BLUE, blue_action)
+            # 为了使结算效果与红蓝先后解耦，我们先统一应用运动动作，再应用攻击动作
+            self._apply_team_motion(red_action)
+            self._apply_team_motion(blue_action)
+            self._apply_team_attack(GameTeam.RED, red_action)
+            self._apply_team_attack(GameTeam.BLUE, blue_action)
 
         # 更新机器人状态
         with timer(self._time_stats, 'robot_step'):
@@ -276,47 +285,53 @@ class Environment:
         # print("=" * 50)
         # self._time_stats.clear()
 
-    def _apply_team_action(self, team: GameTeam, action: Dict[str, Action]):
-        """应用动作"""
-        def apply_robot_action_attack(robot: Robot, robot_action: Action):
-            target_type = RobotType(robot_action.attack_target)
-            # 目标为空
-            if target_type == RobotType.NONE:
-                return
-            target_robot = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
-            # 目标不存在
-            if target_robot is None:
-                return
-            # 判断完整视野
-            if not attack_sight_clear(robot.get_position(), target_robot.get_position(), target_robot.radius, self.obstacles, self.robots.values()):
-                return
-            # 攻击
-            if not robot.attack(target_robot) or target_robot.is_alive:
-                return
-            
-            # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
-            if robot.robot_type == RobotType.SENTRY:
-                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
-                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - killer_level)))
-                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
-                # 经验分享
-                for robot in robot_alive:
-                    robot.update_exp(int(kill_exp / len(robot_alive)))
-            else:
-                kill_exp = 50 * target_robot.level * (1 + max(0, 0.2 * (target_robot.level - robot.level)))
-                robot.update_exp(int(kill_exp))
-
-        # 对所有机器人应用动作
+    def _apply_team_motion(self, action: Dict[str, Action]):
+        """应用移动和自旋姿态"""
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
+
+            robot.set_spin(robot_action.spin == 1)
 
             # 设置导航点
             if robot_action.navigation_set == 1:
                 navigation_target = (np.array(robot_action.navigation_target_norm) + 1) * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]) / 2
                 robot.set_target(tuple(navigation_target))
 
+            robot.refresh_motion_speed()
+
+    def _apply_team_attack(self, team: GameTeam, action: Dict[str, Action]):
+        """应用攻击动作。"""
+        for robot_id, robot_action in action.items():
+            # 攻击者
+            robot_attacker = self.get_robot(robot_id)
+            # 攻击目标类型
+            target_type = RobotType(robot_action.attack_target)
+            # 目标为空
+            if target_type == RobotType.NONE:
+                return
+            # 被攻击者
+            robot_target = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
+            # 目标不存在
+            if robot_target is None:
+                return
+            # 判断完整视野
+            if not attack_sight_clear(robot_attacker.get_position(), robot_target.get_position(), robot_target.radius, self.obstacles, self.robots.values()):
+                return
             # 攻击
-            apply_robot_action_attack(robot, robot_action)
+            if not robot_attacker.attack(robot_target) or robot_target.is_alive:
+                return
+
+            # 结算击杀经验（虽然1v1没有经验一说，此处仅做测试）
+            if robot_attacker.robot_type == RobotType.SENTRY:
+                killer_level = np.mean([robot.level for robot in self.robots.values() if robot.team == team])
+                kill_exp = 50 * robot_target.level * (1 + max(0, 0.2 * (robot_target.level - killer_level)))
+                robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
+                # 经验分享
+                for robot in robot_alive:
+                    robot.update_exp(int(kill_exp / len(robot_alive)))
+            else:
+                kill_exp = 50 * robot_target.level * (1 + max(0, 0.2 * (robot_target.level - robot_attacker.level)))
+                robot_attacker.update_exp(int(kill_exp))
 
     def apply_observation(self, observation: Observation):
         """

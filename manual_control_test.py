@@ -17,6 +17,7 @@ if CURRENT_GAME == GameType.BASE:
 elif CURRENT_GAME == GameType.RMUL:
     from rules.RMUL.game import GameRMUL as Game
     from rules.RMUL.environment import ActionRMUL as Action
+    from rules.RMUL.config import env_config
     from rules.RMUL.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 # elif CURRENT_GAME == GameType.RMUC:
     # from RMUC.game import GameRMUC as Game
@@ -35,6 +36,7 @@ def main():
         "robot_id": robot_id_list[0],
         "target_id": target_id_list[0],
         "show_grid": False,
+        "spin": False,
     }
 
     while True:
@@ -55,6 +57,7 @@ def main():
                 mouse_pos = np.array(pygame.mouse.get_pos())  # 屏幕坐标
                 # 转换为归一化坐标
                 navigation_target_norm = mouse_pos * 2 / render_config.SCALE / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]) - 1
+                print(navigation_target_norm)
                 if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
                     red_action[control_state["robot_id"]].navigation_target_norm = tuple(navigation_target_norm)
                     red_action[control_state["robot_id"]].navigation_set = 1
@@ -76,6 +79,12 @@ def main():
                         red_action[control_state["robot_id"]].attack_target = control_state["target_id"]
                     else:
                         blue_action[control_state["robot_id"]].attack_target = control_state["target_id"]
+                elif event.key == pygame.K_SPACE:  # 空格切换自旋
+                    control_state["spin"] = not control_state["spin"]
+                    if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
+                        red_action[control_state["robot_id"]].spin = int(control_state["spin"])
+                    else:
+                        blue_action[control_state["robot_id"]].spin = int(control_state["spin"])
                 elif event.key == pygame.K_e:  # E键购买子弹
                     if "purchase" in Action.__dict__:
                         if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:

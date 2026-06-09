@@ -47,6 +47,14 @@ def opposite_position(p: Tuple[float, float], field_size: Tuple[float, float]) -
     """计算相反位置"""
     return field_size[0] - p[0], field_size[1] - p[1]
 
+def opposite_obstacle(obstacle_config, field_size):
+    """获取障碍物的反向配置"""
+    return {
+        "p1": opposite_position(obstacle_config["p1"], field_size),
+        "p2": opposite_position(obstacle_config["p2"], field_size),
+        "thickness": obstacle_config["thickness"]
+    }
+
 def draw_dashed_line(
     surface: pygame.Surface,
     color: Tuple[int, int, int],
@@ -168,14 +176,6 @@ def point_to_line_segment_distance(point, line_start, line_end):
     
     # 返回距离
     return math.hypot(x - px, y - py)
-
-def get_reverse_obstacle_config(obstacle_config, field_size):
-    """获取障碍物的反向配置"""
-    return {
-        "p1": opposite_position(obstacle_config["p1"], field_size),
-        "p2": opposite_position(obstacle_config["p2"], field_size),
-        "thickness": obstacle_config["thickness"]
-    }
 
 def line_intersects_obstacle(p1: Tuple[float, float], p2: Tuple[float, float], obstacle: Obstacle) -> bool:
     """判断线段是否与障碍物相交

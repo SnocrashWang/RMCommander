@@ -72,12 +72,12 @@ class Zone():
     def _update_robot_buff(self, robots: dict[str, Robot]):
         for robot in robots.values():
             if robot.id in self.occupation_robots[robot.team]:
-                if robot.team == self.team:
+                if robot.team == self.team or self.team == None:
                     robot.add_buff(self.friend_buff)
                 else:
                     robot.add_buff(self.enemy_buff)
             else:
-                if robot.team == self.team:
+                if robot.team == self.team or self.team == None:
                     robot.remove_buff(self.friend_buff)
                 else:
                     robot.remove_buff(self.enemy_buff)

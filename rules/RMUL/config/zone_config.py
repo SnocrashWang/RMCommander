@@ -29,7 +29,7 @@ center_zone = Zone(
         (FIELD_WIDTH / 2 - 2.0 / 2, FIELD_HEIGHT / 2 + 2.0 / 2),    # 左下
     ],
     False,
-    None,
+    Buff(name="center"),
     None
 )
 

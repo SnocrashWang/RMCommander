@@ -14,6 +14,7 @@ from utils.robot import Robot
 from utils.utils import opposite_team
 
 from rules.rmul.config import env_config as RMUL_ENV_CONFIG
+from rules.rmul.config.obstacle_config import RMUL_OBSTACLES
 from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS, RMUL_ROBOT_TYPE_LIST
 from rules.rmul.config.zone_config import RMUL_ZONES
 
@@ -192,7 +193,7 @@ class EnvironmentRMUL(Environment):
 
         # 创建障碍物
         self.obstacles = []
-        self._create_obstacles(self.env_config.OBSTACLES)
+        self._create_obstacles(RMUL_OBSTACLES)
 
         # 创建增益区
         self.zones = RMUL_ZONES

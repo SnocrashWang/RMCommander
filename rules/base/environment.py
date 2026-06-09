@@ -15,6 +15,7 @@ from utils.obstacle import Obstacle
 from utils.utils import attack_sight_clear, opposite_team, timer
 
 from rules.base.config import env_config as BASE_ENV_CONFIG
+from rules.base.config.obstacle_config import OBSTACLES
 from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 
 
@@ -176,7 +177,7 @@ class Environment:
 
         # 创建障碍物
         self.obstacles = []
-        self._create_obstacles(self.env_config.OBSTACLES)
+        self._create_obstacles(OBSTACLES)
 
         # 创建机器人
         self.robots: Dict[str, Robot] = {}

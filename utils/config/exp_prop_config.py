@@ -81,49 +81,49 @@ CHASSIS_PROPERTY_STANDARD = {
 class GIMBAL_PROPERTY_TYPE(Enum):
     DEFAULT = 0
     HEAT = 1
-    COOL_DOWN = 2
+    COOLDOWN = 2
 
 GIMBAL_PROPERTY_17 = {
     GIMBAL_PROPERTY_TYPE.HEAT: {
-        1: {"HEAT": 200, "COOL_DOWN": 10},
-        2: {"HEAT": 250, "COOL_DOWN": 15},
-        3: {"HEAT": 300, "COOL_DOWN": 20},
-        4: {"HEAT": 350, "COOL_DOWN": 25},
-        5: {"HEAT": 400, "COOL_DOWN": 30},
-        6: {"HEAT": 450, "COOL_DOWN": 35},
-        7: {"HEAT": 500, "COOL_DOWN": 40},
-        8: {"HEAT": 550, "COOL_DOWN": 45},
-        9: {"HEAT": 600, "COOL_DOWN": 50},
-        10: {"HEAT": 650, "COOL_DOWN": 60},
+        1: {"HEAT": 200, "COOLDOWN": 10},
+        2: {"HEAT": 250, "COOLDOWN": 15},
+        3: {"HEAT": 300, "COOLDOWN": 20},
+        4: {"HEAT": 350, "COOLDOWN": 25},
+        5: {"HEAT": 400, "COOLDOWN": 30},
+        6: {"HEAT": 450, "COOLDOWN": 35},
+        7: {"HEAT": 500, "COOLDOWN": 40},
+        8: {"HEAT": 550, "COOLDOWN": 45},
+        9: {"HEAT": 600, "COOLDOWN": 50},
+        10: {"HEAT": 650, "COOLDOWN": 60},
     },
-    GIMBAL_PROPERTY_TYPE.COOL_DOWN: {
-        1: {"HEAT": 50, "COOL_DOWN": 40},
-        2: {"HEAT": 85, "COOL_DOWN": 45},
-        3: {"HEAT": 120, "COOL_DOWN": 50},
-        4: {"HEAT": 155, "COOL_DOWN": 55},
-        5: {"HEAT": 190, "COOL_DOWN": 60},
-        6: {"HEAT": 225, "COOL_DOWN": 65},
-        7: {"HEAT": 260, "COOL_DOWN": 70},
-        8: {"HEAT": 295, "COOL_DOWN": 75},
-        9: {"HEAT": 330, "COOL_DOWN": 80},
-        10: {"HEAT": 400, "COOL_DOWN": 80},
+    GIMBAL_PROPERTY_TYPE.COOLDOWN: {
+        1: {"HEAT": 50, "COOLDOWN": 40},
+        2: {"HEAT": 85, "COOLDOWN": 45},
+        3: {"HEAT": 120, "COOLDOWN": 50},
+        4: {"HEAT": 155, "COOLDOWN": 55},
+        5: {"HEAT": 190, "COOLDOWN": 60},
+        6: {"HEAT": 225, "COOLDOWN": 65},
+        7: {"HEAT": 260, "COOLDOWN": 70},
+        8: {"HEAT": 295, "COOLDOWN": 75},
+        9: {"HEAT": 330, "COOLDOWN": 80},
+        10: {"HEAT": 400, "COOLDOWN": 80},
     },
     GIMBAL_PROPERTY_TYPE.DEFAULT: {
-        i: {"HEAT": 40, "COOL_DOWN": 100} for i in range(1, 11)
+        i: {"HEAT": 40, "COOLDOWN": 100} for i in range(1, 11)
     }
 }
 
 GIMBAL_PROPERTY_42 = {
     GIMBAL_PROPERTY_TYPE.DEFAULT: {
-        1: {"HEAT": 100, "COOL_DOWN": 40},
-        2: {"HEAT": 140, "COOL_DOWN": 48},
-        3: {"HEAT": 180, "COOL_DOWN": 56},
-        4: {"HEAT": 220, "COOL_DOWN": 64},
-        5: {"HEAT": 260, "COOL_DOWN": 72},
-        6: {"HEAT": 300, "COOL_DOWN": 80},
-        7: {"HEAT": 340, "COOL_DOWN": 88},
-        8: {"HEAT": 380, "COOL_DOWN": 96},
-        9: {"HEAT": 420, "COOL_DOWN": 104},
-        10: {"HEAT": 500, "COOL_DOWN": 120},
+        1: {"HEAT": 100, "COOLDOWN": 40},
+        2: {"HEAT": 140, "COOLDOWN": 48},
+        3: {"HEAT": 180, "COOLDOWN": 56},
+        4: {"HEAT": 220, "COOLDOWN": 64},
+        5: {"HEAT": 260, "COOLDOWN": 72},
+        6: {"HEAT": 300, "COOLDOWN": 80},
+        7: {"HEAT": 340, "COOLDOWN": 88},
+        8: {"HEAT": 380, "COOLDOWN": 96},
+        9: {"HEAT": 420, "COOLDOWN": 104},
+        10: {"HEAT": 500, "COOLDOWN": 120},
     },
 }

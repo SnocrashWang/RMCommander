@@ -8,13 +8,14 @@ from typing import Dict, List, Any, Optional, Tuple
 
 from rules.base.environment import Environment
 from utils.config.game_config import GameTeam, GameState
-from utils.config.robot_config import RobotConfig, RobotType, ROBOT_ID
+from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.robot import Robot
-from utils.utils import point_in_polygon, opposite_team, has_line_of_sight, attack_sight_clear
+from utils.utils import opposite_team
 
 from rules.rmul.config import env_config as RMUL_ENV_CONFIG
 from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS, RMUL_ROBOT_TYPE_LIST
+from rules.rmul.config.zone_config import RMUL_ZONES
 
 
 @dataclass
@@ -194,15 +195,11 @@ class EnvironmentRMUL(Environment):
         self._create_obstacles(self.env_config.OBSTACLES)
 
         # 创建增益区
-        self.buff_zone = {}
-        self.buff_zone["center"] = self.env_config.CENTER_ZONE_VERTICES
-        self.buff_zone["boot_red"] = self.env_config.BOOT_ZONE_RED_VERTICES
-        self.buff_zone["boot_blue"] = self.env_config.BOOT_ZONE_BLUE_VERTICES
+        self.zones = RMUL_ZONES
 
         # 创建机器人
         self.robots: Dict[str, Robot] = {}
-        self.robot_configs = RMUL_ROBOT_CONFIGS
-        self._create_robots()
+        self._create_robots(RMUL_ROBOT_CONFIGS)
         
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(self.env_config)
@@ -217,10 +214,10 @@ class EnvironmentRMUL(Environment):
             "blue_lag_140": False,
         }
 
-    def step(self, dt: float, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL]):
+    def step(self, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL]):
         """推进环境仿真"""
         # 更新物理引擎
-        self.physics_engine.step(dt)
+        self.physics_engine.step(self.dt)
 
         # 应用动作
         # 为了使结算效果与红蓝先后解耦，我们先统一应用运动动作，再应用攻击动作
@@ -231,48 +228,42 @@ class EnvironmentRMUL(Environment):
 
         # 更新机器人状态
         for robot in self.robots.values():
-            robot.step(dt)
+            robot.step(self.dt, self._remaining_time)
 
-        # 检查中心区域占领情况
-        robots_in_center_zone = {GameTeam.RED: False, GameTeam.BLUE: False} # 机器人是否在中心区域
-        for robot in self.robots.values():
-            if robot.is_alive and point_in_polygon(robot.get_position(), self.buff_zone["center"]):
-                robots_in_center_zone[robot.team] = True
+        # 更新所有增益区
+        for zone in self.zones.values():
+            zone.update(self.robots)
         
         # 检查补给区占领情况
-        for robot in self.robots.values():
-            if robot.team == GameTeam.RED and point_in_polygon(robot.get_position(), self.buff_zone["boot_red"]) or \
-                robot.team == GameTeam.BLUE and point_in_polygon(robot.get_position(), self.buff_zone["boot_blue"]):
-                # 解锁发射机构
-                robot.gun_locked = False
-                # 为防止血量计算中出现小数，仅在整数秒时一次性回复血量
-                if 0 < math.modf(time.time())[0] < dt:
-                    robot.heal(int(robot.max_hp * 0.25))
+        for id in self.zones["red_boot"].occupation_robots[GameTeam.RED]:
+            self.robots[id].gun_locked = False
+        for id in self.zones["blue_boot"].occupation_robots[GameTeam.BLUE]:
+            self.robots[id].gun_locked = False
 
-        # 更新游戏状态# 倒计时减少
-        self._remaining_time = max(0, self._remaining_time - dt)
+        # 倒计时减少
+        self._remaining_time = max(0, self._remaining_time - self.dt)
 
         # 更新经济
-        if 0 < 300 - self._remaining_time < dt:
+        if 0 < 300 - self._remaining_time < self.dt:
             self._economics[GameTeam.RED] += 200
             self._economics[GameTeam.BLUE] += 200
-        elif 0 < 240 - self._remaining_time < dt:
+        elif 0 < 240 - self._remaining_time < self.dt:
             self._economics[GameTeam.RED] += 200
             self._economics[GameTeam.BLUE] += 200
-        elif 0 < 180 - self._remaining_time < dt:
+        elif 0 < 180 - self._remaining_time < self.dt:
             self._economics[GameTeam.RED] += 200
             self._economics[GameTeam.BLUE] += 200
-        elif 0 < 120 - self._remaining_time < dt:
+        elif 0 < 120 - self._remaining_time < self.dt:
             self._economics[GameTeam.RED] += 300
             self._economics[GameTeam.BLUE] += 300
-        elif 0 < 60 - self._remaining_time < dt:
+        elif 0 < 60 - self._remaining_time < self.dt:
             self._economics[GameTeam.RED] += 300
             self._economics[GameTeam.BLUE] += 300
 
-        # 更新中心区域进度
-        for team, has_robot in robots_in_center_zone.items():
-            if has_robot:  # 如果该队伍有机器人在中心区域
-                self._victory_progress[team] += dt  # 只要有一个机器人在区域中就增加进度
+        # 更新来自中心区域的胜利进度
+        for team, occupied in self.zones["center"].occupation_team.items():
+            if occupied:
+                self._victory_progress[team] += self.dt
 
         # 检查胜利条件
         red_progress = self._victory_progress[GameTeam.RED]
@@ -314,7 +305,7 @@ class EnvironmentRMUL(Environment):
         super()._apply_team_motion(action)
 
     def _apply_robot_attack(self, robot_attacker: Robot, robot_target: Robot):
-        super()._apply_robot_attack(robot_attacker, robot_target)
+        return super()._apply_robot_attack(robot_attacker, robot_target)
 
     def _apply_team_attack(self, team: GameTeam, action: Dict[str, ActionRMUL]):
         """应用攻击动作。"""
@@ -328,12 +319,13 @@ class EnvironmentRMUL(Environment):
                 continue
             # 被攻击者
             robot_target = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
-            self._apply_robot_attack(robot_attacker, robot_target)
+            if not self._apply_robot_attack(robot_attacker, robot_target):
+                continue
 
             # 被攻击目标阵亡
             if not robot_target.is_alive:
                 # 结算击杀经验
-                if robot.robot_type == RobotType.SENTRY:
+                if robot_attacker.robot_type == RobotType.SENTRY:
                     killer_level = self.get_robot(ROBOT_ID[team][RobotType.STANDARD_3]).level
                     kill_exp = 50 * robot_target.level * (1 + max(0, 0.2 * (robot_target.level - killer_level)))
                     robot_alive = [robot for robot in self.robots.values() if robot.team == team and robot.is_alive]
@@ -342,7 +334,7 @@ class EnvironmentRMUL(Environment):
                         robot.update_exp(int(kill_exp / len(robot_alive)))
                 else:
                     kill_exp = 50 * robot_target.level * (1 + max(0, 0.2 * (robot_target.level - robot_attacker.level)))
-                    robot.update_exp(int(kill_exp))
+                    robot_attacker.update_exp(int(kill_exp))
                 # 结算胜利进度
                 self._victory_progress[team] += 20
 
@@ -351,7 +343,7 @@ class EnvironmentRMUL(Environment):
             robot = self.get_robot(robot_id)
             if robot_action.purchase and robot.robot_type != RobotType.SENTRY:
                 if self._economics[team] >= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM:
-                    if point_in_polygon(robot.get_position(), self.buff_zone["boot_red"] if team == GameTeam.RED else self.buff_zone["boot_blue"]):
+                    if robot_id in (self.zones["red_boot"].occupation_robots[GameTeam.RED] if team == GameTeam.RED else self.zones["blue_boot"].occupation_robots[GameTeam.BLUE]):
                         robot.ammo_allowed += robot.bullet.PURCHASE_NUM
                         self._economics[team] -= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM
 

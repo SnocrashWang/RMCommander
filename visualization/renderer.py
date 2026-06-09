@@ -4,6 +4,7 @@ from visualization.config import render_config
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameState, GameTeam
 from utils.config.robot_config import RobotType, ROBOT_ID
+from utils.buff import BuffType
 from utils.utils import meters_to_pixels, draw_dashed_line, second2minute, get_tangent_points, opposite_team, rotate_point_np
 
 
@@ -42,8 +43,8 @@ class Renderer:
         self.screen_note.fill((0, 0, 0, 0))
 
         # 绘制增益区域
-        if hasattr(env, "buff_zone"):
-            self._draw_buff_zone(env)
+        if hasattr(env, "zones"):
+            self._draw_zones(env)
 
         # 绘制四周墙壁
         self._draw_walls()
@@ -84,18 +85,25 @@ class Renderer:
 
         return screen
 
-    def _draw_buff_zone(self, env):
-        """绘制增益区域"""
-        # 绘制所有增益区
-        for buff_zone in env.buff_zone.values():
-            vertices = []
-            for x, y in buff_zone:
-                px = meters_to_pixels(x)
-                py = meters_to_pixels(y)
-                vertices.append((px, py))
-            
-            # 在Surface上绘制增益区
-            pygame.draw.polygon(self.screen_field, render_config.COLOR_CENTER_ZONE, vertices)
+    def _draw_zones(self, env):
+        """绘制区域"""
+        # 绘制所有区域
+        for zone in env.zones.values():
+            if zone.if_render:
+                vertices = []
+                for x, y in zone.vertices:
+                    px = meters_to_pixels(x)
+                    py = meters_to_pixels(y)
+                    vertices.append((px, py))
+                
+                # 在Surface上绘制增益区
+                if zone.team == GameTeam.RED:
+                    color = render_config.COLOR_ZONE_RED
+                elif zone.team == GameTeam.BLUE:
+                    color = render_config.COLOR_ZONE_BLUE
+                else:
+                    color = render_config.COLOR_ZONE_PUBLIC
+                pygame.draw.polygon(self.screen_field, color, vertices)
 
     def _draw_walls(self):
         """绘制围墙"""
@@ -178,7 +186,7 @@ class Renderer:
             hp_bar_x = x - bar_width / 2
             hp_bar_y = y - scale * 1.5 - bar_height * 2
             current_hp_width = int(bar_width * robot.hp / robot.max_hp)
-            pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[robot.team] if robot.defense_buff == 0 else render_config.COLOR_GREEN,
+            pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[robot.team] if robot._buff_manager.get_buff(BuffType.DEFENCE) == 0 else render_config.COLOR_GREEN,
                             (hp_bar_x, hp_bar_y, current_hp_width, bar_height))
             # FIXME: 有一个特殊情况会导致hp为小数，暂时还没有复现到
             try:

@@ -1,4 +1,5 @@
-from utils.utils import opposite_position, get_reverse_obstacle_config
+from utils.utils import get_reverse_obstacle_config
+
 
 ENV_NAME = "RMUL"
 
@@ -8,24 +9,6 @@ FPS = 60
 # 场地尺寸（米）
 FIELD_WIDTH = 12.0
 FIELD_HEIGHT = 8.0
-
-# 启动区
-BOOT_ZONE_RED_VERTICES = [
-    (0.0, 0.0),  # 左上
-    (1.5, 0),  # 右上
-    (1.5, 2.0),  # 右下
-    (0.0, 2.0),  # 左下
-]
-BOOT_ZONE_BLUE_VERTICES = [
-    opposite_position(v, FIELD_WIDTH, FIELD_HEIGHT) for v in BOOT_ZONE_RED_VERTICES
-]
-# 中心增益区
-CENTER_ZONE_VERTICES = [
-    (FIELD_WIDTH / 2 - 2.0 / 2, FIELD_HEIGHT / 2 - 2.0 / 2),  # 左上
-    (FIELD_WIDTH / 2 + 2.0 / 2, FIELD_HEIGHT / 2 - 2.0 / 2),  # 右上
-    (FIELD_WIDTH / 2 + 2.0 / 2, FIELD_HEIGHT / 2 + 2.0 / 2),  # 右下
-    (FIELD_WIDTH / 2 - 2.0 / 2, FIELD_HEIGHT / 2 + 2.0 / 2),  # 左下
-]
 
 # 障碍物
 OBSTACLES = [
@@ -44,7 +27,7 @@ red_obstacles = [
 ]
 # 蓝方障碍物
 blue_obstacles = [
-    get_reverse_obstacle_config(v, FIELD_WIDTH, FIELD_HEIGHT) for v in red_obstacles
+    get_reverse_obstacle_config(v, (FIELD_WIDTH, FIELD_HEIGHT)) for v in red_obstacles
 ]
 
 OBSTACLES.extend(red_obstacles)

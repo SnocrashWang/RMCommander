@@ -1,9 +1,8 @@
 import pymunk
 import math
-from typing import Optional
 
 class Obstacle:
-    def __init__(self, obstacle_config, physics_engine: Optional[pymunk.Space] = None):
+    def __init__(self, obstacle_config, physics_engine: pymunk.Space):
         # obstacle_config 需要包含: p1, p2, thickness
         self.p1 = obstacle_config["p1"]
         self.p2 = obstacle_config["p2"]

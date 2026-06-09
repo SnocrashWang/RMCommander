@@ -43,9 +43,9 @@ def calc_distance(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
     """计算两点之间的距离"""
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
-def opposite_position(p: Tuple[float, float], field_width: float, field_height: float) -> Tuple[float, float]:
+def opposite_position(p: Tuple[float, float], field_size: Tuple[float, float]) -> Tuple[float, float]:
     """计算相反位置"""
-    return field_width - p[0], field_height - p[1]
+    return field_size[0] - p[0], field_size[1] - p[1]
 
 def draw_dashed_line(
     surface: pygame.Surface,
@@ -169,11 +169,11 @@ def point_to_line_segment_distance(point, line_start, line_end):
     # 返回距离
     return math.hypot(x - px, y - py)
 
-def get_reverse_obstacle_config(obstacle_config, field_width, field_height):
+def get_reverse_obstacle_config(obstacle_config, field_size):
     """获取障碍物的反向配置"""
     return {
-        "p1": opposite_position(obstacle_config["p1"], field_width, field_height),
-        "p2": opposite_position(obstacle_config["p2"], field_width, field_height),
+        "p1": opposite_position(obstacle_config["p1"], field_size),
+        "p2": opposite_position(obstacle_config["p2"], field_size),
         "thickness": obstacle_config["thickness"]
     }
 

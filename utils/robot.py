@@ -8,6 +8,7 @@ from utils.config.exp_prop_config import *
 from utils.config.bullet_config import *
 from utils.config.robot_config import ROBOT_ID, RobotType
 from utils.config.game_config import GameTeam
+from utils.buff import BuffType, Buff, BuffManager
 from utils.grid_map import GridMap, a_star, world_to_grid, grid_to_world, simplify_path
 
 class Robot:
@@ -58,7 +59,7 @@ class Robot:
             self.level = 10
             self.exp = LEVEL_NEED_EXP[self.level]
             self.chassis_property = CHASSIS_PROPERTY_STANDARD[CHASSIS_PROPERTY_TYPE.HP]
-            self.gimbal_property = GIMBAL_PROPERTY_17[GIMBAL_PROPERTY_TYPE.COOL_DOWN]
+            self.gimbal_property = GIMBAL_PROPERTY_17[GIMBAL_PROPERTY_TYPE.COOLDOWN]
             self.bullet = SmallBullet()
 
         # 更新性能
@@ -98,26 +99,16 @@ class Robot:
         # 攻击相关
         self.gun_locked : bool = False      # 发射机构锁定
         self.attack_target : Robot = None   # 攻击目标
-        self.last_attack_time : float = 0   # 上次攻击的时间（秒）
-        self.last_in_combat_time : float = 0 # 上次进入战斗的时间（秒）
+        self.last_attack_time : float = math.inf   # 上次攻击的时间（秒）
+        self.last_in_combat_time : float = math.inf # 上次进入战斗的时间（秒）
 
         # 复活相关
         self.revive_progress : float = 0    # 复活进度
         self.revive_target : float = 10     # 复活所需进度
         self.revive_efficiency : float = 2  # 复活效率（每秒增加的进度）
-        self.last_revive_time : float = 0.0 # 上次复活时间
+        self.last_revive_time : float = math.inf # 上次复活时间
 
-        # TODO: 增益相关
-        self.damage_buff_dict : Dict[str, float] = {}      # 伤害增益
-        self.damage_buff : float = 0.0
-        self.defense_buff_dict : Dict[str, float] = {}     # 防御增益
-        self.defense_buff : float = 0.0
-        self.defense_debuff_dict : Dict[str, float] = {}     # 防御减益
-        self.defense_debuff : float = 0.0
-        self.cool_down_buff_dict : Dict[str, float] = {}   # 冷却缩减增益
-        self.cool_down_buff : float = 1.0
-        self.power_buff_dict : Dict[str, float] = {}       # 功率增益
-        self.power_buff : float = 1.0
+        self._buff_manager = BuffManager()
 
         # GridMap相关
         self.grid_map : GridMap = None
@@ -161,7 +152,13 @@ class Robot:
         self.max_hp : int = self.chassis_property[self.level]["HP"]
         self.power : int = self.chassis_property[self.level]["POWER"]
         self.max_heat : int = self.gimbal_property[self.level]["HEAT"]
-        self.cool_down : int = self.gimbal_property[self.level]["COOL_DOWN"]
+        self.cooldown : int = self.gimbal_property[self.level]["COOLDOWN"]
+
+    def add_buff(self, buff: Buff):
+        self._buff_manager.add_buff(buff)
+
+    def remove_buff(self, buff: Buff, strict: bool = False):
+        self._buff_manager.remove_buff(buff, strict)
 
     def set_spin(self, spin_enabled: bool):
         """设置是否启用自旋防御姿态。"""
@@ -224,7 +221,7 @@ class Robot:
         self.path_points = [grid_to_world(gp[0], gp[1]) for gp in path_grids[1:]]
         self.current_path_idx = 0
 
-    def step(self, dt):
+    def step(self, dt, remaining_time):
         """沿路径点导航"""
         # 若非存活
         if not self.is_alive:
@@ -233,22 +230,28 @@ class Robot:
                 self._body.angular_velocity = 0
             self.forward_speed = 0.0
             self.rotation_speed = 0.0
+            self._buff_manager.clear_buff()
             # 结算复活进度
             self.revive_progress = min(self.revive_progress + self.revive_efficiency * dt, self.revive_target)
+            # 复活读条已满
             if self.revive_progress >= self.revive_target:
                 self.is_alive = True
-                self.last_revive_time = time.time()
+                self.last_revive_time = remaining_time
                 self.hp = int(self.max_hp * 0.2)
                 self.heat = 0
                 self.revive_progress = 0
                 self.revive_target += 10
-            return
+            else:
+                return
 
         # 结算复活无敌时间
-        if time.time() - self.last_revive_time < 10:
-            self.defense_buff_dict["revive"] = 2.0
+        if self.last_revive_time - remaining_time < 10:
+            self._buff_manager.add_buff(Buff(name="revive", defence=100.0))    # 给足饱和防御buff，防止被易伤抵消
         else:
-            self.defense_buff_dict.pop("revive", None)
+            self._buff_manager.remove_buff(Buff(name="revive", defence=100.0), strict=False)
+
+        # 结算增益
+        self._buff_manager.update_buff_list()
 
         # 沿路径移动
         moving = False
@@ -256,37 +259,40 @@ class Robot:
             next_point = self.path_points[self.current_path_idx]
             current_pos = pygame.math.Vector2(self.get_position())
             direction = pygame.math.Vector2(next_point) - current_pos
-            if direction.length() < 0.05:
+            # 若距离目标点已经小于一帧将移动的距离，则停止
+            if direction.length() < self.forward_speed * dt:
                 self.current_path_idx += 1
                 self._body.velocity = (0, 0)
             else:
                 moving = True
-                self._resolve_motion_speed(moving=True)
                 direction = direction.normalize() * self.forward_speed
                 self._body.velocity = (direction.x, direction.y)
         else:
             self._body.velocity = (0, 0)
 
-        if not moving:
-            self._resolve_motion_speed(moving=False)
+        # 分配当前功率
+        self._resolve_motion_speed(moving)
 
+        # 处理自旋
         self._body.angular_velocity = self.rotation_speed
         if self.rotation_speed > 0:
             self.angle_chassis = self.angle_chassis + self.rotation_speed * dt
 
         # 结算热量冷却
-        self.heat = max(0, self.heat - self.cool_down * dt)
+        cooldown = max(self.cooldown * self._buff_manager.get_buff(BuffType.COOLDOWN_RATE), self.cooldown + self._buff_manager.get_buff(BuffType.COOLDOWN_CONST))
+        self.heat = max(0, self.heat - cooldown * dt)
 
         # 结算脱战状态
-        if time.time() - self.last_in_combat_time > 6:
+        if self.last_in_combat_time - remaining_time > 6:
             self.attack_target = None
 
-        # 计算最高增益
-        self.damage_buff = max(self.damage_buff_dict.values(), default=0.0)
-        self.defense_buff = max(self.defense_buff_dict.values(), default=0.0)
-        self.defense_debuff = max(self.defense_debuff_dict.values(), default=0.0)
-        self.cool_down_buff = min(self.cool_down_buff_dict.values(), default=1.0)
-        self.power_buff = max(self.power_buff_dict.values(), default=1.0)
+        # 结算回血增益
+        if self._buff_manager.get_buff(BuffType.HEALING):
+            # 为防止血量计算中出现小数，仅在整数秒时一次性回复血量
+            if 0 < math.modf(remaining_time)[0] < dt:
+                self.heal(int(self.max_hp * self._buff_manager.get_buff(BuffType.HEALING)))
+
+        # TODO：结算禁区
 
     def apply_observation(self, observation, env_config):
         """
@@ -334,7 +340,7 @@ class Robot:
             return False
         
         # 造成伤害
-        damage = self.attack_target.take_damage(self.bullet.DAMAGE * (1 + self.damage_buff))
+        damage = self.attack_target.take_damage(self.bullet.DAMAGE * (1 + self._buff_manager.get_buff(BuffType.ATTACK)))
         # 增加热量
         self.heat += self.bullet.HEAT
         # 减少子弹
@@ -374,7 +380,10 @@ class Robot:
         if self.rotation_speed > 0 and np.random.random() > math.exp(-self.rotation_speed / 10):
             return 0
 
-        real_damage = int(min(damage * max(0, 1 - self.defense_buff + self.defense_debuff), self.hp))
+        real_damage = int(min(
+            damage * max(0, 1 - self._buff_manager.get_buff(BuffType.DEFENCE) + self._buff_manager.get_buff(BuffType.VULNERABILITY)),   # 不允许造成负伤害
+            self.hp
+        ))
         self.hp = self.hp - real_damage
         if self.hp <= 0:
             self.is_alive = False

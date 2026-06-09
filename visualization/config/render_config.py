@@ -41,7 +41,9 @@ COLOR_OBSTACLE = COLOR_MEDIUM_GRAY          # 障碍物
 COLOR_TEXT = COLOR_CHARCOAL_GRAY            # 文字
 COLOR_PROGRESS_BAR_BG = COLOR_SILVER_GRAY   # 进度条背景
 
-COLOR_CENTER_ZONE = (200, 255, 200)         # 增益区
+COLOR_ZONE_RED = (255, 192, 192)            # 红方增益区
+COLOR_ZONE_BLUE = (192, 192, 255)           # 蓝方增益区
+COLOR_ZONE_PUBLIC = (200, 255, 200)         # 公共增益区
 
 COLOR_REVIVE_BAR = (0, 255, 0)  # 复活条颜色
 COLOR_HEAT_BAR = (255, 120, 0)  # 热量条颜色

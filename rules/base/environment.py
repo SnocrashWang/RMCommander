@@ -12,7 +12,7 @@ from utils.config.robot_config import RobotConfig, ROBOT_ID, RobotType
 from utils.grid_map import GridMap
 from utils.robot import Robot
 from utils.obstacle import Obstacle
-from utils.utils import attack_sight_clear, calc_distance, opposite_team, opposite_position, timer
+from utils.utils import attack_sight_clear, opposite_team, timer
 
 from rules.base.config import env_config as BASE_ENV_CONFIG
 from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
@@ -180,8 +180,7 @@ class Environment:
 
         # 创建机器人
         self.robots: Dict[str, Robot] = {}
-        self.robot_configs = BASE_ROBOT_CONFIGS
-        self._create_robots()
+        self._create_robots(BASE_ROBOT_CONFIGS)
         
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(self.env_config)
@@ -189,9 +188,9 @@ class Environment:
         # 性能统计
         self._time_stats = defaultdict(list)
 
-    def _create_robots(self):
+    def _create_robots(self, robot_configs: List[RobotConfig]):
         """根据配置创建机器人"""
-        for config in self.robot_configs:
+        for config in robot_configs:
             robot = Robot(
                 **config.__dict__,
                 physics_engine=self.physics_engine,
@@ -223,7 +222,7 @@ class Environment:
         self.robots.clear()
         
         # 创建新机器人
-        self._create_robots()
+        self._create_robots(BASE_ROBOT_CONFIGS)
         
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(self.env_config)
@@ -249,7 +248,7 @@ class Environment:
         # 更新机器人状态
         with timer(self._time_stats, 'robot_step'):
             for robot in self.robots.values():
-                robot.step(self.dt)
+                robot.step(self.dt, self._remaining_time)
 
         # 更新游戏状态
         with timer(self._time_stats, 'game_state_update'):
@@ -298,13 +297,15 @@ class Environment:
     def _apply_robot_attack(self, robot_attacker: Robot, robot_target: Robot):
         # 目标不存在
         if robot_target is None:
-            return
+            return False
         # 判断完整视野
         if not attack_sight_clear(robot_attacker.get_position(), robot_target.get_position(), robot_target.radius, self.obstacles, self.robots.values()):
-            return
+            return False
         # 攻击
         if not robot_attacker.attack(robot_target):
-            return
+            return False
+        print("no jump")
+        return True
 
     def _apply_team_attack(self, team: GameTeam, action: Dict[str, Action]):
         """应用攻击动作。"""
@@ -318,7 +319,8 @@ class Environment:
                 continue
             # 被攻击者
             robot_target = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
-            self._apply_robot_attack(robot_attacker, robot_target)
+            if not self._apply_robot_attack(robot_attacker, robot_target):
+                continue
 
     def apply_observation(self, observation: Observation):
         """

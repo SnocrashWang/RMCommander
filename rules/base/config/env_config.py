@@ -19,7 +19,7 @@ OBSTACLES = [
 ]
 
 red_obstacle = {"p1": (2.050, 2.050), "p2": (1.200, 2.900), "thickness": 0.2}
-blue_obstacle = get_reverse_obstacle_config(red_obstacle, FIELD_WIDTH, FIELD_HEIGHT)
+blue_obstacle = get_reverse_obstacle_config(red_obstacle, (FIELD_WIDTH, FIELD_HEIGHT))
 OBSTACLES.append(red_obstacle)
 OBSTACLES.append(blue_obstacle)
 

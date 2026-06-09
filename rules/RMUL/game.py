@@ -170,7 +170,7 @@ class GameRMUL(gym.Env):
             self._frame_start_time = time.perf_counter()
 
             # 执行环境步进
-            self.env.step(self.env.dt, red_action, blue_action)
+            self.env.step(red_action, blue_action)
             
             # 获取观察
             observation = self._get_obs()

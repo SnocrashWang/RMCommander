@@ -22,7 +22,7 @@ RMUL_ROBOT_CONFIGS: List[RobotConfig] = [
         robot_type=RobotType.STANDARD_3,
         init_pos=(0.5, 1.0),
         chassis_property_type=CHASSIS_PROPERTY_TYPE.POWER,
-        gimbal_property_type=GIMBAL_PROPERTY_TYPE.COOL_DOWN,
+        gimbal_property_type=GIMBAL_PROPERTY_TYPE.COOLDOWN,
         max_ammo=400,
     ),
     RobotConfig(

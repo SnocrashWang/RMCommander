@@ -12,7 +12,7 @@ from utils.config.game_config import GameTeam, GameType
 from agents.ppo_agent import PPOAgent
 from utils.config.robot_config import RobotType
 from utils.grid_map import world_to_grid
-from utils.utils import calc_distance, mirror_navigation_target_actions
+from utils.utils import calc_distance
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
@@ -28,6 +28,8 @@ elif CURRENT_GAME == GameType.RMUL:
 #     from RMUC.environment import EnvironmentRMUC, Action
 #     from RMUC.config import env_config
 
+
+np.set_printoptions(precision=3, suppress=True)
 
 def is_valid_base_position(game: Game, position):
     try:
@@ -131,10 +133,10 @@ def agent_control(
         # 动作
         red_action = agent.take_action(obs.to_array(GameTeam.RED), GameTeam.RED, deterministic=deterministic)
         blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE, deterministic=deterministic)
-        # 翻转蓝方导航点
-        blue_action = mirror_navigation_target_actions(blue_action)
-
-        print(red_action, blue_action)
+        # blue_action = {"BLUE_3_STANDARD": mirror_navigation_target_actions(red_action)["RED_3_STANDARD"]}
+        # blue_action = {"BLUE_3_STANDARD": Action(attack_target=3, spin=1)}
+        # print(red_action)
+        # print(blue_action)
 
         # 更新环境
         obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)

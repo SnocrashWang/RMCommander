@@ -119,6 +119,7 @@ class PPOAgent:
         state = torch.tensor(state, dtype=torch.float).to(self.device)
         navigation_target_mean, navigation_target_std, navigation_set_logits, attack_target_logits, spin_logits = self.actor(state)
         # print(navigation_target_mean, navigation_target_std)
+        # print(deterministic)
         # 导航目标
         if deterministic:
             navigation_target_action = navigation_target_mean
@@ -126,6 +127,8 @@ class PPOAgent:
             navigation_target_dist = Normal(navigation_target_mean, navigation_target_std)
             navigation_target_action = navigation_target_dist.sample()
         navigation_target_action = torch.clip(navigation_target_action, -1, 1)
+        if team == GameTeam.BLUE:
+            navigation_target_action *= -1  # 蓝方导航点取反
         # 导航移动
         if deterministic:
             navigation_set_action = torch.argmax(navigation_set_logits, dim=-1)

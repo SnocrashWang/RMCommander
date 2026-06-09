@@ -17,7 +17,7 @@ from rules.base.game import Game
 from utils.config.game_config import GameState, GameTeam
 from utils.config.robot_config import RobotType
 from utils.grid_map import world_to_grid
-from utils.utils import attack_sight_clear, calc_distance, mirror_navigation_target_actions
+from utils.utils import attack_sight_clear, calc_distance
 
 
 RED_ID = "RED_3_STANDARD"
@@ -67,7 +67,8 @@ class ScriptBlueController:
 
         if elapsed_time >= self.next_nav_switch_time:
             self.nav_world = self._sample_blue_nav_world()
-            self.next_nav_switch_time = self._sample_next_switch_time(elapsed_time)
+            # self.next_nav_switch_time = self._sample_next_switch_time(elapsed_time)
+            self.next_nav_switch_time = elapsed_time + 1000.0   # 导航点保持不变，直到 episode 结束
             self.nav_switches += 1
 
         return {
@@ -156,13 +157,13 @@ def apply_random_start(game: Game):
     blue.current_path_idx = 0
 
 
-def diagnostic_reward(game: Game, stage, before, after) -> float:
+def diagnostic_reward(game: Game, stage, action: Action, before, after) -> float:
     """共享诊断奖励：只描述接近、伤害、视野和胜负，不追求最终战术完备。"""
     red_pos_before, blue_pos_before, red_hp_before, blue_hp_before = before
     red_pos_after, blue_pos_after, red_hp_after, blue_hp_after = after
 
-    enemy_damage = max(0, blue_hp_before - blue_hp_after)
-    self_damage = max(0, red_hp_before - red_hp_after)
+    self_damage = max(0, blue_hp_before - blue_hp_after)
+    enemy_damage = max(0, red_hp_before - red_hp_after)
     distance_before = calc_distance(red_pos_before, blue_pos_before)
     distance_after = calc_distance(red_pos_after, blue_pos_after)
     distance_gain = distance_before - distance_after
@@ -181,25 +182,45 @@ def diagnostic_reward(game: Game, stage, before, after) -> float:
     if stage == "a":
         reward += 1.0 * distance_gain
         reward += 0.03 if has_los else 0.0
-        reward += 0.10 * enemy_damage
-        reward -= 0.10 * self_damage
-        reward -= 0.1   # 时间惩罚
+        reward += 0.10 * self_damage
+        reward -= 0.10 * enemy_damage
+        reward -= 0.05   # 时间惩罚
     if stage == "b":
-        reward += 0.10 * enemy_damage
-        reward -= 0.10 * self_damage
-        reward -= 0.2
+        reward += 0.1 * self_damage
+        # 鼓励自旋与受到攻击相绑定
+        if has_los:
+            reward += 0.02
+            if enemy_damage > 0:
+                if action.spin == 1:
+                    reward += 0.1
+                    # 受击时鼓励原地自旋
+                    if action.navigation_set == 0:
+                        reward += 0.05
+                else:
+                    reward -= 0.1
+                    # 或者不自旋直接逃跑
+                    if action.navigation_set == 1:
+                        reward += 0.12
+        else:
+            if action.spin == 0:
+                reward += 0.05
+        reward -= 0.1
+    if stage == "c":
+        reward -= 0.05
+    if stage == "d":
+        reward -= 0.05
 
     if game.env.game_state == GameState.RED_TEAM_WIN:
-        reward += 20.0
+        reward += 100.0
     elif game.env.game_state == GameState.BLUE_TEAM_WIN:
-        reward -= 20.0
+        reward -= 100.0
     return reward
 
 
 def navigation_validity_reward(game: Game, action: Action) -> float:
     """复用 base 奖励中的导航点可行性判断：可行给奖，不可行惩罚。"""
     if action.navigation_set != 1:
-        return 0.0
+        return 0.01
 
     navigation_target = (np.array(action.navigation_target_norm) + 1) * np.array([
         env_config.FIELD_WIDTH,
@@ -244,7 +265,6 @@ def rollout(
     target_counts = Counter()
     nav_counts = Counter()
     spin_counts = Counter()
-    blue_spin_counts = Counter()
     total_reward = 0.0
     steps = 0
     damage_done = 0
@@ -257,14 +277,14 @@ def rollout(
         if blue_mode == "self":
             # 蓝方也使用当前 agent，但输入蓝方视角观测。
             blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE, deterministic=deterministic)
-            blue_action = mirror_navigation_target_actions(blue_action)
+            # blue_action = mirror_navigation_target_actions(blue_action)
         else:
             blue_action = make_blue_action(blue_mode, script_blue_controller, elapsed_time)
 
         before = robot_snapshot(game)
         next_obs, _, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
         after = robot_snapshot(game)
-        reward = diagnostic_reward(game, stage, before, after)
+        reward = diagnostic_reward(game, stage, red_action[RED_ID], before, after)
         reward += navigation_validity_reward(game, red_action[RED_ID])
         if stage == "a":
             reward += action_head_reward(red_action[RED_ID])
@@ -357,7 +377,8 @@ def resolve_stage_defaults(args):
             args.blue_mode = "idle"
     elif args.stage == "b":
         if args.blue_mode == "auto":
-            args.blue_mode = "nav_attack"
+            # args.blue_mode = "nav_attack"
+            args.blue_mode = random.choice(["attack", "nav_attack", "self"])
     elif args.stage == "c":
         if args.blue_mode == "auto":
             args.blue_mode = random.choice(["attack", "nav_attack", "self"])
@@ -383,7 +404,7 @@ def train(args):
     control_steps = int(Game.metadata["render_fps"] // args.control_frequency)
     history = []
 
-    for episode in tqdm(range(1, args.episodes + 1)):
+    for episode in tqdm(range(1, args.episodes + 1), dynamic_ncols=True):
         resolve_stage_defaults(args)
         transition_dict, result = rollout(
             agent,

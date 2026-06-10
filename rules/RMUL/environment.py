@@ -186,6 +186,33 @@ class EnvironmentRMUL(Environment):
             "blue_lag_140": False,
         }
 
+    def reset(self):
+        """重置环境"""
+        # 销毁现有机器人
+        for robot in self.robots.values():
+            robot.destroy_physics_body(self.physics_engine)
+        self.robots.clear()
+        
+        # 创建新机器人
+        self._create_robots(RMUL_ROBOT_CONFIGS)
+        
+        # 为每个机器人创建网格地图
+        self._init_robot_grid_maps(self.env_config)
+        
+        # 重置游戏状态
+        self.game_state = GameState.PLAYING
+        self._remaining_time = self.env_config.GAME_TIME_LIMIT
+
+        # 游戏机制
+        self._economics = {GameTeam.RED: 0, GameTeam.BLUE: 0}           # 经济
+        self._victory_progress = {GameTeam.RED: 0, GameTeam.BLUE: 0}    # 胜利进度
+        self._laggard_bonus_taken = {                                   # 落后奖励
+            "red_lag_70": False,
+            "red_lag_140": False,
+            "blue_lag_70": False,
+            "blue_lag_140": False,
+        }
+
     def step(self, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL]):
         """推进环境仿真"""
         # 更新物理引擎
@@ -197,6 +224,8 @@ class EnvironmentRMUL(Environment):
         self._apply_team_motion(blue_action)
         self._apply_team_attack(GameTeam.RED, red_action)
         self._apply_team_attack(GameTeam.BLUE, blue_action)
+        self._apply_team_purchase(GameTeam.RED, red_action)
+        self._apply_team_purchase(GameTeam.BLUE, blue_action)
 
         # 更新机器人状态
         for robot in self.robots.values():
@@ -310,6 +339,7 @@ class EnvironmentRMUL(Environment):
                 # 结算胜利进度
                 self._victory_progress[team] += 20
 
+    def _apply_team_purchase(self, team: GameTeam, action: Dict[str, ActionRMUL]):
         # 购买允许发弹量
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)

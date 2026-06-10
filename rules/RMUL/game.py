@@ -2,6 +2,7 @@ import pygame
 import time
 import numpy as np
 import gymnasium as gym
+from copy import deepcopy
 from gymnasium import spaces
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple, Any
@@ -106,17 +107,34 @@ class GameRMUL(gym.Env):
             high=observation_high,
             dtype=np.float32
         )
-    
-    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
+
+    def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = {}):
         """重置环境"""
         super().reset(seed=seed)
-        self.env = EnvironmentRMUL()
+        
+        # 重置底层环境
+        self.env.reset()
+        
+        # 渲染
+        if self._render_mode:
+            render_image = self.render()
+        else:
+            render_image = None
+        
+        # 获取初始观察
         observation = self._get_obs()
-        self._last_observation = observation
+        self._last_observation = self._get_obs()
         self._last_action = None
-        if self._render_mode == "human":
-            self.render()
-        return observation, {}
+        info = {
+            'render_images': [render_image],
+            'game_state': self.env.game_state,
+            'remaining_time': self.env._remaining_time,
+            'victory_progress': self.env._victory_progress,
+            'economics': self.env._economics,
+            'robots': deepcopy(self.env.robots),
+        }
+        
+        return observation, info
     
     def apply_observation(self, observation: ObservationRMUL):
         """
@@ -131,6 +149,7 @@ class GameRMUL(gym.Env):
     def step(self, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL], control_steps: int = 1):
         """执行一步动作"""
         reward = 0
+        render_images = []
         for _ in range(control_steps):
             # 记录帧开始时间
             self._frame_start_time = time.perf_counter()
@@ -148,20 +167,21 @@ class GameRMUL(gym.Env):
             terminated = self._is_terminated()
             truncated = self._is_truncated()
 
-            if self._render_mode == "human":
-                render_image = self.render()
-            else:
-                render_image = None
+            # 渲染
+            if self._render_mode:
+                render_images.append(self.render())
 
             if terminated or truncated:
                 break
         
         # 信息
         info = {
+            'render_image': render_images,
             'game_state': self.env.game_state,
             'remaining_time': self.env._remaining_time,
             'victory_progress': self.env._victory_progress,
             'economics': self.env._economics,
+            'robots': deepcopy(self.env.robots),
         }
         
         return observation, reward, terminated, truncated, info

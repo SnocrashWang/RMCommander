@@ -276,12 +276,19 @@ class Environment:
         # 目标不存在
         if robot_target is None:
             return False
+        # 不满足射频间隔
+        if robot_attacker.last_attack_time_remain - self._remaining_time < 1 / robot_attacker.shoot_frequency:
+            return False
         # 判断完整视野
         if not attack_sight_clear(robot_attacker.get_position(), robot_target.get_position(), robot_target.radius, self.obstacles, self.robots.values()):
             return False
         # 攻击
         if not robot_attacker.attack(robot_target):
             return False
+        # 结算攻击时间
+        robot_attacker.last_attack_time_remain = self._remaining_time
+        robot_attacker.last_in_combat_time_remain = self._remaining_time
+        robot_target.last_in_combat_time_remain = self._remaining_time
         return True
 
     def _apply_team_attack(self, team: GameTeam, action: Dict[str, Action]):
@@ -298,6 +305,9 @@ class Environment:
             robot_target = self.get_robot(ROBOT_ID[opposite_team(team)][target_type])
             if not self._apply_robot_attack(robot_attacker, robot_target):
                 continue
+
+            robot_attacker.last_in_combat_time_remain = self._remaining_time
+            robot_target.last_in_combat_time_remain = self._remaining_time
 
     def apply_observation(self, observation: Observation):
         """

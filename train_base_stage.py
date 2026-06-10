@@ -469,6 +469,7 @@ def main():
     parser = argparse.ArgumentParser(description="Staged PPO training for base rule.")
     parser.add_argument("--stage", choices=["a", "b", "c", "d"], default="a")
     parser.add_argument("--episodes", type=int, default=100)
+    parser.add_argument("--save-interval", type=int, default=100)
     parser.add_argument("--eval-interval", type=int, default=10)
     parser.add_argument("--eval-episodes", type=int, default=5)
     parser.add_argument("--control-frequency", type=float, default=2)
@@ -477,7 +478,6 @@ def main():
     parser.add_argument("--base-model", type=str, default=None)
     parser.add_argument("--model-dir", type=str, default="models/base")
     parser.add_argument("--log-dir", type=str, default="logs")
-    parser.add_argument("--save-interval", type=int, default=100)
     parser.add_argument("--device", type=str, default=None)
     train(parser.parse_args())
 

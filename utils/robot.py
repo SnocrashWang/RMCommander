@@ -24,6 +24,7 @@ class Robot:
         forward_speed_efficiency: float,
         rotation_speed_efficiency: float,
         forward_rotation_allocation: float,
+        shoot_frequency: int,
         radius: float,
         max_ammo: int,
         ammo_allowed: int,
@@ -73,6 +74,7 @@ class Robot:
         self.radius : float = radius
         self.forward_speed : float = 0.0
         self.rotation_speed : float = 0.0
+        self.shoot_frequency : int = shoot_frequency
 
         # 创建物理实体
         self._body = pymunk.Body(1, pymunk.moment_for_circle(1, 0, radius))
@@ -86,31 +88,32 @@ class Robot:
         if physics_engine:
             physics_engine.add(self._body, self._shape)
 
-        self.angle_gimbal : float = 0  # 角度（弧度）
-        self.angle_chassis : float = 0  # 角度（弧度）
-        self.target_pos : Tuple[float, float] = (0, 0)
-        self.path_points : List[Tuple[float, float]] = []
-        self.current_path_idx : int = 0
-        self.is_alive : bool = True  # 机器人是否存活
+        self.angle_gimbal : float = 0                       # 云台角度（弧度）
+        self.angle_chassis : float = 0                      # 底盘角度（弧度）
+        self.target_pos : Tuple[float, float] = (0, 0)      # 导航坐标
+        self.path_points : List[Tuple[float, float]] = []   # 导航路径点集
+        self.current_path_idx : int = 0                     # 当前目标导航路径点
+        self.is_alive : bool = True                         # 机器人是否存活
 
         # 弹丸相关
-        self.max_ammo : int = max_ammo      # 最大弹药量
-        self.ammo : int = self.max_ammo     # 当前弹药量
-        self.ammo_allowed : int = ammo_allowed # 允许发弹量
+        self.max_ammo : int = max_ammo                      # 最大弹药量
+        self.ammo : int = self.max_ammo                     # 当前弹药量
+        self.ammo_allowed : int = ammo_allowed              # 允许发弹量
 
         # 攻击相关
-        self.gun_locked : bool = False      # 发射机构锁定
-        self.attack_target : Robot = None   # 攻击目标
-        self.last_attack_time : float = math.inf   # 上次攻击的时间（秒）
-        self.last_in_combat_time : float = math.inf # 上次进入战斗的时间（秒）
+        self.gun_locked : bool = False                      # 发射机构锁定
+        self.attack_target : Robot = None                   # 攻击目标
+        self.last_attack_time_real : float = 0              # 上次攻击的真实时间（秒）
+        self.last_attack_time_remain : float = math.inf     # 上次攻击的倒计时时间（秒）
+        self.last_in_combat_time_remain : float = math.inf  # 上次进入战斗的倒计时时间（秒）
 
         # 复活相关
-        self.revive_progress : float = 0    # 复活进度
-        self.revive_target : float = 10     # 复活所需进度
-        self.revive_efficiency : float = 2  # 复活效率（每秒增加的进度）
-        self.last_revive_time : float = math.inf # 上次复活时间
+        self.revive_progress : float = 0                    # 复活进度
+        self.revive_target : float = 10                     # 复活所需进度
+        self.revive_efficiency : float = 2                  # 复活效率（每秒增加的进度）
+        self.last_revive_time_remain : float = math.inf     # 上次复活的倒计时时间
 
-        self._buff_manager = BuffManager()
+        self._buff_manager = BuffManager()                  # 增益管理器
 
         # GridMap相关
         self.grid_map : GridMap = None
@@ -247,7 +250,7 @@ class Robot:
                 return
 
         # 结算复活无敌时间
-        if self.last_revive_time - remaining_time < 10:
+        if self.last_revive_time_remain - remaining_time < 10:
             self._buff_manager.add_buff(Buff(name="revive", defence=100.0))    # 给足饱和防御buff，防止被易伤抵消
         else:
             self._buff_manager.remove_buff(Buff(name="revive", defence=100.0), strict=False)
@@ -286,7 +289,7 @@ class Robot:
         self.heat = max(0, self.heat - cooldown * dt)
 
         # 结算脱战状态
-        if self.last_in_combat_time - remaining_time > 6:
+        if self.last_in_combat_time_remain - remaining_time > 6:
             self.attack_target = None
 
         # 结算回血增益
@@ -322,13 +325,13 @@ class Robot:
             bool: 是否成功攻击
         """
         # 检查是否可以攻击
-        if not self.is_alive or self.gun_locked or not target_robot or not target_robot.is_alive:
+        if not self.is_alive or self.gun_locked:
+            return False
+        if not target_robot or not target_robot.is_alive:
             return False
 
         # 刷新战斗状态
         self.attack_target = target_robot
-        self.last_attack_time = time.time()
-        self.last_in_combat_time = time.time()
 
         # 计算攻击角度
         target_pos = self.attack_target.get_position()
@@ -362,7 +365,7 @@ class Robot:
         """
         if not self.is_alive or not self.attack_target or not self.attack_target.is_alive:
             return None
-        if time.time() - self.last_attack_time > 0.2:
+        if time.time() - self.last_attack_time_real > 0.2:
             return None
         return (self.get_position(), self.attack_target.get_position())
 
@@ -375,9 +378,6 @@ class Robot:
         """
         if not self.is_alive:
             return 0
-
-        # 受击刷新战斗状态
-        self.last_in_combat_time = time.time()
 
         # 自旋防御：旋转越快，实际受到伤害的概率越低。
         if self.rotation_speed > 0 and np.random.random() > math.exp(-self.rotation_speed / 10):

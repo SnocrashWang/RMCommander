@@ -11,6 +11,8 @@ from utils.config.game_config import GameTeam
 from utils.buff import BuffType, Buff, BuffManager
 from utils.grid_map import GridMap, a_star, world_to_grid, grid_to_world, simplify_path
 
+WAYPOINT_REACHED_DISTANCE = 0.05
+
 class Robot:
     def __init__(
         self,
@@ -188,7 +190,7 @@ class Robot:
         if self.is_alive and self.path_points and self.current_path_idx < len(self.path_points):
             next_point = self.path_points[self.current_path_idx]
             current_pos = pygame.math.Vector2(self.get_position())
-            moving = (pygame.math.Vector2(next_point) - current_pos).length() >= 0.05
+            moving = (pygame.math.Vector2(next_point) - current_pos).length() > WAYPOINT_REACHED_DISTANCE
         self._resolve_motion_speed(moving)
 
     def get_position(self):
@@ -260,7 +262,8 @@ class Robot:
             current_pos = pygame.math.Vector2(self.get_position())
             direction = pygame.math.Vector2(next_point) - current_pos
             # 若距离目标点已经小于一帧将移动的距离，则停止
-            if direction.length() < self.forward_speed * dt:
+            distance = direction.length()
+            if distance <= max(WAYPOINT_REACHED_DISTANCE, self.forward_speed * dt):
                 self.current_path_idx += 1
                 self._body.velocity = (0, 0)
             else:

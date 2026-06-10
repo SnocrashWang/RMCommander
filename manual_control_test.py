@@ -11,7 +11,7 @@ from visualization.config import render_config
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
-    from rules.base.environment import Action
+    from rules.base.environment import ActionBase as Action
     from rules.base.config import env_config
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 elif CURRENT_GAME == GameType.RMUL:
@@ -54,14 +54,14 @@ def main():
 
             # 鼠标左键点击，设置第一个机器人目标点
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mouse_pos = np.array(pygame.mouse.get_pos())  # 屏幕坐标
+                mouse_pos = np.array(pygame.mouse.get_pos(), dtype=np.float32)  # 屏幕坐标
                 # 转换为归一化坐标
-                navigation_target_norm = mouse_pos * 2 / render_config.SCALE / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT]) - 1
+                navigation_target_norm = mouse_pos * 2 / render_config.SCALE / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT], dtype=np.float32) - 1
                 if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
-                    red_action[control_state["robot_id"]].navigation_target_norm = tuple(navigation_target_norm)
+                    red_action[control_state["robot_id"]].navigation_target_norm = navigation_target_norm
                     red_action[control_state["robot_id"]].navigation_set = 1
                 else:
-                    blue_action[control_state["robot_id"]].navigation_target_norm = tuple(navigation_target_norm)
+                    blue_action[control_state["robot_id"]].navigation_target_norm = navigation_target_norm
                     blue_action[control_state["robot_id"]].navigation_set = 1
 
             # 按键事件
@@ -85,7 +85,7 @@ def main():
                     else:
                         blue_action[control_state["robot_id"]].spin = int(control_state["spin"])
                 elif event.key == pygame.K_e:  # E键购买子弹
-                    if "purchase" in Action.__dict__:
+                    if "purchase" in Action._schema:
                         if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
                             red_action[control_state["robot_id"]].purchase = 1
                         else:

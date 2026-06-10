@@ -4,11 +4,14 @@ import numpy as np
 import copy
 from dataclasses import dataclass
 from collections import defaultdict
+from enum import Enum
 from typing import List, Dict, Optional, Tuple, Any
+from gymnasium import spaces
 
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotConfig, ROBOT_ID, RobotType
+from utils.action import Action
 from utils.grid_map import GridMap
 from utils.robot import Robot
 from utils.obstacle import Obstacle
@@ -19,47 +22,21 @@ from rules.base.config.obstacle_config import OBSTACLES
 from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
 
 
-@dataclass
-class Action:
-    navigation_target_norm: Tuple[float, float] = (0.0, 0.0)
-    navigation_set: int = 0
-    attack_target: int = 0
-    spin: int = 0
-
-    def __post_init__(self):
-        """初始化"""
-        try:
-            if isinstance(self.navigation_target_norm, np.ndarray):
-                self.navigation_target_norm = tuple(self.navigation_target_norm.astype(float))
-            else:
-                self.navigation_target_norm = tuple(self.navigation_target_norm)
-        except:
-            self.navigation_target_norm = (0.0, 0.0)
-        try:
-            self.navigation_set = int(self.navigation_set)
-        except:
-            self.navigation_set = 0
-        try:
-            self.attack_target = int(self.attack_target)
-        except:
-            self.attack_target = 0
-        try:
-            self.spin = int(self.spin)
-        except:
-            self.spin = 0
-
-    def to_array(self) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
-        return np.array([
-            *self.navigation_target_norm,
-            self.navigation_set,
-            self.attack_target,
-            self.spin,
-        ])
+class ActionBase(Action):
+    _schema={
+        "navigation_target_norm": spaces.Box(
+            low=np.array([-1.0, -1.0], dtype=np.float32),
+            high=np.array([1.0, 1.0], dtype=np.float32),
+            dtype=np.float32,
+        ),
+        "navigation_set": spaces.Discrete(2),
+        "attack_target": spaces.Discrete(len(RobotType)),
+        "spin": spaces.Discrete(2),
+    }
 
     def get_target_position(self) -> Tuple[float, float]:
         """获取导航目标的实际坐标"""
-        return (np.array(self.navigation_target_norm) + 1) * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]) / 2
+        return (self.navigation_target_norm + 1) * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]) / 2
 
 @dataclass
 class GameObs:
@@ -232,7 +209,7 @@ class Environment:
         self.game_state = GameState.PLAYING
         self._remaining_time = self.env_config.GAME_TIME_LIMIT
 
-    def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action]):
+    def step(self, red_action: Dict[str, ActionBase], blue_action: Dict[str, ActionBase]):
         """推进环境仿真"""
         # 更新物理引擎
         with timer(self._time_stats, 'physics_engine_step'):
@@ -281,7 +258,7 @@ class Environment:
         # print("=" * 50)
         # self._time_stats.clear()
 
-    def _apply_team_motion(self, action: Dict[str, Action]):
+    def _apply_team_motion(self, action: Dict[str, ActionBase]):
         """应用移动和自旋姿态"""
         for robot_id, robot_action in action.items():
             robot = self.get_robot(robot_id)
@@ -305,7 +282,6 @@ class Environment:
         # 攻击
         if not robot_attacker.attack(robot_target):
             return False
-        print("no jump")
         return True
 
     def _apply_team_attack(self, team: GameTeam, action: Dict[str, Action]):

@@ -7,7 +7,7 @@ import concurrent.futures
 
 from agents.ppo_agent import PPOAgent
 from rules.base.config import env_config
-from rules.base.environment import Action
+from rules.base.environment import ActionBase
 from rules.base.game import Game
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
@@ -29,7 +29,7 @@ def game_worker(max_steps, control_steps, agent_train, agent_test, adversarial, 
             # 蓝方使用对手模型
             blue_action = agent_test.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE)
         else:
-            blue_action = {id: Action(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
+            blue_action = {id: ActionBase(**action) for id, action in game.action_space.sample().items() if id in ROBOT_ID[GameTeam.BLUE].values()}
         
         # 执行动作
         next_obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)

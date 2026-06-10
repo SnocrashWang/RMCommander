@@ -14,7 +14,7 @@ from visualization.renderer import Renderer
 
 from rules.base.config import env_config as BASE_ENV_CONFIG
 from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
-from rules.base.environment import Action, GameObs, RobotObs, Observation, Environment
+from rules.base.environment import ActionBase, GameObs, RobotObs, Observation, Environment
 
 class Game(gym.Env):
    
@@ -53,36 +53,10 @@ class Game(gym.Env):
         self._last_action = None
     
     def _setup_action_space(self):
-        """设置动作空间"""
-        # 为每个机器人定义动作空间
-        robot_action_spaces = {}
-        
-        for robot_id, robot in self.env.robots.items():
-            # 导航动作：x, y坐标
-            navigation_target_space = spaces.Box(
-                low=np.array([-1.0, -1.0], dtype=np.float32),
-                high=np.array([1.0, 1.0], dtype=np.float32),
-                dtype=np.float32
-            )
-            
-            # 导航动作：是否导航
-            navigation_set_space = spaces.Discrete(2)  # 0: 不导航, 1: 导航
-            
-            # 目标动作：攻击目标类型
-            attack_target_space = spaces.Discrete(len(RobotType))  # 所有机器人类型
-
-            # 自旋动作：是否启用原地自旋/平移自旋
-            spin_space = spaces.Discrete(2)  # 0: 不自旋, 1: 自旋
-            
-            # 组合动作空间
-            robot_action_spaces[robot_id] = spaces.Dict({
-                'navigation_target_norm': navigation_target_space,
-                'navigation_set': navigation_set_space,
-                'attack_target': attack_target_space,
-                'spin': spin_space,
-            })
-        
-        self.action_space = spaces.Dict(robot_action_spaces)
+        self.action_space = spaces.Dict({
+            robot_id: ActionBase.get_space()
+            for robot_id in self.env.robots
+        })
     
     def _setup_observation_space(self):
         """设置观察空间"""
@@ -161,7 +135,7 @@ class Game(gym.Env):
             robot = self.env.get_robot(robot_id)
             robot.apply_observation(robot_obs, BASE_ENV_CONFIG)
     
-    def step(self, red_action: Dict[str, Action], blue_action: Dict[str, Action], control_steps: int = 1):
+    def step(self, red_action: Dict[str, ActionBase], blue_action: Dict[str, ActionBase], control_steps: int = 1):
         """执行一步动作"""
         reward = 0
         render_images = []
@@ -214,7 +188,7 @@ class Game(gym.Env):
         
         return Observation(game_state, robot_state)
     
-    def _get_reward(self, team: GameTeam, action: Dict[str, Action]) -> float:
+    def _get_reward(self, team: GameTeam, action: Dict[str, ActionBase]) -> float:
         """获取奖励"""
         reward_list = []
         reward_weight = []

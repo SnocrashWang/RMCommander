@@ -12,7 +12,7 @@ import torch
 
 from agents.ppo_agent import PPOAgent
 from rules.base.config import env_config
-from rules.base.environment import Action
+from rules.base.environment import ActionBase
 from rules.base.game import Game
 from utils.config.game_config import GameState, GameTeam
 from utils.config.robot_config import RobotType
@@ -25,7 +25,7 @@ BLUE_ID = "BLUE_3_STANDARD"
 SCRIPT_SWITCH_INTERVAL_RANGE = (3.0, 5.0)
 
 
-def force_stage_a_action(action: Dict[str, Action]) -> Dict[str, Action]:
+def force_stage_a_action(action: Dict[str, ActionBase]) -> Dict[str, ActionBase]:
     """Stage A 中用于隔离导航学习的动作钳制。"""
     robot_action = action[RED_ID]
     robot_action.navigation_set = 1
@@ -59,7 +59,7 @@ class ScriptBlueController:
     def _sample_blue_nav_world(self) -> Tuple[float, float]:
         return sample_position(self.game, (0.5, 4.5), (0.5, 4.5))
 
-    def make_action(self, elapsed_time: float) -> Dict[str, Action]:
+    def make_action(self, elapsed_time: float) -> Dict[str, ActionBase]:
         if elapsed_time >= self.next_spin_switch_time:
             self.spin_enabled = bool(random.getrandbits(1))
             self.next_spin_switch_time = self._sample_next_switch_time(elapsed_time)
@@ -72,7 +72,7 @@ class ScriptBlueController:
             self.nav_switches += 1
 
         return {
-            BLUE_ID: Action(
+            BLUE_ID: ActionBase(
                 navigation_target_norm=world_to_navigation_norm(self.nav_world),
                 navigation_set=1,
                 attack_target=RobotType.STANDARD_3.value,
@@ -85,11 +85,11 @@ def make_blue_action(
     mode: str,
     script_blue_controller: ScriptBlueController = None,
     elapsed_time: float = 0.0,
-) -> Dict[str, Action]:
+) -> Dict[str, ActionBase]:
     """脚本蓝方：静止或只进行固定攻击。"""
     if mode == "idle":
         return {
-            BLUE_ID: Action(
+            BLUE_ID: ActionBase(
                 navigation_set=0,
                 attack_target=RobotType.NONE.value,
                 spin=0,
@@ -97,7 +97,7 @@ def make_blue_action(
         }
     elif mode == "attack":
         return {
-            BLUE_ID: Action(
+            BLUE_ID: ActionBase(
                 navigation_set=0,
                 attack_target=RobotType.STANDARD_3.value,
                 spin=1,
@@ -105,9 +105,9 @@ def make_blue_action(
         }
     elif mode == "nav_attack":
         if script_blue_controller is None:
-            return {BLUE_ID: Action()}
+            return {BLUE_ID: ActionBase()}
         return script_blue_controller.make_action(elapsed_time)
-    return {BLUE_ID: Action()}
+    return {BLUE_ID: ActionBase()}
 
 
 def robot_snapshot(game: Game) -> Tuple[Tuple[float, float], Tuple[float, float], int, int]:
@@ -157,7 +157,7 @@ def apply_random_start(game: Game):
     blue.current_path_idx = 0
 
 
-def diagnostic_reward(game: Game, stage, action: Action, before, after) -> float:
+def reward(game: Game, stage, action: ActionBase, before, after) -> float:
     """共享诊断奖励：只描述接近、伤害、视野和胜负，不追求最终战术完备。"""
     red_pos_before, blue_pos_before, red_hp_before, blue_hp_before = before
     red_pos_after, blue_pos_after, red_hp_after, blue_hp_after = after
@@ -217,7 +217,7 @@ def diagnostic_reward(game: Game, stage, action: Action, before, after) -> float
     return reward
 
 
-def navigation_validity_reward(game: Game, action: Action) -> float:
+def navigation_validity_reward(game: Game, action: ActionBase) -> float:
     """复用 base 奖励中的导航点可行性判断：可行给奖，不可行惩罚。"""
     if action.navigation_set != 1:
         return 0.01
@@ -238,7 +238,7 @@ def navigation_validity_reward(game: Game, action: Action) -> float:
     return -1.0 if is_blocked else 0.05
 
 
-def action_head_reward(action: Action) -> float:
+def action_head_reward(action: ActionBase) -> float:
     """轻量鼓励基础动作头，避免奖励过大压过真正的战斗结果。"""
     reward = 0.0
     reward += 0.10 if action.navigation_set == 1 else -0.10
@@ -284,10 +284,10 @@ def rollout(
         before = robot_snapshot(game)
         next_obs, _, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
         after = robot_snapshot(game)
-        reward = diagnostic_reward(game, stage, red_action[RED_ID], before, after)
-        reward += navigation_validity_reward(game, red_action[RED_ID])
+        step_reward = reward(game, stage, red_action[RED_ID], before, after)
+        step_reward += navigation_validity_reward(game, red_action[RED_ID])
         if stage == "a":
-            reward += action_head_reward(red_action[RED_ID])
+            step_reward += action_head_reward(red_action[RED_ID])
         elif stage == "b":
             pass
         elif stage == "c":
@@ -307,12 +307,12 @@ def rollout(
             transition_dict["states"].append(state)
             transition_dict["actions"].append(executed_action)
             transition_dict["next_states"].append(next_state)
-            transition_dict["rewards"].append(reward)
+            transition_dict["rewards"].append(step_reward)
             transition_dict["dones"].append(done)
 
         obs = next_obs
         state = next_state
-        total_reward += reward
+        total_reward += step_reward
         steps += 1
         if done:
             break
@@ -393,7 +393,7 @@ def train(args):
     os.makedirs(args.model_dir, exist_ok=True)
     os.makedirs(args.log_dir, exist_ok=True)
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"stage_{args.stage}_agent_{time_tag}"
+    run_name = f"ppo_agent_{time_tag}_stage_{args.stage}"
 
     game = Game()
     agent = PPOAgent(state_dim=game.observation_space.shape[0], device=args.device)
@@ -466,7 +466,7 @@ def train(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Staged diagnostic PPO training for base 1v1.")
+    parser = argparse.ArgumentParser(description="Staged PPO training for base rule.")
     parser.add_argument("--stage", choices=["a", "b", "c", "d"], default="a")
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--eval-interval", type=int, default=10)
@@ -475,7 +475,7 @@ def main():
     parser.add_argument("--blue-mode", choices=["auto", "self", "idle", "attack", "nav_attack"], default="auto")
     parser.add_argument("--random-start", action=argparse.BooleanOptionalAction, default=None, help="是否在每局开始时随机放置双方")
     parser.add_argument("--base-model", type=str, default=None)
-    parser.add_argument("--model-dir", type=str, default="models")
+    parser.add_argument("--model-dir", type=str, default="models/base")
     parser.add_argument("--log-dir", type=str, default="logs")
     parser.add_argument("--save-interval", type=int, default=100)
     parser.add_argument("--device", type=str, default=None)

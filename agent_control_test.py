@@ -16,7 +16,7 @@ from utils.utils import calc_distance
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
-    from rules.base.environment import Action
+    from rules.base.environment import ActionBase as Action
     from rules.base.config import env_config
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
 elif CURRENT_GAME == GameType.RMUL:
@@ -46,37 +46,6 @@ def sample_base_position(game: Game, x_range, y_range):
             return position
     raise RuntimeError("failed to sample a valid start position")
 
-
-def apply_base_random_start(game: Game):
-    """在 BASE 1v1 场景中随机放置红蓝双方。"""
-    red = game.env.get_robot("RED_3_STANDARD")
-    blue = game.env.get_robot("BLUE_3_STANDARD")
-
-    red_pos = sample_base_position(game, (0.4, 2.2), (0.4, 4.6))
-    blue_pos = sample_base_position(game, (2.8, 4.6), (0.4, 4.6))
-    while calc_distance(red_pos, blue_pos) < 2.0:
-        blue_pos = sample_base_position(game, (2.8, 4.6), (0.4, 4.6))
-
-    for robot, position in ((red, red_pos), (blue, blue_pos)):
-        robot._body.position = position
-        robot._body.velocity = (0, 0)
-        robot.target_pos = position
-        robot.path_points = []
-        robot.current_path_idx = 0
-
-
-def reset_game(game: Game, random_start: bool):
-    obs, info = game.reset()
-    if random_start:
-        if CURRENT_GAME != GameType.BASE:
-            raise NotImplementedError("--random-start 目前只支持 BASE 规则")
-        apply_base_random_start(game)
-        obs = game._get_obs()
-        if game._render_mode:
-            info["render_images"] = [game.render()]
-    return obs, info
-
-
 def agent_control(
     model_file: str,
     delay: float,
@@ -84,7 +53,6 @@ def agent_control(
     save_video: bool,
     video_path: str,
     deterministic: bool,
-    random_start: bool,
 ):
     # 初始化
     if save_video:
@@ -96,7 +64,7 @@ def agent_control(
 
     # 创建环境和渲染器
     game = Game(render_mode=render_mode)
-    obs, info = reset_game(game, random_start)
+    obs, info = game.reset()
     
     # 如果保存视频，初始化视频写入器
     video_writer = None
@@ -163,7 +131,7 @@ def agent_control(
             # 按键事件
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
-                    obs, info = reset_game(game, random_start)
+                    obs, info = obs, info = game.reset()
                     print("Environment reset")
                 elif event.key == pygame.K_ESCAPE:
                     running = False
@@ -183,7 +151,6 @@ def main():
     parser.add_argument('--control_frequency', type=float, default=2, help='控制频率（Hz）')
     parser.add_argument('--video_dir', type=str, default='videos', help='视频保存目录')
     parser.add_argument('--deterministic', action='store_true', help='使用确定性策略进行评估')
-    parser.add_argument('--random-start', action='store_true', help='使用随机初始位置（目前仅支持 BASE）')
     args = parser.parse_args()
 
     agent_control(
@@ -193,7 +160,6 @@ def main():
         args.video,
         args.video_dir,
         args.deterministic,
-        args.random_start,
     )
 
 if __name__ == "__main__":

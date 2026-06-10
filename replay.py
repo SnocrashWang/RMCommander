@@ -13,7 +13,7 @@ from utils.config.game_config import GameType, GameState
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
-    from rules.base.environment import Action, Observation
+    from rules.base.environment import ActionBase as Action, Observation
 elif CURRENT_GAME == GameType.RMUL:
     from rules.rmul.game import GameRMUL as Game
     from rules.rmul.environment import ActionRMUL as Action

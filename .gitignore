@@ -3,8 +3,10 @@
 
 **/__pycache__
 
-models/*
-!models/.gitkeep
+models/base/*
+!models/base/.gitkeep
+models/rmul/*
+!models/rmul/.gitkeep
 logs/*
 !logs/.gitkeep
 videos/*

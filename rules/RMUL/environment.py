@@ -5,11 +5,13 @@ import time
 import copy
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional, Tuple
+from gymnasium import spaces
 
 from rules.base.environment import Environment
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
+from utils.action import Action
 from utils.robot import Robot
 from utils.utils import opposite_team
 
@@ -19,53 +21,22 @@ from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS, RMUL_ROBOT_TYPE_L
 from rules.rmul.config.zone_config import RMUL_ZONES
 
 
-@dataclass
-class ActionRMUL:
-    navigation_target_norm: Tuple[float, float] = (0.0, 0.0)
-    navigation_set: int = 0
-    attack_target: int = 0
-    spin: int = 0
-    purchase: int = 0
-
-    def __post_init__(self):
-        """初始化"""
-        try:
-            if isinstance(self.navigation_target_norm, np.ndarray):
-                self.navigation_target_norm = tuple(self.navigation_target_norm.astype(float))
-            else:
-                self.navigation_target_norm = tuple(self.navigation_target_norm)
-        except:
-            self.navigation_target_norm = (0.0, 0.0)
-        try:
-            self.navigation_set = int(self.navigation_set)
-        except:
-            self.navigation_set = 0
-        try:
-            self.attack_target = int(self.attack_target)
-        except:
-            self.attack_target = 0
-        try:
-            self.spin = int(self.spin)
-        except:
-            self.spin = 0
-        try:
-            self.purchase = int(self.purchase)
-        except:
-            self.purchase = 0
-
-    def to_array(self) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
-        return np.array([
-            *self.navigation_target_norm,
-            self.navigation_set,
-            self.attack_target,
-            self.spin,
-            self.purchase,
-        ])
+class ActionRMUL(Action):
+    _schema={
+        "navigation_target_norm": spaces.Box(
+            low=np.array([-1.0, -1.0], dtype=np.float32),
+            high=np.array([1.0, 1.0], dtype=np.float32),
+            dtype=np.float32,
+        ),
+        "navigation_set": spaces.Discrete(2),
+        "attack_target": spaces.Discrete(len(RobotType)),
+        "spin": spaces.Discrete(2),
+        "purchase": spaces.Discrete(2),
+    }
 
     def get_target_position(self) -> Tuple[float, float]:
         """获取导航目标的实际坐标"""
-        return (np.array(self.navigation_target_norm) + 1) * np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]) / 2
+        return (self.navigation_target_norm + 1) * np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]) / 2
 
 @dataclass
 class GameObsRMUL:

@@ -54,39 +54,10 @@ class GameRMUL(gym.Env):
         self._last_action = None
     
     def _setup_action_space(self):
-        """设置动作空间"""
-        # 为每个机器人定义动作空间
-        robot_action_spaces = {}
-        
-        for robot_id, robot in self.env.robots.items():
-            # 导航动作：x, y坐标
-            navigation_target_space = spaces.Box(
-                low=np.array([-1.0, -1.0], dtype=np.float32),
-                high=np.array([1.0, 1.0], dtype=np.float32),
-                dtype=np.float32
-            )
-            
-            # 导航动作：是否导航
-            navigation_set_space = spaces.Discrete(2)  # 0: 不导航, 1: 导航
-            
-            # 目标动作：攻击目标类型
-            attack_target_space = spaces.Discrete(len(RobotType))  # 所有机器人类型
-
-            # 购买动作：是否购买
-            purchase_space = spaces.Discrete(2)  # 0: 不购买, 1: 购买
-            
-            # 组合动作空间
-            spin_space = spaces.Discrete(2)
-
-            robot_action_spaces[robot_id] = spaces.Dict({
-                'navigation_target_norm': navigation_target_space,
-                'navigation_set': navigation_set_space,
-                'attack_target': attack_target_space,
-                'spin': spin_space,
-                'purchase': purchase_space,
-            })
-        
-        self.action_space = spaces.Dict(robot_action_spaces)
+        self.action_space = spaces.Dict({
+            robot_id: ActionRMUL.get_space()
+            for robot_id in self.env.robots
+        })
     
     def _setup_observation_space(self):
         """设置观察空间"""
@@ -139,18 +110,13 @@ class GameRMUL(gym.Env):
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         """重置环境"""
         super().reset(seed=seed)
-        
-        # 重置底层环境
-        self.env.reset()
-        
-        # 获取初始观察
+        self.env = EnvironmentRMUL()
         observation = self._get_obs()
-        info = {}
-        
+        self._last_observation = observation
+        self._last_action = None
         if self._render_mode == "human":
             self.render()
-        
-        return observation, info
+        return observation, {}
     
     def apply_observation(self, observation: ObservationRMUL):
         """

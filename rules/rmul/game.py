@@ -5,6 +5,7 @@ import gymnasium as gym
 from copy import deepcopy
 from gymnasium import spaces
 from dataclasses import dataclass
+from collections import defaultdict
 from typing import List, Dict, Optional, Tuple, Any
 
 from rules.base.game import Game
@@ -12,7 +13,7 @@ from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType
 from utils.grid_map import world_to_grid
-from utils.utils import meters_to_pixels, calc_distance, opposite_team
+from utils.utils import meters_to_pixels, calc_distance, opposite_team, timer
 from visualization.renderer import Renderer
 
 from rules.rmul.config import env_config as RMUL_ENV_CONFIG
@@ -53,6 +54,8 @@ class GameRMUL(gym.Env):
         # 状态记录
         self._last_observation = self._get_obs()
         self._last_action = None
+
+        self._time_stats = defaultdict(list)
     
     def _setup_action_space(self):
         self.action_space = spaces.Dict({
@@ -155,35 +158,48 @@ class GameRMUL(gym.Env):
             self._frame_start_time = time.perf_counter()
 
             # 执行环境步进
-            self.env.step(red_action, blue_action)
+            with timer(self._time_stats, 'env_step'):
+                self.env.step(red_action, blue_action)
             
             # 获取观察
-            observation = self._get_obs()
+            with timer(self._time_stats, 'get_obs'):
+                observation = self._get_obs()
             
             # 计算奖励（以红队视角）
-            reward += self._get_reward(GameTeam.RED, red_action)
+            with timer(self._time_stats, 'get_reward'):
+                reward += self._get_reward(GameTeam.RED, red_action)
             
             # 判断是否结束
             terminated = self._is_terminated()
             truncated = self._is_truncated()
 
             # 渲染
-            if self._render_mode:
-                render_images.append(self.render())
+            with timer(self._time_stats, 'render'):
+                if self._render_mode:
+                    render_images.append(self.render())
 
             if terminated or truncated:
                 break
         
         # 信息
-        info = {
-            'render_image': render_images,
-            'game_state': self.env.game_state,
-            'remaining_time': self.env._remaining_time,
-            'victory_progress': self.env._victory_progress,
-            'economics': self.env._economics,
-            'robots': deepcopy(self.env.robots),
-        }
-        
+        with timer(self._time_stats, 'make_info'):
+            info = {
+                'render_image': render_images,
+                'game_state': self.env.game_state,
+                'remaining_time': self.env._remaining_time,
+                'victory_progress': self.env._victory_progress,
+                'economics': self.env._economics,
+                'robots': deepcopy(self.env.robots),
+            }
+
+        # print("\n性能统计:")
+        # for key, times in self._time_stats.items():
+        #     if times:  # 确保有数据
+        #         avg_time = sum(times) / len(times)
+        #         print(f"{key}: {avg_time:.6f}s")
+        # print("=" * 50)
+        # self._time_stats.clear()
+
         return observation, reward, terminated, truncated, info
     
     def _get_obs(self) -> ObservationRMUL:
@@ -215,7 +231,7 @@ class GameRMUL(gym.Env):
         # # 不可行导航点惩罚
         # if action["RED_3_STANDARD"]["navigation_set"] == 1:
         #     col, row = world_to_grid(action["RED_3_STANDARD"]["navigation_target_norm"])
-        #     if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
+        #     if self.env.get_robot("RED_3_STANDARD")._grid_map.is_blocked(col, row):
         #         reward_navigation_unmovable = -1.0
         #     else:
         #         reward_navigation_unmovable = 1.0

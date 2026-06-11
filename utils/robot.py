@@ -3,6 +3,7 @@ import pymunk
 import math
 import time
 import numpy as np
+from copy import deepcopy
 from typing import List, Dict, Tuple, Optional
 from utils.config.exp_prop_config import *
 from utils.config.bullet_config import *
@@ -113,10 +114,26 @@ class Robot:
         self.revive_efficiency : float = 2                  # 复活效率（每秒增加的进度）
         self.last_revive_time_remain : float = math.inf     # 上次复活的倒计时时间
 
-        self._buff_manager = BuffManager()                  # 增益管理器
+        self.buff_manager = BuffManager()                  # 增益管理器
 
         # GridMap相关
-        self.grid_map : GridMap = None
+        self._grid_map : GridMap = None
+
+    def __deepcopy__(self, memo):
+        """自定义深拷贝行为"""
+        # 创建新实例（不调用__init__）
+        new_robot = self.__class__.__new__(self.__class__)
+        memo[id(self)] = new_robot
+        
+        # 只拷贝不以_开头的属性
+        for key, value in self.__dict__.items():
+            if not key.startswith('_'):  # 忽略私有属性
+                setattr(new_robot, key, deepcopy(value, memo))
+            else:
+                # 可选择设为None或保留原引用
+                setattr(new_robot, key, None)  # 或者不设置
+        
+        return new_robot
 
     def destroy_physics_body(self, physics_engine: pymunk.Space):
         """从物理引擎中移除物理体"""
@@ -160,10 +177,10 @@ class Robot:
         self.cooldown : int = self.gimbal_property[self.level]["COOLDOWN"]
 
     def add_buff(self, buff: Buff):
-        self._buff_manager.add_buff(buff)
+        self.buff_manager.add_buff(buff)
 
     def remove_buff(self, buff: Buff, strict: bool = False):
-        self._buff_manager.remove_buff(buff, strict)
+        self.buff_manager.remove_buff(buff, strict)
 
     def set_spin(self, spin_enabled: bool):
         """设置是否启用自旋防御姿态。"""
@@ -202,6 +219,9 @@ class Robot:
             return self._init_pos
         return self._body.position.x, self._body.position.y
 
+    def has_buff(self, buff: Buff):
+        return buff in self.buff_manager._buff_list
+
     def set_target(self, target_pos):
         """设置目标位置并计算路径"""
         # 如果目标位置与当前位置相同，则不再次计算路径
@@ -211,7 +231,7 @@ class Robot:
             self.target_pos = target_pos
 
         # 如果网格地图为空
-        if self.grid_map is None:
+        if self._grid_map is None:
             self.path_points = [target_pos]
             self.current_path_idx = 0
             raise ValueError("网格地图为空，无法计算路径")
@@ -219,8 +239,8 @@ class Robot:
         # 使用A*算法规划路径
         start_grid = world_to_grid(self.get_position())
         goal_grid = world_to_grid(target_pos)
-        path_grids = a_star(self.grid_map, start_grid, goal_grid)
-        path_grids = simplify_path(path_grids, self.grid_map)
+        path_grids = a_star(self._grid_map, start_grid, goal_grid)
+        path_grids = simplify_path(path_grids, self._grid_map)
         
         # 将栅格坐标转换回世界坐标
         self.path_points = [grid_to_world(gp[0], gp[1]) for gp in path_grids[1:]]
@@ -235,7 +255,7 @@ class Robot:
                 self._body.angular_velocity = 0
             self.forward_speed = 0.0
             self.rotation_speed = 0.0
-            self._buff_manager.clear_buff()
+            self.buff_manager.clear_buff()
             # 结算复活进度
             self.revive_progress = min(self.revive_progress + self.revive_efficiency * dt, self.revive_target)
             # 复活读条已满
@@ -251,12 +271,12 @@ class Robot:
 
         # 结算复活无敌时间
         if self.last_revive_time_remain - remaining_time < 10:
-            self._buff_manager.add_buff(Buff(name="revive", defence=100.0))    # 给足饱和防御buff，防止被易伤抵消
+            self.buff_manager.add_buff(Buff(name="revive", defence=100.0))    # 给足饱和防御buff，防止被易伤抵消
         else:
-            self._buff_manager.remove_buff(Buff(name="revive", defence=100.0), strict=False)
+            self.buff_manager.remove_buff(Buff(name="revive", defence=100.0), strict=False)
 
         # 结算增益
-        self._buff_manager.update_buff_list()
+        self.buff_manager.update_buff_list()
 
         # 沿路径移动
         moving = False
@@ -285,7 +305,7 @@ class Robot:
             self.angle_chassis = self.angle_chassis + self.rotation_speed * dt
 
         # 结算热量冷却
-        cooldown = max(self.cooldown * self._buff_manager.get_buff(BuffType.COOLDOWN_RATE), self.cooldown + self._buff_manager.get_buff(BuffType.COOLDOWN_CONST))
+        cooldown = max(self.cooldown * self.buff_manager.get_buff(BuffType.COOLDOWN_RATE), self.cooldown + self.buff_manager.get_buff(BuffType.COOLDOWN_CONST))
         self.heat = max(0, self.heat - cooldown * dt)
 
         # 结算脱战状态
@@ -293,10 +313,10 @@ class Robot:
             self.attack_target = None
 
         # 结算回血增益
-        if self._buff_manager.get_buff(BuffType.HEALING):
+        if self.buff_manager.get_buff(BuffType.HEALING):
             # 为防止血量计算中出现小数，仅在整数秒时一次性回复血量
             if 0 < math.modf(remaining_time)[0] < dt:
-                self.heal(int(self.max_hp * self._buff_manager.get_buff(BuffType.HEALING)))
+                self.heal(int(self.max_hp * self.buff_manager.get_buff(BuffType.HEALING)))
 
         # TODO：结算禁区
 
@@ -346,7 +366,7 @@ class Robot:
             return False
         
         # 造成伤害
-        damage = self.attack_target.take_damage(self.bullet.DAMAGE * (1 + self._buff_manager.get_buff(BuffType.ATTACK)))
+        damage = self.attack_target.take_damage(self.bullet.DAMAGE * (1 + self.buff_manager.get_buff(BuffType.ATTACK)))
         # 增加热量
         self.heat += self.bullet.HEAT
         # 减少子弹
@@ -384,7 +404,7 @@ class Robot:
             return 0
 
         real_damage = int(min(
-            damage * max(0, 1 - self._buff_manager.get_buff(BuffType.DEFENCE) + self._buff_manager.get_buff(BuffType.VULNERABILITY)),   # 不允许造成负伤害
+            damage * max(0, 1 - self.buff_manager.get_buff(BuffType.DEFENCE) + self.buff_manager.get_buff(BuffType.VULNERABILITY)),   # 不允许造成负伤害
             self.hp
         ))
         self.hp = self.hp - real_damage

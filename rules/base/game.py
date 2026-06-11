@@ -202,7 +202,7 @@ class Game(gym.Env):
         if action["RED_3_STANDARD"].navigation_set == 1:
             navigation_target = (np.array(action["RED_3_STANDARD"].navigation_target_norm) + 1) * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]) / 2
             col, row = world_to_grid(navigation_target)
-            if self.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row):
+            if self.env.get_robot("RED_3_STANDARD")._grid_map.is_blocked(col, row):
                 reward_navigation_unmovable = -1.0
             else:
                 reward_navigation_unmovable = 1.0

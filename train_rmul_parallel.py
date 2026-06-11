@@ -157,7 +157,7 @@ def train(args):
 
             batch_bar = tqdm(
                 total=len(futures),
-                desc=f"episode {episode} rollouts",
+                desc=f"rollouts",
                 position=1,
                 leave=False,
                 dynamic_ncols=True,

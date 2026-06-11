@@ -1,8 +1,9 @@
 import argparse
 import json
 import os
+import math
 import random
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Dict, Tuple
 
@@ -50,7 +51,7 @@ def sample_point_in_polygon(vertices):
 def is_valid_position(game: Game, position: Tuple[float, float], robot_id: str) -> bool:
     try:
         col, row = world_to_grid(position)
-        return not game.env.get_robot(robot_id).grid_map.is_blocked(col, row)
+        return not game.env.get_robot(robot_id)._grid_map.is_blocked(col, row)
     except ValueError:
         return False
 
@@ -152,28 +153,34 @@ def basic_action_reward(actions: Dict[str, ActionRMUL]):
 
 def nav_reward(info: Dict, actions: Dict[str, ActionRMUL]):
     reward = 0
-    for id, robot in info["robots"].items():
-        if id not in actions:
-            continue
+    for id in actions:
+        robot = info["robots"][id]
         if robot.hp / robot.max_hp > 0.9:
-            reward += 0.05 * np.linalg.norm(actions[id].navigation_target_norm - np.array([-1, -1], dtype=np.float32))
-            if actions[id].navigation_set == 1:
-                reward += 0.02
+            dist = np.linalg.norm(actions[id].navigation_target_norm - np.array([-1, -1], dtype=np.float32))
+            reward += 0.02 * (1 - math.exp(-dist))
         else:
-            if Buff(name="boot", healing=0.25) in robot._buff_manager._buff_list:
+            if robot.has_buff(Buff(name="boot", healing=0.25)):
                 reward += 0.1
     return reward
 
 
-def economic_reward(info: Dict, action: Dict[str, ActionRMUL]):
+def center_reward(info: Dict, actions: Dict[str, ActionRMUL]):
+    reward = 0
+    for id in actions:
+        robot = info["robots"][id]
+        if robot.has_buff(Buff(name="center")):
+            reward += 0.05
+    return reward
+
+
+def economic_reward(info: Dict, actions: Dict[str, ActionRMUL]):
     reward = 0
     economics = info["economics"][GameTeam.RED]
-    for id, robot in info["robots"].items():
-        if id not in action:
-            continue
-        if action[id].purchase == 1:
+    for id in actions:
+        robot = info["robots"][id]
+        if actions[id].purchase == 1:
             # 在补给区且钱足够
-            if Buff(name="boot", healing=0.25) in robot._buff_manager._buff_list and economics >= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM:
+            if robot.has_buff(Buff(name="boot", healing=0.25)) and economics >= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM:
                 reward += 0.05
                 if robot.ammo_allowed < robot.bullet.PURCHASE_NUM:
                     reward += 0.1
@@ -193,7 +200,7 @@ def game_reward(info: Dict, last_info: Dict) -> float:
     pre_red_progress = last_info["victory_progress"][GameTeam.RED]
     pre_blue_progress = last_info["victory_progress"][GameTeam.BLUE]
     progress_gain = (cur_red_progress - pre_red_progress) - (cur_blue_progress - pre_blue_progress)
-    reward += 1.0 * progress_gain
+    reward += 0.2 * progress_gain
 
     # 终局奖励
     if info["game_state"] == GameState.RED_TEAM_WIN:
@@ -400,12 +407,11 @@ def parse_args():
     ctrl_group.add_argument("--blue-mode", choices=["auto", "self", "script"], default="auto", help="蓝方控制模式：auto 根据阶段自动选择，self 使用智能体，script 使用逻辑脚本。")
 
     train_group = parser.add_argument_group('训练配置')
-    train_group.add_argument("--episodes", type=int, default=100, help="训练总回合数。")
-    train_group.add_argument("--rollout-batch-size", type=int, default=8, help="每次 PPO 更新前收集的 rollout 数量。")
-    train_group.add_argument("--num-workers", type=int, default=4, help="并行采样的工作进程数量。")
-    train_group.add_argument("--save-interval", type=int, default=10, help="模型保存间隔，按训练回合数计算。")
-    train_group.add_argument("--eval-interval", type=int, default=10, help="评估间隔，按训练回合数计算。")
+    train_group.add_argument("--episodes", type=int, default=1000, help="训练总回合数。")
+    train_group.add_argument("--save-interval", type=int, default=100, help="模型保存间隔，按训练回合数计算。")
+    train_group.add_argument("--eval-interval", type=int, default=100, help="评估间隔，按训练回合数计算。")
     train_group.add_argument("--eval-episodes", type=int, default=20, help="每次评估运行的回合数。")
+    train_group.add_argument("--timing-interval", type=int, default=1, help="耗时统计打印间隔，按训练回合数计算；设为 0 则只在结束时打印。")
     train_group.add_argument("--parallel-eval", action="store_true", help="启用并行评估。")
 
     agent_group = parser.add_argument_group('PPO配置')

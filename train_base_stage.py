@@ -119,7 +119,7 @@ def robot_snapshot(game: Game) -> Tuple[Tuple[float, float], Tuple[float, float]
 def is_valid_position(game: Game, position: Tuple[float, float]) -> bool:
     try:
         col, row = world_to_grid(position)
-        return not game.env.get_robot(RED_ID).grid_map.is_blocked(col, row)
+        return not game.env.get_robot(RED_ID)._grid_map.is_blocked(col, row)
     except ValueError:
         return False
 
@@ -229,7 +229,7 @@ def navigation_validity_reward(game: Game, action: ActionBase) -> float:
 
     try:
         col, row = world_to_grid(navigation_target)
-        is_blocked = game.env.get_robot(RED_ID).grid_map.is_blocked(col, row)
+        is_blocked = game.env.get_robot(RED_ID)._grid_map.is_blocked(col, row)
     except ValueError:
         is_blocked = True
 

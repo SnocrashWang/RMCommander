@@ -34,7 +34,7 @@ np.set_printoptions(precision=3, suppress=True)
 def is_valid_base_position(game: Game, position):
     try:
         col, row = world_to_grid(position)
-        return not game.env.get_robot("RED_3_STANDARD").grid_map.is_blocked(col, row)
+        return not game.env.get_robot("RED_3_STANDARD")._grid_map.is_blocked(col, row)
     except ValueError:
         return False
 
@@ -81,7 +81,9 @@ def agent_control(
     state_size = game.observation_space.shape[0]
     agent = PPOAgent(
         state_dim=state_size,
-        device=None
+        device=None,
+        robot_type_list=ROBOT_TYPE_LIST,
+        action_cls=Action
     )
 
     # 加载训练好的模型

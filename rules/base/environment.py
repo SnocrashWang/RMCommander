@@ -186,7 +186,7 @@ class Environment:
             # 标记所有障碍物
             grid_map.mark_obstacles(self.obstacles)
             # 设置机器人的网格地图
-            robot.grid_map = grid_map
+            robot._grid_map = grid_map
 
     def _create_obstacles(self, obstacles: List[Dict[str, Any]]):
         for obstacle_config in obstacles:

@@ -69,7 +69,7 @@ class Renderer:
             # 绘制可移动栅格
             if self.control_state.get("show_grid", False) and "robot_id" in self.control_state:
                 robot = env.robots[self.control_state["robot_id"]]
-                self._draw_grid(robot.grid_map)
+                self._draw_grid(robot._grid_map)
                 self._draw_path(robot)
                 self._draw_attack_sight_line(robot, env.get_robot(ROBOT_ID[opposite_team(robot.team)][self.control_state["target_id"]]))
 
@@ -186,7 +186,7 @@ class Renderer:
             hp_bar_x = x - bar_width / 2
             hp_bar_y = y - scale * 1.5 - bar_height * 2
             current_hp_width = int(bar_width * robot.hp / robot.max_hp)
-            pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[robot.team] if robot._buff_manager.get_buff(BuffType.DEFENCE) == 0 else render_config.COLOR_GREEN,
+            pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[robot.team] if robot.buff_manager.get_buff(BuffType.DEFENCE) == 0 else render_config.COLOR_GREEN,
                             (hp_bar_x, hp_bar_y, current_hp_width, bar_height))
             # FIXME: 有一个特殊情况会导致hp为小数，暂时还没有复现到
             try:

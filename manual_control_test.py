@@ -4,9 +4,10 @@ import time
 import random
 import numpy as np
 
+
 from config import CURRENT_GAME
+from agents.script_agent_rmul import ScriptControllerRMUL
 from utils.config.game_config import GameTeam, GameType
-from utils.config.robot_config import RobotType
 from utils.utils import pos_real2norm
 from visualization.config import render_config
 
@@ -23,8 +24,6 @@ elif CURRENT_GAME == GameType.RMUL:
 # elif CURRENT_GAME == GameType.RMUC:
     # from RMUC.game import GameRMUC as Game
     # from RMUC.config.robot_config import RMUC_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
-
-from train_rmul import ScriptBlueController
 
 np.set_printoptions(precision=4, floatmode='fixed')
 
@@ -47,7 +46,7 @@ def main():
     blue_action = {
         robot_id: Action() for robot_id, robot in game.env.robots.items() if robot.team == GameTeam.BLUE
     }
-    script_blue_controller = ScriptBlueController(game)
+    blue_agent = ScriptControllerRMUL(game)
 
     while True:
         red_action = {
@@ -109,7 +108,7 @@ def main():
                     control_state["target_id"] = target_id_list[(target_id_list.index(control_state["target_id"]) - 1) % len(target_id_list)]
 
         # elapsed_time = game.env.total_time - game.env._remaining_time
-        # blue_action = script_blue_controller.make_action(elapsed_time)
+        # blue_action = blue_agent.make_action(elapsed_time)
 
         # 更新环境
         game.set_render(control_state)

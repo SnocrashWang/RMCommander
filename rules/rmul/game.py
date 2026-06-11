@@ -185,7 +185,7 @@ class GameRMUL(gym.Env):
         # 信息
         with timer(self._time_stats, 'make_info'):
             info = {
-                'render_image': render_images,
+                'render_images': render_images,
                 'game_state': self.env.game_state,
                 'remaining_time': self.env._remaining_time,
                 'victory_progress': self.env._victory_progress,

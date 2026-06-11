@@ -13,7 +13,6 @@ from tqdm import tqdm
 
 from agents.ppo_agent import PPOAgent
 from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION
-from rules.rmul.environment import ActionRMUL
 from rules.rmul.game import GameRMUL as Game
 from train_rmul import evaluate, rollout
 

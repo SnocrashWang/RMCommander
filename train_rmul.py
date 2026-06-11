@@ -3,7 +3,7 @@ import json
 import os
 import math
 import random
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime
 from typing import Dict, Tuple
 
@@ -12,115 +12,15 @@ import torch
 from tqdm import tqdm
 
 from agents.ppo_agent import PPOAgent
+from agents.script_agent_rmul import ScriptControllerRMUL
 from rules.rmul.config import env_config
 from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION
-from rules.rmul.config.zone_config import RMUL_ZONES
 from rules.rmul.environment import ActionRMUL
 from rules.rmul.game import GameRMUL as Game
 from utils.config.game_config import GameState, GameTeam
-from utils.config.robot_config import ROBOT_ID, RobotType
+from utils.config.robot_config import RobotType
 from utils.buff import Buff
-from utils.grid_map import world_to_grid
-from utils.utils import point_in_polygon, pos_real2norm
 
-
-SCRIPT_BLUE_SWITCH_INTERVAL = 1.0
-
-
-def team_robot_ids(team: GameTeam):
-    return [ROBOT_ID[team][robot_type] for robot_type in RMUL_ROBOT_TYPE_ACTION]
-
-
-def sample_point_in_polygon(vertices):
-    xs = [p[0] for p in vertices]
-    ys = [p[1] for p in vertices]
-    for _ in range(1000):
-        position = (random.uniform(min(xs), max(xs)), random.uniform(min(ys), max(ys)))
-        if point_in_polygon(position, vertices):
-            return position
-    return (sum(xs) / len(xs), sum(ys) / len(ys))
-
-
-def is_valid_position(game: Game, position: Tuple[float, float], robot_id: str) -> bool:
-    try:
-        col, row = world_to_grid(position)
-        return not game.env.get_robot(robot_id)._grid_map.is_blocked(col, row)
-    except ValueError:
-        return False
-
-
-def sample_valid_map_position(game: Game, robot_id: str) -> Tuple[float, float]:
-    for _ in range(1000):
-        position = (
-            random.uniform(0.3, env_config.FIELD_WIDTH - 0.3),
-            random.uniform(0.3, env_config.FIELD_HEIGHT - 0.3),
-        )
-        if is_valid_position(game, position, robot_id):
-            return position
-    return game.env.get_robot(robot_id).get_position()
-
-
-def sample_blue_supply_position() -> Tuple[float, float]:
-    return sample_point_in_polygon(RMUL_ZONES["blue_boot"].vertices)
-
-
-def sample_center_position() -> Tuple[float, float]:
-    return sample_point_in_polygon(RMUL_ZONES["center"].vertices)
-
-
-class ScriptBlueController:
-    def __init__(self, game: Game):
-        self.game = game
-        self.next_switch_time = 0.0
-        self.attack_targets = {}
-        self.last_needs_supply = {}
-        self.nav_targets = {}
-
-    def make_action(self, elapsed_time: float) -> Dict[str, ActionRMUL]:
-        if elapsed_time >= self.next_switch_time:
-            self._resample(elapsed_time)
-
-        actions = {}
-        for robot_id in team_robot_ids(GameTeam.BLUE):
-            robot = self.game.env.get_robot(robot_id)
-            needs_supply = (
-                robot.hp / robot.max_hp < 0.2
-                or robot.ammo_allowed < robot.bullet.PURCHASE_NUM
-            )
-            if (
-                robot_id not in self.nav_targets
-                or self.last_needs_supply.get(robot_id) != needs_supply
-            ):
-                self.nav_targets[robot_id] = self._sample_navigation_target(robot_id, needs_supply)
-                self.last_needs_supply[robot_id] = needs_supply
-
-            if needs_supply:
-                purchase = 1
-            else:
-                purchase = 0
-            target_world = self.nav_targets[robot_id]
-
-            actions[robot_id] = ActionRMUL(
-                navigation_target_norm=pos_real2norm(target_world, (env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)),
-                navigation_set=1,
-                attack_target=self.attack_targets.get(robot_id, RobotType.STANDARD_3.value),
-                spin=1,
-                purchase=purchase,
-            )
-        return actions
-
-    def _resample(self, elapsed_time: float):
-        for robot_id in team_robot_ids(GameTeam.BLUE):
-            # self.attack_targets[robot_id] = random.choices(list(RMUL_ROBOT_TYPE_ACTION) + [RobotType.NONE], weights=[1, 1, 1, 5])[0].value
-            self.attack_targets[robot_id] = RobotType.NONE.value
-        self.next_switch_time = elapsed_time + SCRIPT_BLUE_SWITCH_INTERVAL
-
-    def _sample_navigation_target(self, robot_id: str, needs_supply: bool) -> Tuple[float, float]:
-        if needs_supply:
-            return sample_blue_supply_position()
-        if random.getrandbits(1):
-            return sample_center_position()
-        return sample_valid_map_position(self.game, robot_id)
 
 
 def basic_action_reward(actions: Dict[str, ActionRMUL]):
@@ -208,7 +108,7 @@ def rollout(
     train: bool = False,
 ):
     obs, info = game.reset()
-    script_blue_controller = ScriptBlueController(game) if blue_mode == "script" else None
+    blue_agent = ScriptControllerRMUL(game) if blue_mode == "script" else None
     last_info = info
     state = obs.to_array(GameTeam.RED)
     transition_dict = {"states": [], "actions": [], "next_states": [], "rewards": [], "dones": []}
@@ -222,16 +122,16 @@ def rollout(
             blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE, deterministic=deterministic)
         elif blue_mode == "script":
             elapsed_time = game.env.total_time - game.env._remaining_time
-            blue_action = script_blue_controller.make_action(elapsed_time)
+            blue_action = blue_agent.make_action(elapsed_time)
         else:
             raise ValueError(f"Unsupported blue_mode: {blue_mode}")
 
         next_obs, _, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
         next_state = next_obs.to_array(GameTeam.RED)
-        reward = basic_action_reward(red_action) + \
-                 nav_reward(info, red_action) + \
-                 economic_reward(info, red_action) + \
-                 game_reward(info, last_info)
+        reward = basic_action_reward(red_action) \
+               + nav_reward(info, red_action) \
+               + economic_reward(info, red_action) \
+               # + game_reward(info, last_info)
         reward = float(reward)
         done = terminated or truncated
         last_info = info

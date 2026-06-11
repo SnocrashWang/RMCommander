@@ -114,9 +114,16 @@ def train(args):
     game = Game()
     agent = PPOAgent(
         state_dim=game.observation_space.shape[0],
-        device=args.device,
         robot_type_list=RMUL_ROBOT_TYPE_LIST,
         action_cls=ActionRMUL,
+        device=args.device,
+        actor_lr=args.actor_lr,
+        critic_lr=args.critic_lr,
+        gamma=args.gamma,
+        lmbda=args.lmbda,
+        epochs=args.epochs,
+        eps=args.eps,
+        batch_size=args.ppo_batch_size
     )
     game.close()
 
@@ -187,6 +194,7 @@ def train(args):
         history.append(episode_record)
 
         tqdm.write(
+            "[ROLLOUT]\t"
             f"episode={episode}\t"
             f"results={episode_record['wins']}\t"
             f"avg_time={avg_elapsed_time:.2f}s\t"
@@ -219,7 +227,9 @@ def train(args):
                 finally:
                     eval_game.close()
             tqdm.write(
-                f"eval_results={eval_result['wins']}\t"
+                "[EVAL]\t"
+                f"episode={episode}\t"
+                f"results={eval_result['wins']}\t"
                 f"avg_time={eval_result['avg_elapsed_time']:.2f}s\t"
                 f"avg_progress={eval_result['avg_red_progress']:.2f}/{eval_result['avg_blue_progress']:.2f}\t"
                 f"avg_reward={eval_result['avg_reward']:.2f}"
@@ -259,25 +269,42 @@ def train(args):
     print(json.dumps({"model_path": model_path, "log_path": log_path, "final_eval": final_eval}, indent=2))
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Parallel PPO training for RMUL rule.")
-    parser.add_argument("--episodes", type=int, default=100)
-    parser.add_argument("--rollout-batch-size", type=int, default=8, help="number of rollouts collected before each PPO update")
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--save-interval", type=int, default=100)
-    parser.add_argument("--eval-interval", type=int, default=10)
-    parser.add_argument("--eval-episodes", type=int, default=5)
-    parser.add_argument("--parallel-eval", action="store_true")
-    parser.add_argument("--control-frequency", type=float, default=2)
-    parser.add_argument("--blue-mode", choices=["auto", "self", "script"], default="auto")
-    parser.add_argument("--base-model", type=str, default=None)
-    parser.add_argument("--model-dir", type=str, default="models/rmul")
-    parser.add_argument("--log-dir", type=str, default="logs")
-    parser.add_argument("--device", type=str, default=None)
-    train(parser.parse_args())
+def parse_args():
+    parser = argparse.ArgumentParser(description="并行 PPO 训练 RMUL 规则。")
+
+    file_group = parser.add_argument_group('文件配置')
+    file_group.add_argument("--base-model", type=str, default=None, help="基础模型路径；不指定时从头训练。")
+    file_group.add_argument("--model-dir", type=str, default="models/rmul", help="模型保存目录。")
+    file_group.add_argument("--log-dir", type=str, default="logs", help="训练日志保存目录。")
+
+    ctrl_group = parser.add_argument_group('控制配置')
+    ctrl_group.add_argument("--control-frequency", type=float, default=2, help="控制频率，用于计算每个决策对应的仿真步数。")
+    ctrl_group.add_argument("--blue-mode", choices=["auto", "self", "script"], default="auto", help="蓝方控制模式：auto 根据阶段自动选择，self 使用智能体，script 使用逻辑脚本。")
+
+    train_group = parser.add_argument_group('训练配置')
+    train_group.add_argument("--episodes", type=int, default=100, help="训练总回合数。")
+    train_group.add_argument("--rollout-batch-size", type=int, default=8, help="每次 PPO 更新前收集的 rollout 数量。")
+    train_group.add_argument("--num-workers", type=int, default=4, help="并行采样的工作进程数量。")
+    train_group.add_argument("--save-interval", type=int, default=10, help="模型保存间隔，按训练回合数计算。")
+    train_group.add_argument("--eval-interval", type=int, default=10, help="评估间隔，按训练回合数计算。")
+    train_group.add_argument("--eval-episodes", type=int, default=20, help="每次评估运行的回合数。")
+    train_group.add_argument("--parallel-eval", action="store_true", help="启用并行评估。")
+
+    agent_group = parser.add_argument_group('PPO配置')
+    agent_group.add_argument("--device", type=str, default=None, help="训练设备，例如 cpu、cuda 或 cuda:0；不指定时自动选择。")
+    agent_group.add_argument("--actor-lr", type=float, default=5e-5, help="Actor 网络学习率。")
+    agent_group.add_argument("--critic-lr", type=float, default=5e-4, help="Critic 网络学习率。")
+    agent_group.add_argument("--gamma", type=float, default=0.98, help="奖励折扣因子。")
+    agent_group.add_argument("--lmbda", type=float, default=0.95, help="GAE 优势估计的 lambda 参数。")
+    agent_group.add_argument("--epochs", type=int, default=4, help="每批采样数据上的 PPO 训练轮数。")
+    agent_group.add_argument("--eps", type=float, default=0.1, help="PPO clipping 的 epsilon 参数。")
+    agent_group.add_argument("--ppo-batch-size", type=int, default=16, help="PPO 更新时的小批量大小。")
+
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
     torch.set_num_threads(1)
     multiprocessing.set_start_method("spawn", force=True)
-    main()
+    args = parse_args()
+    train(args)

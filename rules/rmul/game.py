@@ -11,12 +11,13 @@ from typing import List, Dict, Optional, Tuple, Any
 from rules.base.game import Game
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
-from utils.config.robot_config import RobotType
+from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.grid_map import world_to_grid
 from utils.utils import meters_to_pixels, calc_distance, opposite_team, timer
 from visualization.renderer import Renderer
 
 from rules.rmul.config import env_config as RMUL_ENV_CONFIG
+from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION
 from rules.rmul.environment import ActionRMUL, ObservationRMUL, GameObsRMUL, RobotObsRMUL, EnvironmentRMUL
 
 
@@ -59,8 +60,8 @@ class GameRMUL(gym.Env):
     
     def _setup_action_space(self):
         self.action_space = spaces.Dict({
-            robot_id: ActionRMUL.get_space()
-            for robot_id in self.env.robots
+            ROBOT_ID[robot.team][robot.robot_type]: RMUL_ROBOT_TYPE_ACTION[robot.robot_type].get_space()
+            for robot in self.env.robots.values()
         })
     
     def _setup_observation_space(self):

@@ -14,10 +14,11 @@ from agents.ppo_agent import PPOAgent
 from rules.base.config import env_config
 from rules.base.environment import ActionBase
 from rules.base.game import Game
+from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION
 from utils.config.game_config import GameState, GameTeam
 from utils.config.robot_config import RobotType
 from utils.grid_map import world_to_grid
-from utils.utils import attack_sight_clear, calc_distance
+from utils.utils import attack_sight_clear, calc_distance, pos_real2norm
 
 
 RED_ID = "RED_3_STANDARD"
@@ -32,13 +33,6 @@ def force_stage_a_action(action: Dict[str, ActionBase]) -> Dict[str, ActionBase]
     robot_action.attack_target = RobotType.STANDARD_3.value
     robot_action.spin = 0
     return action
-
-
-def world_to_navigation_norm(position: Tuple[float, float]) -> Tuple[float, float]:
-    return (
-        position[0] * 2 / env_config.FIELD_WIDTH - 1,
-        position[1] * 2 / env_config.FIELD_HEIGHT - 1,
-    )
 
 
 class ScriptBlueController:
@@ -73,7 +67,7 @@ class ScriptBlueController:
 
         return {
             BLUE_ID: ActionBase(
-                navigation_target_norm=world_to_navigation_norm(self.nav_world),
+                navigation_target_norm=pos_real2norm(self.nav_world, (env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)),
                 navigation_set=1,
                 attack_target=RobotType.STANDARD_3.value,
                 spin=int(self.spin_enabled),
@@ -297,7 +291,7 @@ def rollout(
         next_state = next_obs.to_array(GameTeam.RED)
         done = terminated or truncated
 
-        executed_action = red_action[RED_ID].to_array()
+        executed_action = agent.action_to_array(red_action)
         target_counts[red_action[RED_ID].attack_target] += 1
         nav_counts[red_action[RED_ID].navigation_set] += 1
         spin_counts[red_action[RED_ID].spin] += 1
@@ -396,7 +390,11 @@ def train(args):
     run_name = f"ppo_agent_{time_tag}_stage_{args.stage}"
 
     game = Game()
-    agent = PPOAgent(state_dim=game.observation_space.shape[0], device=args.device)
+    agent = PPOAgent(
+        state_dim=game.observation_space.shape[0],
+        robot_type_action=BASE_ROBOT_TYPE_ACTION,
+        device=args.device,
+    )
     game.close()
     if args.base_model:
         agent.load(args.base_model)

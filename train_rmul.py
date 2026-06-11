@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from agents.ppo_agent import PPOAgent
 from rules.rmul.config import env_config
-from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_LIST
+from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION
 from rules.rmul.config.zone_config import RMUL_ZONES
 from rules.rmul.environment import ActionRMUL
 from rules.rmul.game import GameRMUL as Game
@@ -21,21 +21,14 @@ from utils.config.game_config import GameState, GameTeam
 from utils.config.robot_config import ROBOT_ID, RobotType
 from utils.buff import Buff
 from utils.grid_map import world_to_grid
-from utils.utils import point_in_polygon
+from utils.utils import point_in_polygon, pos_real2norm
 
 
 SCRIPT_BLUE_SWITCH_INTERVAL = 1.0
 
 
-def world_to_navigation_norm(position: Tuple[float, float]) -> Tuple[float, float]:
-    return (
-        position[0] * 2 / env_config.FIELD_WIDTH - 1,
-        position[1] * 2 / env_config.FIELD_HEIGHT - 1,
-    )
-
-
 def team_robot_ids(team: GameTeam):
-    return [ROBOT_ID[team][robot_type] for robot_type in RMUL_ROBOT_TYPE_LIST]
+    return [ROBOT_ID[team][robot_type] for robot_type in RMUL_ROBOT_TYPE_ACTION]
 
 
 def sample_point_in_polygon(vertices):
@@ -108,7 +101,7 @@ class ScriptBlueController:
             target_world = self.nav_targets[robot_id]
 
             actions[robot_id] = ActionRMUL(
-                navigation_target_norm=world_to_navigation_norm(target_world),
+                navigation_target_norm=pos_real2norm(target_world, (env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT)),
                 navigation_set=1,
                 attack_target=self.attack_targets.get(robot_id, RobotType.STANDARD_3.value),
                 spin=1,
@@ -118,7 +111,7 @@ class ScriptBlueController:
 
     def _resample(self, elapsed_time: float):
         for robot_id in team_robot_ids(GameTeam.BLUE):
-            # self.attack_targets[robot_id] = random.choices(RMUL_ROBOT_TYPE_LIST + [RobotType.NONE], weights=[1, 1, 1, 5])[0].value
+            # self.attack_targets[robot_id] = random.choices(list(RMUL_ROBOT_TYPE_ACTION) + [RobotType.NONE], weights=[1, 1, 1, 5])[0].value
             self.attack_targets[robot_id] = RobotType.NONE.value
         self.next_switch_time = elapsed_time + SCRIPT_BLUE_SWITCH_INTERVAL
 
@@ -130,13 +123,6 @@ class ScriptBlueController:
         return sample_valid_map_position(self.game, robot_id)
 
 
-def robot_action_array(action: Dict[str, ActionRMUL]) -> np.ndarray:
-    return np.concatenate([
-        action[robot_id].to_array()
-        for robot_id in team_robot_ids(GameTeam.RED)
-    ])
-
-
 def basic_action_reward(actions: Dict[str, ActionRMUL]):
     reward = 0
     for id, action in actions.items():
@@ -144,7 +130,7 @@ def basic_action_reward(actions: Dict[str, ActionRMUL]):
         #     reward += 0.1
         # else:
         #     reward -= 0.1
-        if action.attack_target in [robot_type.value for robot_type in RMUL_ROBOT_TYPE_LIST] + [RobotType.NONE]:
+        if action.attack_target in [robot_type.value for robot_type in RMUL_ROBOT_TYPE_ACTION] + [RobotType.NONE]:
             reward += 0.1
         else:
             reward -= 0.1
@@ -252,7 +238,7 @@ def rollout(
 
         if train:
             transition_dict["states"].append(state)
-            transition_dict["actions"].append(robot_action_array(red_action))
+            transition_dict["actions"].append(agent.action_to_array(red_action))
             transition_dict["next_states"].append(next_state)
             transition_dict["rewards"].append(reward)
             transition_dict["dones"].append(done)
@@ -312,8 +298,7 @@ def train(args):
     game = Game()
     agent = PPOAgent(
         state_dim=game.observation_space.shape[0],
-        robot_type_list=RMUL_ROBOT_TYPE_LIST,
-        action_cls=ActionRMUL,
+        robot_type_action=RMUL_ROBOT_TYPE_ACTION,
         device=args.device,
         actor_lr=args.actor_lr,
         critic_lr=args.critic_lr,

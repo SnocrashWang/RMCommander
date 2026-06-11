@@ -5,38 +5,20 @@ import time
 import copy
 from dataclasses import dataclass
 from typing import Dict, List, Any, Optional, Tuple
-from gymnasium import spaces
 
 from rules.base.environment import Environment
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
-from utils.action import Action
 from utils.robot import Robot
-from utils.utils import opposite_team
+from utils.utils import opposite_team, pos_real2norm
 
 from rules.rmul.config import env_config as RMUL_ENV_CONFIG
+from rules.rmul.config.action_config import ActionRMUL
 from rules.rmul.config.obstacle_config import RMUL_OBSTACLES
-from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS, RMUL_ROBOT_TYPE_LIST
+from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS, RMUL_ROBOT_TYPE_ACTION
 from rules.rmul.config.zone_config import RMUL_ZONES
 
-
-class ActionRMUL(Action):
-    _schema={
-        "navigation_target_norm": spaces.Box(
-            low=np.array([-1.0, -1.0], dtype=np.float32),
-            high=np.array([1.0, 1.0], dtype=np.float32),
-            dtype=np.float32,
-        ),
-        "navigation_set": spaces.Discrete(2),
-        "attack_target": spaces.Discrete(len(RobotType)),
-        "spin": spaces.Discrete(2),
-        "purchase": spaces.Discrete(2),
-    }
-
-    def get_target_position(self) -> Tuple[float, float]:
-        """获取导航目标的实际坐标"""
-        return (self.navigation_target_norm + 1) * np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]) / 2
 
 @dataclass
 class GameObsRMUL:
@@ -78,7 +60,7 @@ class RobotObsRMUL:
     @classmethod
     def from_robot(cls, robot: Robot):
         return cls(
-            position_norm=np.array(robot.get_position()) / np.array([RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT]) * 2 - 1,
+            position_norm=pos_real2norm(robot.get_position(), (RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT)),
             chassis_property_type=robot.chassis_property_type.value,
             gimbal_property_type=robot.gimbal_property_type.value,
             level=robot.level,
@@ -123,7 +105,7 @@ class ObservationRMUL:
         robot_array = array[3:]
         robot_obs = {}
         for team in [GameTeam.RED, GameTeam.BLUE]:
-            for robot_type in RMUL_ROBOT_TYPE_LIST:
+            for robot_type in RMUL_ROBOT_TYPE_ACTION:
                 robot_id = ROBOT_ID[team][robot_type]
                 robot_obs[robot_id] = RobotObsRMUL.from_array(robot_array[:8])
                 robot_array = robot_array[8:]

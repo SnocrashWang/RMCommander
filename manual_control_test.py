@@ -7,21 +7,22 @@ import numpy as np
 from config import CURRENT_GAME
 from utils.config.game_config import GameTeam, GameType
 from utils.config.robot_config import RobotType
+from utils.utils import pos_real2norm
 from visualization.config import render_config
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
     from rules.base.environment import ActionBase as Action
     from rules.base.config import env_config
-    from rules.base.config.robot_config import BASE_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
+    from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
 elif CURRENT_GAME == GameType.RMUL:
     from rules.rmul.game import GameRMUL as Game
     from rules.rmul.environment import ActionRMUL as Action
     from rules.rmul.config import env_config
-    from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
+    from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
 # elif CURRENT_GAME == GameType.RMUC:
     # from RMUC.game import GameRMUC as Game
-    # from RMUC.config.robot_config import RMUC_ROBOT_TYPE_LIST as ROBOT_TYPE_LIST
+    # from RMUC.config.robot_config import RMUC_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
 
 from train_rmul import ScriptBlueController
 
@@ -33,7 +34,7 @@ def main():
     # obs, info = game.reset()
 
     robot_id_list = list(game.env.robots.keys())
-    target_id_list = ROBOT_TYPE_LIST
+    target_id_list = list(ROBOT_TYPE_ACTION)
     control_state = {
         "robot_id": robot_id_list[0],
         "target_id": target_id_list[0],
@@ -63,9 +64,8 @@ def main():
 
             # 鼠标左键点击，设置第一个机器人目标点
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mouse_pos = np.array(pygame.mouse.get_pos(), dtype=np.float32)  # 屏幕坐标
-                # 转换为归一化坐标
-                navigation_target_norm = mouse_pos * 2 / render_config.SCALE / np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT], dtype=np.float32) - 1
+                # 将屏幕坐标转化为归一化的导航坐标
+                navigation_target_norm = pos_real2norm(pygame.mouse.get_pos(), (env_config.FIELD_WIDTH * render_config.SCALE, env_config.FIELD_HEIGHT * render_config.SCALE))
                 if game.env.robots[control_state["robot_id"]].team == GameTeam.RED:
                     red_action[control_state["robot_id"]].navigation_target_norm = navigation_target_norm
                     red_action[control_state["robot_id"]].navigation_set = 1

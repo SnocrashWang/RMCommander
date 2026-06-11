@@ -55,6 +55,12 @@ def opposite_obstacle(obstacle_config, field_size):
         "thickness": obstacle_config["thickness"]
     }
 
+def pos_norm2real(norm: np.array, field_size: Tuple[float, float]) -> Tuple[float, float]:
+    return tuple((norm + 1) * np.array([field_size[0], field_size[1]], dtype=np.float32) / 2)
+
+def pos_real2norm(real: Tuple[float, float], field_size: Tuple[float, float]) -> np.array:
+    return np.array(real, dtype=np.float32) * 2 / np.array([field_size[0], field_size[1]], dtype=np.float32) - 1
+
 def draw_dashed_line(
     surface: pygame.Surface,
     color: Tuple[int, int, int],

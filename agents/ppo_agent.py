@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 
 import numpy as np
 import torch
@@ -7,23 +7,14 @@ import torch.nn.functional as F
 from gymnasium import spaces
 from torch.distributions import Categorical, Normal
 
-from rules.base.config.robot_config import BASE_ROBOT_TYPE_LIST
-from rules.base.environment import ActionBase
 from utils.config.game_config import GameTeam
 from utils.config.robot_config import ROBOT_ID
 
 
-class PolicyNet(nn.Module):
-    def __init__(self, state_dim: int, action_schema: Dict[str, spaces.Space]):
+class RobotPolicyHead(nn.Module):
+    def __init__(self, action_schema: Dict[str, spaces.Space]):
         super().__init__()
         self.action_schema = action_schema
-
-        self.shared_network = nn.Sequential(
-            nn.Linear(state_dim, 512),
-            nn.ELU(),
-            nn.Linear(512, 128),
-            nn.ELU(),
-        )
 
         self.box_heads = nn.ModuleDict()
         self.box_log_stds = nn.ParameterDict()
@@ -47,10 +38,8 @@ class PolicyNet(nn.Module):
             else:
                 raise TypeError(f"Unsupported action space for {name}: {space}")
 
-    def forward(self, x):
-        features = self.shared_network(x)
+    def forward(self, features):
         outputs = {}
-
         for name, space in self.action_schema.items():
             if isinstance(space, spaces.Box):
                 raw_mean = self.box_heads[name](features)
@@ -78,6 +67,31 @@ class PolicyNet(nn.Module):
         return (torch.tanh(raw_mean) + 1) * (high - low) / 2 + low
 
 
+class PolicyNet(nn.Module):
+    def __init__(self, state_dim: int, robot_type_action: Dict):
+        super().__init__()
+        self.robot_type_action = dict(robot_type_action)
+
+        self.shared_network = nn.Sequential(
+            nn.Linear(state_dim, 512),
+            nn.ELU(),
+            nn.Linear(512, 128),
+            nn.ELU(),
+        )
+
+        self.robot_heads = nn.ModuleDict({
+            robot_type.name: RobotPolicyHead(action_cls._schema)
+            for robot_type, action_cls in self.robot_type_action.items()
+        })
+
+    def forward(self, x):
+        features = self.shared_network(x)
+        return {
+            robot_type: self.robot_heads[robot_type.name](features)
+            for robot_type in self.robot_type_action
+        }
+
+
 class ValueNet(nn.Module):
     def __init__(self, state_dim: int):
         super().__init__()
@@ -103,18 +117,23 @@ class PPOAgent:
         eps=0.1,
         batch_size=16,
         device: str = None,
-        robot_type_list=None,
-        action_cls=ActionBase,
+        robot_type_action: Dict = None,
         action_kwargs=None,
     ):
+        if not robot_type_action:
+            raise ValueError("PPOAgent 需要 robot_type_action，例如 RMUL_ROBOT_TYPE_ACTION 或 BASE_ROBOT_TYPE_ACTION")
+
         self.gamma = gamma
         self.lmbda = lmbda
         self.epochs = epochs
         self.eps = eps
         self.batch_size = batch_size
-        self.robot_type_list = list(robot_type_list or BASE_ROBOT_TYPE_LIST)
-        self.action_cls = action_cls
-        self.action_schema = action_cls._schema
+        self.robot_type_action = dict(robot_type_action)
+        self.robot_type_list: List = list(self.robot_type_action)
+        self.action_schemas = {
+            robot_type: action_cls._schema
+            for robot_type, action_cls in self.robot_type_action.items()
+        }
         self.action_kwargs = action_kwargs or {}
 
         if device is None:
@@ -123,7 +142,7 @@ class PPOAgent:
             self.device = torch.device(device)
         print(f"使用设备: {self.device}")
 
-        self.actor = PolicyNet(state_dim, self.action_schema).to(self.device)
+        self.actor = PolicyNet(state_dim, self.robot_type_action).to(self.device)
         self.critic = ValueNet(state_dim).to(self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
@@ -131,10 +150,12 @@ class PPOAgent:
     @torch.no_grad()
     def take_action(self, state, team: GameTeam, deterministic: bool = False):
         state = torch.tensor(state, dtype=torch.float).to(self.device)
-        policy_outputs = self.actor(state)
+        all_policy_outputs = self.actor(state)
 
         actions = {}
         for robot_type in self.robot_type_list:
+            action_cls = self.robot_type_action[robot_type]
+            policy_outputs = all_policy_outputs[robot_type]
             action_values = {}
             for name, output in policy_outputs.items():
                 if output["type"] == "box":
@@ -151,9 +172,15 @@ class PPOAgent:
                     action_values[name] = value.item()
 
             action_values.update(self.action_kwargs)
-            actions[ROBOT_ID[team][robot_type]] = self.action_cls(**action_values)
+            actions[ROBOT_ID[team][robot_type]] = action_cls(**action_values)
 
         return actions
+
+    def action_to_array(self, actions: Dict, team: GameTeam = GameTeam.RED) -> np.ndarray:
+        return np.concatenate([
+            actions[ROBOT_ID[team][robot_type]].to_array()
+            for robot_type in self.robot_type_list
+        ])
 
     def update(self, transition_dict):
         states = torch.tensor(np.array(transition_dict["states"]), dtype=torch.float).to(self.device)
@@ -250,17 +277,18 @@ class PPOAgent:
                 self.critic_optimizer.step()
 
     def _get_log_probs(self, states, actions):
-        policy_outputs = self.actor(states)
-        single_action_dim = self._single_action_dim()
-        if actions.shape[1] % single_action_dim != 0:
-            raise ValueError(f"action shape {actions.shape} is not divisible by schema dim {single_action_dim}")
+        all_policy_outputs = self.actor(states)
+        expected_dim = self.action_dim
+        if actions.shape[1] != expected_dim:
+            raise ValueError(f"action shape {actions.shape} does not match expected dim {expected_dim}")
 
         log_probs = torch.zeros(states.shape[0], device=self.device)
         entropy = torch.zeros(states.shape[0], device=self.device)
 
-        for robot_offset in range(0, actions.shape[1], single_action_dim):
-            field_offset = robot_offset
-            for name, space in self.action_schema.items():
+        field_offset = 0
+        for robot_type in self.robot_type_list:
+            policy_outputs = all_policy_outputs[robot_type]
+            for name, space in self.action_schemas[robot_type].items():
                 output = policy_outputs[name]
 
                 if isinstance(space, spaces.Box):
@@ -279,9 +307,13 @@ class PPOAgent:
 
         return log_probs.unsqueeze(-1), entropy.unsqueeze(-1)
 
-    def _single_action_dim(self):
+    @property
+    def action_dim(self):
+        return sum(self._action_dim(robot_type) for robot_type in self.robot_type_list)
+
+    def _action_dim(self, robot_type):
         dim = 0
-        for space in self.action_schema.values():
+        for space in self.action_schemas[robot_type].values():
             if isinstance(space, spaces.Box):
                 dim += int(np.prod(space.shape))
             elif isinstance(space, spaces.Discrete):

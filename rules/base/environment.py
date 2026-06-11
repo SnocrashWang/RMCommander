@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from collections import defaultdict
 from enum import Enum
 from typing import List, Dict, Optional, Tuple, Any
-from gymnasium import spaces
 
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
@@ -15,28 +14,13 @@ from utils.action import Action
 from utils.grid_map import GridMap
 from utils.robot import Robot
 from utils.obstacle import Obstacle
-from utils.utils import attack_sight_clear, opposite_team, timer
+from utils.utils import attack_sight_clear, opposite_team, pos_norm2real, pos_real2norm, timer
 
 from rules.base.config import env_config as BASE_ENV_CONFIG
+from rules.base.config.action_config import ActionBase
 from rules.base.config.obstacle_config import OBSTACLES
-from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
+from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_ACTION
 
-
-class ActionBase(Action):
-    _schema={
-        "navigation_target_norm": spaces.Box(
-            low=np.array([-1.0, -1.0], dtype=np.float32),
-            high=np.array([1.0, 1.0], dtype=np.float32),
-            dtype=np.float32,
-        ),
-        "navigation_set": spaces.Discrete(2),
-        "attack_target": spaces.Discrete(len(RobotType)),
-        "spin": spaces.Discrete(2),
-    }
-
-    def get_target_position(self) -> Tuple[float, float]:
-        """获取导航目标的实际坐标"""
-        return (self.navigation_target_norm + 1) * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]) / 2
 
 @dataclass
 class GameObs:
@@ -68,7 +52,7 @@ class RobotObs:
     @classmethod
     def from_robot(cls, robot: Robot):
         return cls(
-            position_norm=np.array(robot.get_position()) / np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]) * 2 - 1,
+            position_norm=pos_real2norm(robot.get_position(), (BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT)),
             chassis_property_type=robot.chassis_property_type.value,
             gimbal_property_type=robot.gimbal_property_type.value,
             level=robot.level,
@@ -113,7 +97,7 @@ class Observation:
         robot_array = array[1:]
         robot_obs = {}
         for team in [GameTeam.RED, GameTeam.BLUE]:
-            for robot_type in BASE_ROBOT_TYPE_LIST:
+            for robot_type in BASE_ROBOT_TYPE_ACTION:
                 robot_id = ROBOT_ID[team][robot_type]
                 robot_obs[robot_id] = RobotObs.from_array(robot_array[:8])
                 robot_array = robot_array[8:]
@@ -267,7 +251,7 @@ class Environment:
 
             # 设置导航点
             if robot_action.navigation_set == 1:
-                navigation_target = robot_action.get_target_position()
+                navigation_target = pos_norm2real(robot_action.navigation_target_norm, (self.env_config.FIELD_WIDTH, self.env_config.FIELD_HEIGHT))
                 robot.set_target(tuple(navigation_target))
 
             robot.refresh_motion_speed()

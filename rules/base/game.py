@@ -7,13 +7,13 @@ from typing import List, Dict, Optional, Tuple, Any
 
 from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
-from utils.config.robot_config import RobotType
+from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.grid_map import world_to_grid
 from utils.utils import meters_to_pixels, calc_distance, opposite_team
 from visualization.renderer import Renderer
 
 from rules.base.config import env_config as BASE_ENV_CONFIG
-from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_LIST
+from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_ACTION
 from rules.base.environment import ActionBase, GameObs, RobotObs, Observation, Environment
 
 class Game(gym.Env):
@@ -54,8 +54,8 @@ class Game(gym.Env):
     
     def _setup_action_space(self):
         self.action_space = spaces.Dict({
-            robot_id: ActionBase.get_space()
-            for robot_id in self.env.robots
+            ROBOT_ID[robot.team][robot.robot_type]: BASE_ROBOT_TYPE_ACTION[robot.robot_type].get_space()
+            for robot in self.env.robots.values()
         })
     
     def _setup_observation_space(self):
@@ -258,7 +258,7 @@ class Game(gym.Env):
         reward_weight.append(10)
 
         # 目标奖励
-        if RobotType(action["RED_3_STANDARD"].attack_target) in BASE_ROBOT_TYPE_LIST:
+        if RobotType(action["RED_3_STANDARD"].attack_target) in BASE_ROBOT_TYPE_ACTION:
             reward_target = 1.0
         else:
             reward_target = -1.0

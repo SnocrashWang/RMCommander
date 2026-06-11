@@ -12,7 +12,7 @@ import torch
 from tqdm import tqdm
 
 from agents.ppo_agent import PPOAgent
-from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_LIST
+from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION
 from rules.rmul.environment import ActionRMUL
 from rules.rmul.game import GameRMUL as Game
 from train_rmul import evaluate, rollout
@@ -114,8 +114,7 @@ def train(args):
     game = Game()
     agent = PPOAgent(
         state_dim=game.observation_space.shape[0],
-        robot_type_list=RMUL_ROBOT_TYPE_LIST,
-        action_cls=ActionRMUL,
+        robot_type_action=RMUL_ROBOT_TYPE_ACTION,
         device=args.device,
         actor_lr=args.actor_lr,
         critic_lr=args.critic_lr,

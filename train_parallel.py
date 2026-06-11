@@ -9,6 +9,7 @@ from agents.ppo_agent import PPOAgent
 from rules.base.config import env_config
 from rules.base.environment import ActionBase
 from rules.base.game import Game
+from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.utils import timer
@@ -37,7 +38,7 @@ def game_worker(max_steps, control_steps, agent_train, agent_test, adversarial, 
         done = terminated or truncated
 
         transition_dict['states'].append(state)
-        transition_dict['actions'].append(red_action["RED_3_STANDARD"].to_array())
+        transition_dict['actions'].append(agent_train.action_to_array(red_action))
         transition_dict['next_states'].append(next_state)
         transition_dict['rewards'].append(reward)
         transition_dict['dones'].append(done)
@@ -87,6 +88,7 @@ def train(
     state_size = Game().observation_space.shape[0]
     agent_train = PPOAgent(
         state_dim=state_size,
+        robot_type_action=BASE_ROBOT_TYPE_ACTION,
         device=device
     )
     if adversarial:
@@ -95,6 +97,7 @@ def train(
     if rival_model is not None:
         agent_test = PPOAgent(
             state_dim=state_size,
+            robot_type_action=BASE_ROBOT_TYPE_ACTION,
             device=device
         )
     else:

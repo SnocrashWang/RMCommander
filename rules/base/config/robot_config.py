@@ -4,10 +4,13 @@ from utils.config.exp_prop_config import CHASSIS_PROPERTY_TYPE, GIMBAL_PROPERTY_
 from utils.config.game_config import GameTeam
 from utils.config.robot_config import RobotConfig, RobotType
 
+from rules.base.config.action_config import ActionBase
 
-BASE_ROBOT_TYPE_LIST = [
-    RobotType.STANDARD_3,
-]
+
+BASE_ROBOT_TYPE_ACTION = {
+    RobotType.STANDARD_3: ActionBase,
+}
+
 
 # Default robot config for the simple base 1v1 scene.
 BASE_ROBOT_CONFIGS: List[RobotConfig] = [

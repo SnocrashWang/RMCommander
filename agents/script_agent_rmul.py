@@ -66,8 +66,9 @@ class ScriptControllerRMUL:
         for robot_id in team_robot_ids(GameTeam.BLUE):
             robot = self.game.env.get_robot(robot_id)
             needs_supply = (
-                robot.hp / robot.max_hp < 0.2
+                (robot.hp / robot.max_hp < 0.2 or self.last_needs_supply.get(robot_id) and robot.hp != robot.max_hp)
                 or robot.ammo_allowed < robot.bullet.PURCHASE_NUM
+                or robot.gun_locked
             )
             if (
                 robot_id not in self.nav_targets

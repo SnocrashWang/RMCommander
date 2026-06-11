@@ -270,11 +270,15 @@ class EnvironmentRMUL(Environment):
         # 1. 有一方率先积满
         if red_progress >= target > blue_progress:
             self.game_state = GameState.RED_TEAM_WIN
+            self._victory_progress[GameTeam.RED] = target
         elif blue_progress >= target > red_progress:
             self.game_state = GameState.BLUE_TEAM_WIN
+            self._victory_progress[GameTeam.BLUE] = target
         # 2. 同时积满
         elif min(red_progress, blue_progress) >= target:
             self.game_state = GameState.DRAW
+            self._victory_progress[GameTeam.RED] = target
+            self._victory_progress[GameTeam.BLUE] = target
         # 3. 时间到
         elif self._remaining_time <= 0:
             if red_progress > blue_progress:

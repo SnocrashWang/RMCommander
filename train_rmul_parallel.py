@@ -282,10 +282,10 @@ def parse_args():
 
     train_group = parser.add_argument_group('训练配置')
     train_group.add_argument("--episodes", type=int, default=100, help="训练总回合数。")
-    train_group.add_argument("--rollout-batch-size", type=int, default=8, help="每次 PPO 更新前收集的 rollout 数量。")
-    train_group.add_argument("--num-workers", type=int, default=4, help="并行采样的工作进程数量。")
-    train_group.add_argument("--save-interval", type=int, default=10, help="模型保存间隔，按训练回合数计算。")
-    train_group.add_argument("--eval-interval", type=int, default=10, help="评估间隔，按训练回合数计算。")
+    train_group.add_argument("--rollout-batch-size", type=int, default=4, help="每次 PPO 更新前收集的 rollout 数量。")
+    train_group.add_argument("--num-workers", type=int, default=2, help="并行采样的工作进程数量。")
+    train_group.add_argument("--save-interval", type=int, default=5, help="模型保存间隔，按训练回合数计算。")
+    train_group.add_argument("--eval-interval", type=int, default=5, help="评估间隔，按训练回合数计算。")
     train_group.add_argument("--eval-episodes", type=int, default=20, help="每次评估运行的回合数。")
     train_group.add_argument("--parallel-eval", action="store_true", help="启用并行评估。")
 

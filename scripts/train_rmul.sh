@@ -5,10 +5,10 @@ PARAMS=(
     --control-frequency 2
     --blue-mode "script"
     --episodes 100
-    --rollout-batch-size 4
-    --num-workers 2
-    --save-interval 10
-    --eval-interval 10
+    --rollout-batch-size 50
+    --num-workers 16
+    --save-interval 5
+    --eval-interval 5
     --eval-episodes 20
     --parallel-eval
     # --device "cuda:0"

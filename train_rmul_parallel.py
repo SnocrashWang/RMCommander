@@ -45,7 +45,7 @@ def rollout_worker(agent: PPOAgent, control_steps: int, blue_mode: str, seed: in
         game.close()
 
 
-def eval_worker(agent: PPOAgent, control_steps: int, blue_mode: str, seed: int = None):
+def eval_worker(agent: PPOAgent, control_steps: int, blue_mode: str, seed: int = None, deterministic_eval: bool = False):
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
@@ -58,7 +58,7 @@ def eval_worker(agent: PPOAgent, control_steps: int, blue_mode: str, seed: int =
             agent=agent,
             control_steps=control_steps,
             blue_mode=blue_mode,
-            deterministic=True,
+            deterministic=deterministic_eval,
             train=False,
         )
         return result
@@ -66,7 +66,7 @@ def eval_worker(agent: PPOAgent, control_steps: int, blue_mode: str, seed: int =
         game.close()
 
 
-def evaluate_parallel(agent: PPOAgent, episodes: int, control_steps: int, blue_mode: str, num_workers: int):
+def evaluate_parallel(agent: PPOAgent, episodes: int, control_steps: int, blue_mode: str, num_workers: int, deterministic_eval: bool):
     results = []
     if episodes <= 0:
         return {
@@ -87,6 +87,7 @@ def evaluate_parallel(agent: PPOAgent, episodes: int, control_steps: int, blue_m
                 control_steps,
                 eval_blue_mode,
                 random.randrange(2**31),
+                deterministic_eval
             )
             for _ in range(episodes)
         ]
@@ -211,6 +212,7 @@ def train(args):
                     control_steps,
                     args.blue_mode,
                     args.num_workers,
+                    args.deterministic_eval
                 )
             else:
                 eval_game = Game()
@@ -221,6 +223,7 @@ def train(args):
                         args.eval_episodes,
                         control_steps,
                         args.blue_mode if args.blue_mode != "auto" else "script",
+                        args.deterministic_eval
                     )
                 finally:
                     eval_game.close()
@@ -287,6 +290,7 @@ def parse_args():
     train_group.add_argument("--eval-interval", type=int, default=5, help="评估间隔，按训练回合数计算。")
     train_group.add_argument("--eval-episodes", type=int, default=20, help="每次评估运行的回合数。")
     train_group.add_argument("--parallel-eval", action="store_true", help="启用并行评估。")
+    train_group.add_argument("--deterministic-eval", action="store_true", help="启用确定性策略评估。")
 
     agent_group = parser.add_argument_group('PPO配置')
     agent_group.add_argument("--device", type=str, default=None, help="训练设备，例如 cpu、cuda 或 cuda:0；不指定时自动选择。")

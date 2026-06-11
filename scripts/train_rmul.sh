@@ -11,6 +11,7 @@ PARAMS=(
     --eval-interval 5
     --eval-episodes 20
     --parallel-eval
+    # --deterministic-eval
     # --device "cuda:0"
     --actor-lr 5e-5
     --critic-lr 5e-4

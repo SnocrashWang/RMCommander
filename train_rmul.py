@@ -30,7 +30,7 @@ def basic_action_reward(actions: Dict[str, ActionRMUL]):
         #     reward += 0.1
         # else:
         #     reward -= 0.1
-        if action.attack_target in [robot_type.value for robot_type in RMUL_ROBOT_TYPE_ACTION] + [RobotType.NONE]:
+        if action.attack_target in [robot_type.value for robot_type in RMUL_ROBOT_TYPE_ACTION] + [RobotType.NONE.value]:
             reward += 0.1
         else:
             reward -= 0.1
@@ -166,6 +166,7 @@ def evaluate(
     episodes: int,
     control_steps: int,
     blue_mode: str,
+    deterministic_eval: bool
 ):
     results = []
     for _ in range(episodes):
@@ -174,7 +175,7 @@ def evaluate(
             agent,
             control_steps=control_steps,
             blue_mode=blue_mode,
-            deterministic=True,
+            deterministic=deterministic_eval,
             train=False,
         )
         results.append(result)
@@ -238,6 +239,7 @@ def train(args):
                 args.eval_episodes,
                 control_steps,
                 blue_mode,
+                args.deterministic_eval
             )
             tqdm.write(
                 "[EVAL]\t"
@@ -298,6 +300,7 @@ def parse_args():
     train_group.add_argument("--eval-episodes", type=int, default=20, help="每次评估运行的回合数。")
     train_group.add_argument("--timing-interval", type=int, default=1, help="耗时统计打印间隔，按训练回合数计算；设为 0 则只在结束时打印。")
     train_group.add_argument("--parallel-eval", action="store_true", help="启用并行评估。")
+    train_group.add_argument("--deterministic-eval", action="store_true", help="启用确定性策略评估。")
 
     agent_group = parser.add_argument_group('PPO配置')
     agent_group.add_argument("--device", type=str, default=None, help="训练设备，例如 cpu、cuda 或 cuda:0；不指定时自动选择。")

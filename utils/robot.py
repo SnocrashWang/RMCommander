@@ -261,7 +261,7 @@ class Robot:
             # 复活读条已满
             if self.revive_progress >= self.revive_target:
                 self.is_alive = True
-                self.last_revive_time = remaining_time
+                self.last_revive_time_remain = remaining_time
                 self.hp = int(self.max_hp * 0.2)
                 self.heat = 0
                 self.revive_progress = 0

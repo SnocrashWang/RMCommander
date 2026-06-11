@@ -330,9 +330,9 @@ class GameRMUL(gym.Env):
         self._init_render()
 
         screen = self._renderer.render(self.env)
+        self._screen.blit(screen, (0, 0))
         if self._render_mode == "human":
             # 使用自定义渲染器
-            self._screen.blit(screen, (0, 0))
             time_cost = time.perf_counter() - self._frame_start_time
             wait_time = max(0, self.dt - time_cost)
             if wait_time > 0:

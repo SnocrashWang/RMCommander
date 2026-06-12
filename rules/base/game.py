@@ -15,8 +15,11 @@ from visualization.renderer import Renderer
 from rules.base.config import env_config as BASE_ENV_CONFIG
 from rules.base.config.action_config import ActionBase
 from rules.base.config.observation_config import ObsBaseEnv, ObsBaseRobot, ObsBaseGame
-from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION
+from rules.base.config.obstacle_config import OBSTACLE_CONFIGS
+from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION, BASE_ROBOT_CONFIGS
+from rules.base.curriculum import Curriculum
 from rules.base.environment import Environment
+
 
 class Game(gym.Env):
    
@@ -31,8 +34,15 @@ class Game(gym.Env):
     ):
         super().__init__()
 
+        # 课程学习
+        self.curriculum = Curriculum()
+        obstacle_configs, robot_configs = self.curriculum.random_start(if_obstacles=True, if_robots=True)
+        # 随机配置
+        self._obstacle_configs = obstacle_configs
+        self._robot_configs = robot_configs
+
         # 创建底层环境
-        self.env = Environment()
+        self.env = Environment(self._obstacle_configs, self._robot_configs)
         self.dt = 1 / BASE_ENV_CONFIG.FPS
         
         # 渲染
@@ -66,14 +76,14 @@ class Game(gym.Env):
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = {}):
         """重置环境"""
         super().reset(seed=seed)
-        
-        # 重置底层环境
-        self.env.reset()
 
-        # if "random" in options and options["random"]:
-        #     obs_array = self.observation_space.sample()
-        #     obs = Observation.from_array(obs_array)
-        #     self.apply_observation(obs)
+        # 重新课程随机
+        obstacle_configs, robot_configs = self.curriculum.random_start(if_obstacles=True, if_robots=True)
+        self._obstacle_configs = obstacle_configs
+        self._robot_configs = robot_configs
+
+        # 重置底层环境
+        self.env.reset(self._obstacle_configs, self._robot_configs)
         
         # 渲染
         if self._render_mode:

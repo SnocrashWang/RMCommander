@@ -29,6 +29,9 @@ class Robot:
         radius: float,
         max_ammo: int,
         ammo_allowed: int,
+        level: int,
+        hp: int,
+        heat: float,
         enable_exp: bool = True,
         physics_engine: Optional[pymunk.Space] = None,
     ):
@@ -38,7 +41,7 @@ class Robot:
         self.id : str = ROBOT_ID[team][robot_type]
 
         # 规则性能
-        self.level : int = 1
+        self.level : int = np.clip(level, 1, 10) if level else 1
         self.exp : int = 0
         self.chassis_property_type : CHASSIS_PROPERTY_TYPE = chassis_property_type
         self.gimbal_property_type : GIMBAL_PROPERTY_TYPE = gimbal_property_type
@@ -68,8 +71,8 @@ class Robot:
 
         # 更新性能
         self.update_property()
-        self.hp : int = self.max_hp
-        self.heat : float = 0
+        self.hp : int = np.clip(hp, 0, self.max_hp) if hp else self.max_hp
+        self.heat : float = np.clip(heat, 0, self.max_heat) if heat else 0
         
         # 物理属性
         self.radius : float = radius
@@ -251,6 +254,10 @@ class Robot:
 
     def step(self, dt, remaining_time):
         """沿路径点导航"""
+        # 判断存活
+        if self.hp <= 0:
+            self.is_alive = False
+            self.gun_locked = True
         # 若非存活
         if not self.is_alive:
             if self._body is not None:

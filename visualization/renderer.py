@@ -193,8 +193,7 @@ class Renderer:
                 hp_text = self.font_tiny.render(f"{robot.hp:>3d}/{robot.max_hp:>3d}", True, render_config.COLOR_TEXT)
                 self.screen_note.blit(hp_text, (hp_bar_x + bar_width / 2 - hp_text.get_width() / 2, hp_bar_y + bar_height / 2 - hp_text.get_height() / 2))
             except:
-                print(robot.id, robot.hp, robot.max_hp)
-                exit()
+                raise ValueError(f"{robot.id}'s hp is float: {robot.hp} / {robot.max_hp}")
         else:
             revive_bar_x = x - bar_width / 2
             revive_bar_y = y - scale * 1.5 - bar_height * 2

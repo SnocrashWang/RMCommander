@@ -15,12 +15,10 @@ from utils.utils import attack_sight_clear, opposite_team, pos_norm2real, timer
 
 from rules.base.config import env_config as BASE_ENV_CONFIG
 from rules.base.config.action_config import ActionBase
-from rules.base.config.obstacle_config import OBSTACLES
-from rules.base.config.robot_config import BASE_ROBOT_CONFIGS
 
 
 class Environment:
-    def __init__(self):
+    def __init__(self, obstacle_configs, robot_configs):
         # 环境设置
         self.env_config = BASE_ENV_CONFIG
         self.dt = 1 / BASE_ENV_CONFIG.FPS
@@ -35,11 +33,11 @@ class Environment:
 
         # 创建障碍物
         self.obstacles = []
-        self._create_obstacles(OBSTACLES)
+        self._create_obstacles(obstacle_configs)
 
         # 创建机器人
         self.robots: Dict[str, Robot] = {}
-        self._create_robots(BASE_ROBOT_CONFIGS)
+        self._create_robots(robot_configs)
         
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(self.env_config)
@@ -80,15 +78,18 @@ class Environment:
         for obstacle_config in obstacles:
             self.obstacles.append(Obstacle(obstacle_config, self.physics_engine))
 
-    def reset(self):
+    def reset(self, obstacle_configs, robot_configs):
         """重置环境"""
+        # 重新创建障碍物
+        self._create_obstacles(obstacle_configs)
+
         # 销毁现有机器人
         for robot in self.robots.values():
             robot.destroy_physics_body(self.physics_engine)
         self.robots.clear()
         
         # 创建新机器人
-        self._create_robots(BASE_ROBOT_CONFIGS)
+        self._create_robots(robot_configs)
         
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(self.env_config)

@@ -14,4 +14,4 @@ red_obstacle = {"p1": (2.050, 2.050), "p2": (1.200, 2.900), "thickness": 0.2}
 # 蓝方障碍物
 blue_obstacle = opposite_obstacle(red_obstacle, (FIELD_WIDTH, FIELD_HEIGHT))
 
-OBSTACLES = walls + [red_obstacle, blue_obstacle]
+OBSTACLE_CONFIGS = walls + [red_obstacle, blue_obstacle]

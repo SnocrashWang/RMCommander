@@ -52,4 +52,7 @@ class RobotConfig:
     radius: float = 0.25                            # 底盘半径
     max_ammo: int = 200                             # 实际载弹量
     ammo_allowed: int = 0                           # 允许发弹量
+    level: int = None                               # 初始等级，None代表默认
+    hp: int = None                                  # 初始血量，None代表默认
+    heat: float = None                              # 初始热量，None代表默认
     enable_exp: bool = True                         # 是否享有经验

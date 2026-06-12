@@ -197,7 +197,7 @@ def reward(game: Game, stage, action: ActionBase, before, after) -> float:
                         reward += 0.12
         else:
             if action.spin == 0:
-                reward += 0.05
+                reward += 0.02
         reward -= 0.1
     if stage == "c":
         reward -= 0.05

@@ -1,3 +1,5 @@
+# 此脚本已不再可用
+
 import os
 import json
 import time

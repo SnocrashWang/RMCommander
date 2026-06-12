@@ -9,127 +9,15 @@ from typing import Dict, List, Any, Optional, Tuple
 from rules.base.environment import Environment
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotType, ROBOT_ID
-from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.robot import Robot
-from utils.utils import opposite_team, pos_real2norm
+from utils.utils import opposite_team
 
 from rules.rmul.config import env_config as RMUL_ENV_CONFIG
 from rules.rmul.config.action_config import ActionRMUL
 from rules.rmul.config.obstacle_config import RMUL_OBSTACLES
-from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS, RMUL_ROBOT_TYPE_ACTION
+from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS
 from rules.rmul.config.zone_config import RMUL_ZONES
 
-
-@dataclass
-class GameObsRMUL:
-    remaining_time_norm: float
-    victory_progress_red_norm: float
-    victory_progress_blue_norm: float
-    # economics_red: int
-    # economics_blue: int
-
-    @classmethod
-    def from_array(cls, array: np.ndarray):
-        assert array.shape == (3,)
-        return cls(
-            remaining_time_norm=array[0],
-            victory_progress_red_norm=array[1],
-            victory_progress_blue_norm=array[2],
-        )
-
-    def to_array(self) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
-        return np.array([
-            self.remaining_time_norm,
-            self.victory_progress_red_norm,
-            self.victory_progress_blue_norm,
-            # self.economics_red,
-            # self.economics_blue,
-        ])
-
-@dataclass
-class RobotObsRMUL:
-    position_norm: np.ndarray
-    chassis_property_type: int
-    gimbal_property_type: int
-    level: int
-    exp_norm: float
-    hp_norm: float
-    heat_norm: float
-
-    @classmethod
-    def from_robot(cls, robot: Robot):
-        return cls(
-            position_norm=pos_real2norm(robot.get_position(), (RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT)),
-            chassis_property_type=robot.chassis_property_type.value,
-            gimbal_property_type=robot.gimbal_property_type.value,
-            level=robot.level,
-            exp_norm=(robot.exp - LEVEL_NEED_EXP[robot.level]) / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1,
-            hp_norm=robot.hp / robot.max_hp,
-            heat_norm=robot.heat / robot.max_heat,
-        )
-
-    @classmethod
-    def from_array(cls, array: np.ndarray):
-        assert array.shape == (8,)
-        return cls(
-            position_norm=array[:2],
-            chassis_property_type=math.ceil(array[2]),
-            gimbal_property_type=math.ceil(array[3]),
-            level=math.ceil(array[4]),
-            exp_norm=array[5],
-            hp_norm=array[6],
-            heat_norm=array[7],
-        )
-
-    def to_array(self) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
-        return np.array([
-            *self.position_norm,
-            self.chassis_property_type,
-            self.gimbal_property_type,
-            self.level,
-            self.exp_norm,
-            self.hp_norm,
-            self.heat_norm,
-        ])
-
-@dataclass
-class ObservationRMUL:
-    game_obs: GameObsRMUL
-    robot_obs: Dict[str, RobotObsRMUL]
-
-    @classmethod
-    def from_array(cls, array: np.ndarray):
-        game_obs = GameObsRMUL.from_array(array[:3])
-        robot_array = array[3:]
-        robot_obs = {}
-        for team in [GameTeam.RED, GameTeam.BLUE]:
-            for robot_type in RMUL_ROBOT_TYPE_ACTION:
-                robot_id = ROBOT_ID[team][robot_type]
-                robot_obs[robot_id] = RobotObsRMUL.from_array(robot_array[:8])
-                robot_array = robot_array[8:]
-        return cls(game_obs, robot_obs)
-
-    def to_array(self, team: GameTeam = GameTeam.RED) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
-        red_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("RED")}
-        blue_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("BLUE")}
-        if team == GameTeam.RED:
-            # 先己方，后对方
-            robot_obs = {**red_robot_obs, **blue_robot_obs}
-        else:
-            # 调换红蓝方的坐标方向
-            for _, robot_obs in red_robot_obs.items():
-                robot_obs.position_norm *= -1
-            for _, robot_obs in blue_robot_obs.items():
-                robot_obs.position_norm *= -1
-            robot_obs = {**blue_robot_obs, **red_robot_obs}
-
-        return np.concatenate([
-            self.game_obs.to_array(),
-            *[robot_obs.to_array() for _, robot_obs in robot_obs.items()]
-        ])
 
 class EnvironmentRMUL(Environment):
     def __init__(self):

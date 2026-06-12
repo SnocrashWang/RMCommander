@@ -13,8 +13,10 @@ from utils.utils import meters_to_pixels, calc_distance, opposite_team
 from visualization.renderer import Renderer
 
 from rules.base.config import env_config as BASE_ENV_CONFIG
-from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_ACTION
-from rules.base.environment import ActionBase, GameObs, RobotObs, Observation, Environment
+from rules.base.config.action_config import ActionBase
+from rules.base.config.observation_config import ObsBaseEnv, ObsBaseRobot, ObsBaseGame
+from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION
+from rules.base.environment import Environment
 
 class Game(gym.Env):
    
@@ -31,7 +33,6 @@ class Game(gym.Env):
 
         # 创建底层环境
         self.env = Environment()
-
         self.dt = 1 / BASE_ENV_CONFIG.FPS
         
         # 渲染
@@ -60,42 +61,7 @@ class Game(gym.Env):
     
     def _setup_observation_space(self):
         """设置观察空间"""
-        # 游戏状态：剩余时间
-        game_state_remaining_time_space = spaces.Box(
-            low=np.array([0.0], dtype=np.float32),
-            high=np.array([1.0], dtype=np.float32),
-            dtype=np.float32
-        )
-        
-        # 机器人状态：位置(2) + 导航点(2) + 属性(2) + 等级(1) + 经验(1) + 血量(1) + 热量(1) = 10维
-        robot_state_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 2, 2, 10, 1.0, 1.0, 1.0], dtype=np.float32),
-            dtype=np.float32
-        )
-        
-        # 计算机器人数量
-        red_robots = [r for r in self.env.robots.values() if r.team == GameTeam.RED]
-        blue_robots = [r for r in self.env.robots.values() if r.team == GameTeam.BLUE]
-        
-        # 组合观察空间
-        observation_low = np.concatenate([
-            game_state_remaining_time_space.low,  # 游戏状态
-            np.tile(robot_state_space.low, len(red_robots)),  # 红队机器人
-            np.tile(robot_state_space.low, len(blue_robots))  # 蓝队机器人
-        ])
-        
-        observation_high = np.concatenate([
-            game_state_remaining_time_space.high,  # 游戏状态
-            np.tile(robot_state_space.high, len(red_robots)),  # 红队机器人
-            np.tile(robot_state_space.high, len(blue_robots))  # 蓝队机器人
-        ])
-        
-        self.observation_space = spaces.Box(
-            low=observation_low,
-            high=observation_high,
-            dtype=np.float32
-        )
+        self.observation_space = ObsBaseGame.get_space(self.env.robots.keys())
     
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = {}):
         """重置环境"""
@@ -104,10 +70,10 @@ class Game(gym.Env):
         # 重置底层环境
         self.env.reset()
 
-        if "random" in options and options["random"]:
-            obs_array = self.observation_space.sample()
-            obs = Observation.from_array(obs_array)
-            self.apply_observation(obs)
+        # if "random" in options and options["random"]:
+        #     obs_array = self.observation_space.sample()
+        #     obs = Observation.from_array(obs_array)
+        #     self.apply_observation(obs)
         
         # 渲染
         if self._render_mode:
@@ -124,16 +90,6 @@ class Game(gym.Env):
         }
         
         return observation, info
-    
-    def apply_observation(self, observation: Observation):
-        """
-        【注意！】这是一个非常危险的函数，非特殊情况不要使用！
-        直接将指定的观察值赋值到当前环境中
-        """
-        self.env.apply_observation(observation)
-        for robot_id, robot_obs in observation.robot_obs.items():
-            robot = self.env.get_robot(robot_id)
-            robot.apply_observation(robot_obs, BASE_ENV_CONFIG)
     
     def step(self, red_action: Dict[str, ActionBase], blue_action: Dict[str, ActionBase], control_steps: int = 1):
         """执行一步动作"""
@@ -174,120 +130,22 @@ class Game(gym.Env):
         
         return observation, reward, terminated, truncated, info
     
-    def _get_obs(self) -> Observation:
+    def _get_obs(self) -> ObsBaseGame:
         """获取观察"""
         # 全局状态向量
-        game_state = GameObs(
+        env_obs = ObsBaseEnv(
             remaining_time_norm=self.env._remaining_time / BASE_ENV_CONFIG.GAME_TIME_LIMIT,
         )
 
         # 机器人状态向量
-        robot_state = {}
+        robots_obs = {}
         for robot_id, robot in self.env.robots.items():
-            robot_state[robot_id] = RobotObs.from_robot(robot)
-        
-        return Observation(game_state, robot_state)
+            robots_obs[robot_id] = ObsBaseRobot.from_robot(robot)
+
+        return ObsBaseGame(env_obs, robots_obs)
     
     def _get_reward(self, team: GameTeam, action: Dict[str, ActionBase]) -> float:
-        """获取奖励"""
-        reward_list = []
-        reward_weight = []
-
-        # 时间消耗惩罚
-        reward_time = -0.1
-        reward_list.append(reward_time)
-        reward_weight.append(5)
-
-        # 不可行导航点惩罚
-        if action["RED_3_STANDARD"].navigation_set == 1:
-            navigation_target = (np.array(action["RED_3_STANDARD"].navigation_target_norm) + 1) * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT]) / 2
-            col, row = world_to_grid(navigation_target)
-            if self.env.get_robot("RED_3_STANDARD")._grid_map.is_blocked(col, row):
-                reward_navigation_unmovable = -1.0
-            else:
-                reward_navigation_unmovable = 1.0
-        else:
-            reward_navigation_unmovable = 0.0
-        reward_list.append(reward_navigation_unmovable)
-        reward_weight.append(5)
-
-        # # 导航点差异惩罚
-        # try:
-        #     last_navigation = self._last_action["RED_3_STANDARD"]["navigation_target_norm"]
-        # except:
-        #     last_navigation = self.env.robots["RED_3_STANDARD"].get_position()
-        # current_navigation = action["RED_3_STANDARD"]["navigation_target_norm"]
-        # navigation_diff = calc_distance(last_navigation, current_navigation)
-        # reward_navigation_diff = - (navigation_diff ** 2) / (1 + navigation_diff ** 2)
-        # reward_list.append(reward_navigation_diff)
-        # reward_weight.append(10)
-
-        # 导航代价
-        # if action["RED_3_STANDARD"].navigation_set == 1:
-        #     reward_navigation_cost = -1.0
-        # else:
-        #     reward_navigation_cost = 0.0
-        # reward_list.append(reward_navigation_cost)
-        # reward_weight.append(5)
-
-        # 血量奖励
-        our_last_hp = sum([self._last_observation.robot_obs["RED_3_STANDARD"].hp_norm])
-        our_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == team])
-        enemy_last_hp = sum([self._last_observation.robot_obs["BLUE_3_STANDARD"].hp_norm])
-        enemy_hp = sum([robot.hp / robot.max_hp for robot in self.env.robots.values() if robot.team == opposite_team(team)])        
-        reward_hp = np.sign((enemy_last_hp - enemy_hp) - (our_last_hp - our_hp))
-        reward_list.append(reward_hp)
-        reward_weight.append(10)
-
-        # 距离奖励
-        our_last_position = (np.array(self._last_observation.robot_obs["RED_3_STANDARD"].position_norm) + 1) / 2 * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT])
-        our_position = self.env.get_robot("RED_3_STANDARD").get_position()
-        enemy_last_position = (np.array(self._last_observation.robot_obs["BLUE_3_STANDARD"].position_norm) + 1) / 2 * np.array([BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT])
-        enemy_position = self.env.get_robot("BLUE_3_STANDARD").get_position()
-        last_distance = calc_distance(
-            our_last_position,
-            enemy_last_position
-        )
-        current_distance = calc_distance(
-            our_position,
-            enemy_last_position
-        )
-        # reward_distance = np.sign(last_distance - current_distance)  # 距离减小给予正奖励，距离增加给予负奖励
-        reward_distance = (last_distance - current_distance) * 50  # 距离减小给予正奖励，距离增加给予负奖励
-        reward_list.append(reward_distance)
-        reward_weight.append(10)
-
-        # 目标奖励
-        if RobotType(action["RED_3_STANDARD"].attack_target) in BASE_ROBOT_TYPE_ACTION:
-            reward_target = 1.0
-        else:
-            reward_target = -1.0
-        reward_list.append(reward_target)
-        reward_weight.append(5)
-
-        # 撞墙惩罚
-        # if self.env.physics_engine.shape_query(self.env.robots["RED_3_STANDARD"]._shape):
-        #     reward_collision = -1
-        # else:
-        #     reward_collision = 1
-        # reward_list.append(reward_collision)
-        # reward_weight.append(5)
-        
-        # 游戏结束奖励
-        if self.env.game_state == GameState.RED_TEAM_WIN:
-            reward_win = 10.0
-        elif self.env.game_state == GameState.BLUE_TEAM_WIN:
-            reward_win = -10.0
-        else:
-            reward_win = 0.0
-        
-        # 更新状态记录
-        self._last_observation = self._get_obs()
-        self._last_action = action
-
-        reward = np.average(reward_list, weights=reward_weight)
-        # print(reward_list, reward_win, reward)
-        return reward + reward_win
+        return 0
 
     def _is_terminated(self) -> bool:
         """判断是否自然结束"""
@@ -345,7 +203,7 @@ class Game(gym.Env):
     
     def close(self):
         """关闭环境"""
-        if hasattr(self, 'renderer') and self._renderer is not None:
+        if hasattr(self, '_renderer') and self._renderer is not None:
             # 关闭pygame显示
             import pygame
             pygame.display.quit()

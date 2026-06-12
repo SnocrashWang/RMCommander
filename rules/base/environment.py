@@ -1,131 +1,23 @@
 import pymunk
 import math
 import numpy as np
-import copy
-from dataclasses import dataclass
 from collections import defaultdict
 from enum import Enum
 from typing import List, Dict, Optional, Tuple, Any
 
-from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotConfig, ROBOT_ID, RobotType
 from utils.action import Action
 from utils.grid_map import GridMap
 from utils.robot import Robot
 from utils.obstacle import Obstacle
-from utils.utils import attack_sight_clear, opposite_team, pos_norm2real, pos_real2norm, timer
+from utils.utils import attack_sight_clear, opposite_team, pos_norm2real, timer
 
 from rules.base.config import env_config as BASE_ENV_CONFIG
 from rules.base.config.action_config import ActionBase
 from rules.base.config.obstacle_config import OBSTACLES
-from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_ACTION
+from rules.base.config.robot_config import BASE_ROBOT_CONFIGS
 
-ROBOT_COLLISION_SLOP = 0.001
-ROBOT_OVERLAP_EPSILON = 1e-9
-ROBOT_OVERLAP_RESOLVE_ITERATIONS = 4
-
-
-@dataclass
-class GameObs:
-    remaining_time_norm: float
-
-    @classmethod
-    def from_array(cls, array: np.ndarray):
-        assert array.shape == (1,)
-        return cls(
-            remaining_time_norm=array[0]
-        )
-
-    def to_array(self) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
-        return np.array([
-            self.remaining_time_norm,
-        ])
-
-@dataclass
-class RobotObs:
-    position_norm: np.ndarray
-    chassis_property_type: int
-    gimbal_property_type: int
-    level: int
-    exp_norm: float
-    hp_norm: float
-    heat_norm: float
-
-    @classmethod
-    def from_robot(cls, robot: Robot):
-        return cls(
-            position_norm=pos_real2norm(robot.get_position(), (BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT)),
-            chassis_property_type=robot.chassis_property_type.value,
-            gimbal_property_type=robot.gimbal_property_type.value,
-            level=robot.level,
-            exp_norm=(robot.exp - LEVEL_NEED_EXP[robot.level]) / (LEVEL_NEED_EXP[robot.level + 1] - LEVEL_NEED_EXP[robot.level]) if robot.level < len(LEVEL_NEED_EXP) else 1,
-            hp_norm=robot.hp / robot.max_hp,
-            heat_norm=robot.heat / robot.max_heat,
-        )
-
-    @classmethod
-    def from_array(cls, array: np.ndarray):
-        assert array.shape == (8,)
-        return cls(
-            position_norm=array[:2],
-            chassis_property_type=math.ceil(array[2]),
-            gimbal_property_type=math.ceil(array[3]),
-            level=math.ceil(array[4]),
-            exp_norm=array[5],
-            hp_norm=array[6],
-            heat_norm=array[7],
-        )
-
-    def to_array(self) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
-        return np.array([
-            *self.position_norm,
-            self.chassis_property_type,
-            self.gimbal_property_type,
-            self.level,
-            self.exp_norm,
-            self.hp_norm,
-            self.heat_norm,
-        ])
-
-@dataclass
-class Observation:
-    game_obs: GameObs
-    robot_obs: Dict[str, RobotObs]
-
-    @classmethod
-    def from_array(cls, array: np.ndarray):
-        game_obs = GameObs.from_array(array[:1])
-        robot_array = array[1:]
-        robot_obs = {}
-        for team in [GameTeam.RED, GameTeam.BLUE]:
-            for robot_type in BASE_ROBOT_TYPE_ACTION:
-                robot_id = ROBOT_ID[team][robot_type]
-                robot_obs[robot_id] = RobotObs.from_array(robot_array[:8])
-                robot_array = robot_array[8:]
-        return cls(game_obs, robot_obs)
-
-    def to_array(self, team: GameTeam = GameTeam.RED) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
-        red_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("RED")}
-        blue_robot_obs = {robot_id: copy.deepcopy(robot_obs) for robot_id, robot_obs in self.robot_obs.items() if robot_id.startswith("BLUE")}
-        if team == GameTeam.RED:
-            # 先己方，后对方
-            robot_obs = {**red_robot_obs, **blue_robot_obs}
-        else:
-            # 调换红蓝方的坐标方向
-            for _, robot_obs in red_robot_obs.items():
-                robot_obs.position_norm *= -1
-            for _, robot_obs in blue_robot_obs.items():
-                robot_obs.position_norm *= -1
-            robot_obs = {**blue_robot_obs, **red_robot_obs}
-
-        return np.concatenate([
-            self.game_obs.to_array(),
-            *[robot_obs.to_array() for _, robot_obs in robot_obs.items()]
-        ])
 
 class Environment:
     def __init__(self):
@@ -210,7 +102,7 @@ class Environment:
         # 更新物理引擎
         with timer(self._time_stats, 'physics_engine_step'):
             self.physics_engine.step(self.dt)
-        
+
         # 应用动作
         with timer(self._time_stats, 'apply_team_action'):
             # 为了使结算效果与红蓝先后解耦，我们先统一应用运动动作，再应用攻击动作
@@ -304,14 +196,6 @@ class Environment:
 
             robot_attacker.last_in_combat_time_remain = self._remaining_time
             robot_target.last_in_combat_time_remain = self._remaining_time
-
-    def apply_observation(self, observation: Observation):
-        """
-        【注意！】这是一个非常危险的函数，非特殊情况不要使用！
-        直接将指定的观察值赋值到当前环境中
-        """
-        # 游戏状态
-        self._remaining_time = observation.game_obs.remaining_time_norm * self.env_config.GAME_TIME_LIMIT
     
     def get_top_bar_info(self) -> Dict[str, Any]:
         """获取渲染顶部信息"""

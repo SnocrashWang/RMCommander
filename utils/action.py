@@ -13,7 +13,6 @@ class Action(ABC):
     def __init__(self, **kwargs):
         """初始化动作"""
         self._validate_schema()
-        # self.space = spaces.Dict(self._schema)
         self._init_actions(**kwargs)
 
     def __setattr__(self, name, value):
@@ -80,7 +79,7 @@ class Action(ABC):
     #     return {name: getattr(self, name) for name in self._schema}
 
     def to_array(self) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
+        """将所有的属性值转换为一个NumPy数组，实际上基本用不到"""
         array = []
         for name, space in self._schema.items():
             if isinstance(space, spaces.Box):

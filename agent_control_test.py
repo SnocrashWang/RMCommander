@@ -104,7 +104,8 @@ def agent_control(
         blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE, deterministic=deterministic)
         # blue_action = {"BLUE_3_STANDARD": mirror_navigation_target_actions(red_action)["RED_3_STANDARD"]}
         # blue_action = {"BLUE_3_STANDARD": Action(attack_target=3, spin=1)}
-        # print(red_action)
+        print(obs.to_array(GameTeam.RED))
+        print(red_action)
         # print(blue_action)
 
         # 更新环境

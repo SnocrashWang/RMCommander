@@ -135,6 +135,9 @@ class Robot:
         
         return new_robot
 
+    def random_start(self):
+        pass
+
     def destroy_physics_body(self, physics_engine: pymunk.Space):
         """从物理引擎中移除物理体"""
         if self._body is not None and self._shape is not None:
@@ -319,22 +322,6 @@ class Robot:
                 self.heal(int(self.max_hp * self.buff_manager.get_buff(BuffType.HEALING)))
 
         # TODO：结算禁区
-
-    def apply_observation(self, observation, env_config):
-        """
-        【注意！】这是一个非常危险的函数，非特殊情况不要使用！
-        直接将指定的观察值赋值到当前环境中
-        """
-        position = (np.array(observation.position_norm) + 1) / 2 * np.array([env_config.FIELD_WIDTH, env_config.FIELD_HEIGHT])
-        self._body.position = pymunk.Vec2d(position[0], position[1])
-        self.set_target(tuple(position))
-        self.chassis_property_type = CHASSIS_PROPERTY_TYPE(math.ceil(observation.chassis_property_type))
-        self.gimbal_property_type = GIMBAL_PROPERTY_TYPE(math.ceil(observation.gimbal_property_type))
-        self.update_property()
-        self.level = math.ceil(observation.level)
-        self.exp = int(observation.exp_norm * (LEVEL_NEED_EXP[self.level + 1] - LEVEL_NEED_EXP[self.level]) + LEVEL_NEED_EXP[self.level]) if self.level < len(LEVEL_NEED_EXP) else LEVEL_NEED_EXP[self.level]
-        self.hp = int(observation.hp_norm * self.max_hp)
-        self.heat = int(observation.heat_norm * self.max_heat)
 
     def attack(self, target_robot) -> bool:
         """攻击目标机器人

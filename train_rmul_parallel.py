@@ -264,6 +264,7 @@ def train(args):
             args.eval_episodes,
             control_steps,
             args.blue_mode if args.blue_mode != "auto" else "script",
+            args.deterministic_eval
         )
     finally:
         final_game.close()

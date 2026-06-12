@@ -133,11 +133,12 @@ class ObservationRMUL:
 
 class EnvironmentRMUL(Environment):
     def __init__(self):
-        # 创建物理引擎
+        # 环境设置
         self.env_config = RMUL_ENV_CONFIG
-        self.physics_engine = pymunk.Space()
-        self.physics_engine.gravity = (0, 0)  # 无重力
         self.dt = 1 / self.env_config.FPS
+
+        # 创建物理引擎
+        self._create_physics_engine()
 
         # 游戏状态
         self.game_state = GameState.PLAYING

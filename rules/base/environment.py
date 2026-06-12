@@ -21,6 +21,10 @@ from rules.base.config.action_config import ActionBase
 from rules.base.config.obstacle_config import OBSTACLES
 from rules.base.config.robot_config import BASE_ROBOT_CONFIGS, BASE_ROBOT_TYPE_ACTION
 
+ROBOT_COLLISION_SLOP = 0.001
+ROBOT_OVERLAP_EPSILON = 1e-9
+ROBOT_OVERLAP_RESOLVE_ITERATIONS = 4
+
 
 @dataclass
 class GameObs:
@@ -125,11 +129,12 @@ class Observation:
 
 class Environment:
     def __init__(self):
-        # 创建物理引擎
+        # 环境设置
         self.env_config = BASE_ENV_CONFIG
-        self.physics_engine = pymunk.Space()
-        self.physics_engine.gravity = (0, 0)  # 无重力
         self.dt = 1 / BASE_ENV_CONFIG.FPS
+
+        # 创建物理引擎
+        self._create_physics_engine()
 
         # 游戏状态
         self.game_state = GameState.PLAYING
@@ -150,6 +155,13 @@ class Environment:
         # 性能统计
         self._time_stats = defaultdict(list)
 
+    def _create_physics_engine(self):
+        self.physics_engine = pymunk.Space()
+        self.physics_engine.gravity = (0, 0)                    # 无重力
+        self.physics_engine.iterations = 30                     # 每个物理步里碰撞约束求解器迭代次数
+        self.physics_engine.collision_slop = 0.001              # 允许保留 0.001m 的碰撞穿透容差
+        self.physics_engine.collision_bias = math.pow(0.5, 60)  # 每秒修正大约 50% 的穿透误差
+
     def _create_robots(self, robot_configs: List[RobotConfig]):
         """根据配置创建机器人"""
         for config in robot_configs:
@@ -163,8 +175,8 @@ class Environment:
         """初始化所有机器人的网格地图"""
         for robot in self.robots.values():
             grid_map = GridMap(
-                width=env_config.FIELD_WIDTH,  # 场地宽度
-                height=env_config.FIELD_HEIGHT,  # 场地高度
+                width=env_config.FIELD_WIDTH,       # 场地宽度
+                height=env_config.FIELD_HEIGHT,     # 场地高度
                 robot_radius=robot.radius
             )
             # 标记所有障碍物

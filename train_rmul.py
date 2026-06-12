@@ -276,6 +276,7 @@ def train(args):
         args.eval_episodes,
         control_steps,
         args.blue_mode if args.blue_mode != "auto" else "script",
+        args.deterministic_eval
     )
     game.close()
     print(json.dumps({"model_path": model_path, "log_path": log_path, "final_eval": final_eval}, indent=2))

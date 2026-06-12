@@ -84,12 +84,12 @@ class ObsRMULRobot(Observation):
                 (RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT),
             ),
             level = robot.level,
-            hp=robot.hp,
-            max_hp=robot.max_hp,
-            power=robot.power,
-            heat=robot.heat,
-            max_heat=robot.max_heat,
-            cooldown=robot.cooldown
+            hp=min(1000, robot.hp),
+            max_hp=min(1000, robot.max_hp),
+            power=min(1000, robot.power),
+            heat=min(1000, robot.heat),
+            max_heat=min(1000, robot.heat),
+            cooldown=min(1000, robot.cooldown)
         )
 
 @dataclass

@@ -13,23 +13,22 @@ from utils.robot import Robot
 from utils.obstacle import Obstacle
 from utils.utils import attack_sight_clear, opposite_team, pos_norm2real, timer
 
-from rules.base.config import env_config as BASE_ENV_CONFIG
 from rules.base.config.action_config import ActionBase
 
 
 class Environment:
-    def __init__(self, obstacle_configs, robot_configs):
+    def __init__(self, env_config, obstacle_configs, robot_configs):
         # 环境设置
-        self.env_config = BASE_ENV_CONFIG
-        self.dt = 1 / BASE_ENV_CONFIG.FPS
+        self.env_config = env_config
+        self.dt = 1 / env_config.fps
 
         # 创建物理引擎
         self._create_physics_engine()
 
         # 游戏状态
         self.game_state = GameState.PLAYING
-        self.total_time = self.env_config.GAME_TIME_LIMIT       # 总时长
-        self._remaining_time = self.env_config.GAME_TIME_LIMIT  # 剩余时间
+        self.total_time = self.env_config.game_time_limit       # 总时长
+        self._remaining_time = self.env_config.game_remaining_time  # 剩余时间
 
         # 创建障碍物
         self.obstacles = []
@@ -65,8 +64,8 @@ class Environment:
         """初始化所有机器人的网格地图"""
         for robot in self.robots.values():
             grid_map = GridMap(
-                width=env_config.FIELD_WIDTH,       # 场地宽度
-                height=env_config.FIELD_HEIGHT,     # 场地高度
+                width=env_config.field_width,       # 场地宽度
+                height=env_config.field_height,     # 场地高度
                 robot_radius=robot.radius
             )
             # 标记所有障碍物
@@ -78,8 +77,10 @@ class Environment:
         for obstacle_config in obstacles:
             self.obstacles.append(Obstacle(obstacle_config, self.physics_engine))
 
-    def reset(self, obstacle_configs, robot_configs):
+    def reset(self, env_config, obstacle_configs, robot_configs):
         """重置环境"""
+        self.env_config = env_config
+
         # 重新创建障碍物
         self._create_obstacles(obstacle_configs)
 
@@ -96,7 +97,7 @@ class Environment:
         
         # 重置游戏状态
         self.game_state = GameState.PLAYING
-        self._remaining_time = self.env_config.GAME_TIME_LIMIT
+        self._remaining_time = self.env_config.game_remaining_time
 
     def step(self, red_action: Dict[str, ActionBase], blue_action: Dict[str, ActionBase]):
         """推进环境仿真"""
@@ -156,7 +157,7 @@ class Environment:
 
             # 设置导航点
             if robot_action.navigation_set == 1:
-                navigation_target = pos_norm2real(robot_action.navigation_target_norm, (self.env_config.FIELD_WIDTH, self.env_config.FIELD_HEIGHT))
+                navigation_target = pos_norm2real(robot_action.navigation_target_norm, self.env_config.field_size())
                 robot.set_target(tuple(navigation_target))
 
             robot.refresh_motion_speed()

@@ -12,8 +12,8 @@ from utils.config.robot_config import RobotType, ROBOT_ID
 from utils.robot import Robot
 from utils.utils import opposite_team
 
-from rules.rmul.config import env_config as RMUL_ENV_CONFIG
 from rules.rmul.config.action_config import ActionRMUL
+from rules.rmul.config.env_config import EnvConfigRMUL
 from rules.rmul.config.obstacle_config import RMUL_OBSTACLES
 from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS
 from rules.rmul.config.zone_config import RMUL_ZONES
@@ -22,16 +22,16 @@ from rules.rmul.config.zone_config import RMUL_ZONES
 class EnvironmentRMUL(Environment):
     def __init__(self):
         # 环境设置
-        self.env_config = RMUL_ENV_CONFIG
-        self.dt = 1 / self.env_config.FPS
+        self.env_config = EnvConfigRMUL()
+        self.dt = 1 / self.env_config.fps
 
         # 创建物理引擎
         self._create_physics_engine()
 
         # 游戏状态
         self.game_state = GameState.PLAYING
-        self.total_time = self.env_config.GAME_TIME_LIMIT       # 总时长
-        self._remaining_time = self.env_config.GAME_TIME_LIMIT  # 剩余时间
+        self.total_time = self.env_config.game_time_limit           # 总时长
+        self._remaining_time = self.env_config.game_remaining_time  # 剩余时间
 
         # 创建障碍物
         self.obstacles = []
@@ -48,8 +48,14 @@ class EnvironmentRMUL(Environment):
         self._init_robot_grid_maps(self.env_config)
 
         # 游戏机制
-        self._economics = {GameTeam.RED: 0, GameTeam.BLUE: 0}           # 经济
-        self._victory_progress = {GameTeam.RED: 0, GameTeam.BLUE: 0}    # 胜利进度
+        self._economics = {
+            GameTeam.RED: self.env_config.economics_red,
+            GameTeam.BLUE: self.env_config.economics_blue,
+        }                                                               # 经济
+        self._victory_progress = {
+            GameTeam.RED: self.env_config.occupation_progress_red,
+            GameTeam.BLUE: self.env_config.occupation_progress_red,
+        }    # 胜利进度
         self._laggard_bonus_taken = {                                   # 落后奖励
             "red_lag_70": False,
             "red_lag_140": False,
@@ -72,7 +78,7 @@ class EnvironmentRMUL(Environment):
         
         # 重置游戏状态
         self.game_state = GameState.PLAYING
-        self._remaining_time = self.env_config.GAME_TIME_LIMIT
+        self._remaining_time = self.env_config.game_remaining_time
 
         # 游戏机制
         self._economics = {GameTeam.RED: 0, GameTeam.BLUE: 0}           # 经济
@@ -140,7 +146,7 @@ class EnvironmentRMUL(Environment):
         # 检查胜利条件
         red_progress = self._victory_progress[GameTeam.RED]
         blue_progress = self._victory_progress[GameTeam.BLUE]
-        target = self.env_config.OCCUPATION_TARGET
+        target = self.env_config.occupation_target
 
         # 结算落后奖励
         if blue_progress - red_progress >= 70 and not self._laggard_bonus_taken["red_lag_70"]:

@@ -10,7 +10,7 @@ from utils.observation import Observation
 from utils.robot import Robot
 from utils.utils import pos_real2norm
 
-from rules.rmul.config import env_config as RMUL_ENV_CONFIG
+from rules.rmul.config.env_config import EnvConfigRMUL
 
 
 class ObsRMULEnv(Observation):
@@ -81,7 +81,7 @@ class ObsRMULRobot(Observation):
         return cls(
             position_norm=pos_real2norm(
                 robot.get_position(),
-                (RMUL_ENV_CONFIG.FIELD_WIDTH, RMUL_ENV_CONFIG.FIELD_HEIGHT),
+                EnvConfigRMUL.field_size(),
             ),
             level = robot.level,
             hp=min(1000, robot.hp),

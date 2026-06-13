@@ -1,8 +1,11 @@
-from rules.rmul.config.env_config import FIELD_WIDTH, FIELD_HEIGHT
+from rules.rmul.config.env_config import EnvConfigRMUL
 
 from utils.buff import Buff, ForbiddenZone
 from utils.zone import Zone, make_opposite_zone
 from utils.config.game_config import GameTeam
+
+width = EnvConfigRMUL().field_width
+height = EnvConfigRMUL().field_height
 
 # 启动区
 red_boot_zone = Zone(
@@ -17,16 +20,16 @@ red_boot_zone = Zone(
     Buff(name="boot", healing=0.25),
     ForbiddenZone(name="boot")
 )
-blue_boot_zone = make_opposite_zone(red_boot_zone, (FIELD_WIDTH, FIELD_HEIGHT))
+blue_boot_zone = make_opposite_zone(red_boot_zone, EnvConfigRMUL.field_size())
 
 # 中心增益区
 center_zone = Zone(
     None,
     [
-        (FIELD_WIDTH / 2 - 2.0 / 2, FIELD_HEIGHT / 2 - 2.0 / 2),    # 左上
-        (FIELD_WIDTH / 2 + 2.0 / 2, FIELD_HEIGHT / 2 - 2.0 / 2),    # 右上
-        (FIELD_WIDTH / 2 + 2.0 / 2, FIELD_HEIGHT / 2 + 2.0 / 2),    # 右下
-        (FIELD_WIDTH / 2 - 2.0 / 2, FIELD_HEIGHT / 2 + 2.0 / 2),    # 左下
+        (width / 2 - 2.0 / 2, height / 2 - 2.0 / 2),    # 左上
+        (width / 2 + 2.0 / 2, height / 2 - 2.0 / 2),    # 右上
+        (width / 2 + 2.0 / 2, height / 2 + 2.0 / 2),    # 右下
+        (width / 2 - 2.0 / 2, height / 2 + 2.0 / 2),    # 左下
     ],
     False,
     Buff(name="center"),

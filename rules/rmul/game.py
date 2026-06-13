@@ -16,7 +16,7 @@ from utils.grid_map import world_to_grid
 from utils.utils import meters_to_pixels, calc_distance, opposite_team, timer
 from visualization.renderer import Renderer
 
-from rules.rmul.config import env_config as RMUL_ENV_CONFIG
+from rules.rmul.config.env_config import EnvConfigRMUL
 from rules.rmul.config.action_config import ActionRMUL
 from rules.rmul.config.observation_config import ObsRMULEnv, ObsRMULRobot, ObsRMULGame
 from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION
@@ -27,7 +27,6 @@ class GameRMUL(gym.Env):
    
     metadata = {
         "render_modes": ["human", "rgb_array"],
-        "render_fps": RMUL_ENV_CONFIG.FPS,
     }
     
     def __init__(
@@ -38,7 +37,7 @@ class GameRMUL(gym.Env):
 
         # 创建底层环境
         self.env = EnvironmentRMUL()
-        self.dt = 1 / RMUL_ENV_CONFIG.FPS
+        self.dt = 1 / EnvConfigRMUL.fps
         
         # 渲染
         self._render_mode = render_mode
@@ -155,9 +154,9 @@ class GameRMUL(gym.Env):
         """获取观察"""
         # 全局状态向量
         env_obs = ObsRMULEnv(
-            remaining_time_norm=self.env._remaining_time / RMUL_ENV_CONFIG.GAME_TIME_LIMIT,
-            victory_progress_red_norm=self.env._victory_progress[GameTeam.RED] / RMUL_ENV_CONFIG.OCCUPATION_TARGET,
-            victory_progress_blue_norm=self.env._victory_progress[GameTeam.BLUE] / RMUL_ENV_CONFIG.OCCUPATION_TARGET,
+            remaining_time_norm=self.env._remaining_time / EnvConfigRMUL.game_time_limit,
+            victory_progress_red_norm=self.env._victory_progress[GameTeam.RED] / EnvConfigRMUL.occupation_target,
+            victory_progress_blue_norm=self.env._victory_progress[GameTeam.BLUE] / EnvConfigRMUL.occupation_target,
         )
 
         # 机器人状态向量
@@ -185,14 +184,14 @@ class GameRMUL(gym.Env):
             if self._render_mode == "human":
                 pygame.display.init()
                 self._screen = pygame.display.set_mode(
-                    (meters_to_pixels(RMUL_ENV_CONFIG.FIELD_WIDTH), meters_to_pixels(RMUL_ENV_CONFIG.FIELD_HEIGHT))
+                    (meters_to_pixels(EnvConfigRMUL.field_width), meters_to_pixels(EnvConfigRMUL.field_height))
                 )
             elif self._render_mode == "rgb_array":
-                self._screen = pygame.Surface((meters_to_pixels(RMUL_ENV_CONFIG.FIELD_WIDTH), meters_to_pixels(RMUL_ENV_CONFIG.FIELD_HEIGHT)))
+                self._screen = pygame.Surface((meters_to_pixels(EnvConfigRMUL.field_width), meters_to_pixels(EnvConfigRMUL.field_height)))
             else:
                 raise ValueError(f"Invalid render mode: {self._render_mode}")
         if self._renderer is None:
-            self._renderer = Renderer(RMUL_ENV_CONFIG)
+            self._renderer = Renderer(EnvConfigRMUL)
 
     def set_render(self, control_state):
         self._renderer.control_state = control_state

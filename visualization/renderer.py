@@ -14,8 +14,8 @@ class Renderer:
         self.control_state = {}
 
         # 计算屏幕尺寸
-        self.screen_width = meters_to_pixels(self.env_config.FIELD_WIDTH)
-        self.screen_height = meters_to_pixels(self.env_config.FIELD_HEIGHT)
+        self.screen_width = meters_to_pixels(self.env_config.field_width)
+        self.screen_height = meters_to_pixels(self.env_config.field_height)
 
         # self.screen_main = pygame.display.set_mode((self.screen_width, self.screen_height))
         self.screen_field = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
@@ -65,7 +65,7 @@ class Renderer:
 
         # 绘制控制提示信息
         if self.control_state:
-            self._draw_control_info(self.control_state, self.env_config.ENV_NAME)
+            self._draw_control_info(self.control_state, self.env_config.env_name)
             # 绘制可移动栅格
             if self.control_state.get("show_grid", False) and "robot_id" in self.control_state:
                 robot = env.robots[self.control_state["robot_id"]]
@@ -108,13 +108,13 @@ class Renderer:
     def _draw_walls(self):
         """绘制围墙"""
         # 上墙
-        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, 0, meters_to_pixels(self.env_config.FIELD_WIDTH), 10))
+        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, 0, meters_to_pixels(self.env_config.field_width), 10))
         # 下墙
-        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, meters_to_pixels(self.env_config.FIELD_HEIGHT) - 10, meters_to_pixels(self.env_config.FIELD_WIDTH), 10))
+        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, meters_to_pixels(self.env_config.field_height) - 10, meters_to_pixels(self.env_config.field_width), 10))
         # 左墙
-        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, 0, 10, meters_to_pixels(self.env_config.FIELD_HEIGHT)))
+        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (0, 0, 10, meters_to_pixels(self.env_config.field_height)))
         # 右墙
-        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (meters_to_pixels(self.env_config.FIELD_WIDTH) - 10, 0, 10, meters_to_pixels(self.env_config.FIELD_HEIGHT)))
+        pygame.draw.rect(self.screen_field, render_config.COLOR_WALL, (meters_to_pixels(self.env_config.field_width) - 10, 0, 10, meters_to_pixels(self.env_config.field_height)))
 
     def _draw_obstacles(self, obstacles):
         """绘制所有障碍物为有厚度的矩形"""
@@ -266,17 +266,17 @@ class Renderer:
 
         # 胜利进度
         if "victory_progress" in top_bar_info:
-            bar_height = meters_to_pixels(self.env_config.FIELD_HEIGHT * 0.02)
+            bar_height = meters_to_pixels(self.env_config.field_height * 0.02)
             bar_width = self.screen_width * 0.4
 
             # 红队进度条
             victory_progress_red = top_bar_info['victory_progress'][GameTeam.RED]
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (victory_progress_red / self.env_config.OCCUPATION_TARGET))
+            progress_width = int(bar_width * (victory_progress_red / self.env_config.occupation_target))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.RED],
                             (10, 10, progress_width, bar_height))
             red_progress_text = self.font_medium.render(
-                f"Team RED: {int(victory_progress_red):>3d} / {self.env_config.OCCUPATION_TARGET:>3d}",
+                f"Team RED: {int(victory_progress_red):>3d} / {self.env_config.occupation_target:>3d}",
                 True, render_config.COLOR_TEXT
             )
             self.screen_note.blit(red_progress_text, (bar_width - red_progress_text.get_width(), red_progress_text.get_height() // 2))
@@ -284,18 +284,18 @@ class Renderer:
             # 蓝队进度条
             victory_progress_blue = top_bar_info['victory_progress'][GameTeam.BLUE]
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (self.screen_width - bar_width - 10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (victory_progress_blue / self.env_config.OCCUPATION_TARGET))
+            progress_width = int(bar_width * (victory_progress_blue / self.env_config.occupation_target))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.BLUE], 
                             (self.screen_width - bar_width - 10 + (bar_width - progress_width), 10, progress_width, bar_height))
             blue_progress_text = self.font_medium.render(
-                f"Team BLUE: {int(victory_progress_blue):>3d} / {self.env_config.OCCUPATION_TARGET:>3d}",
+                f"Team BLUE: {int(victory_progress_blue):>3d} / {self.env_config.occupation_target:>3d}",
                 True, render_config.COLOR_TEXT
             )
             self.screen_note.blit(blue_progress_text, (self.screen_width - bar_width, blue_progress_text.get_height() // 2))
 
         # 经济
         if "economics" in top_bar_info:
-            bar_height = meters_to_pixels(self.env_config.FIELD_HEIGHT * 0.02)
+            bar_height = meters_to_pixels(self.env_config.field_height * 0.02)
             pygame.draw.circle(self.screen_note, render_config.COLOR_YELLOW, (self.screen_width // 2, bar_height * 3), bar_height * 0.5)
             red_economics_text = self.font_small.render(f"{top_bar_info['economics'][GameTeam.RED]:>4d}", True, render_config.COLOR_TEXT)
             self.screen_note.blit(red_economics_text, (self.screen_width // 2 - bar_height - red_economics_text.get_width(), bar_height * 3 - red_economics_text.get_height() // 2))
@@ -328,7 +328,7 @@ class Renderer:
 
         for i, text in enumerate(controls_displayed):
             text_control = self.font_medium.render(text, True, render_config.COLOR_TEXT)
-            self.screen_note.blit(text_control, (10, meters_to_pixels(self.env_config.FIELD_HEIGHT) - (len(controls_displayed) - i) * 30))
+            self.screen_note.blit(text_control, (10, meters_to_pixels(self.env_config.field_height) - (len(controls_displayed) - i) * 30))
 
         # 绘制控制目标提示
         if env_name == "solo":
@@ -340,24 +340,24 @@ class Renderer:
         ]
         for i, text in enumerate(states):
             text_control = self.font_medium.render(text, True, render_config.COLOR_TEXT)
-            self.screen_note.blit(text_control, (self.screen_width / 2 + 10, meters_to_pixels(self.env_config.FIELD_HEIGHT) - (len(states) - i) * 30))
+            self.screen_note.blit(text_control, (self.screen_width / 2 + 10, meters_to_pixels(self.env_config.field_height) - (len(states) - i) * 30))
 
     def _draw_game_over(self, game_state):
         # 绘制游戏结束信息
         if game_state == GameState.RED_TEAM_WIN:
             win_text = self.font_large.render("Team Red Wins!", True, render_config.TEAM_COLORS[GameTeam.RED])
-            text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.FIELD_WIDTH) // 2, 
-                                                 meters_to_pixels(self.env_config.FIELD_HEIGHT) // 2))
+            text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.field_width) // 2, 
+                                                 meters_to_pixels(self.env_config.field_height) // 2))
             self.screen_note.blit(win_text, text_rect)
         elif game_state == GameState.BLUE_TEAM_WIN:
             win_text = self.font_large.render("Team Blue Wins!", True, render_config.TEAM_COLORS[GameTeam.BLUE])
-            text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.FIELD_WIDTH) // 2, 
-                                                 meters_to_pixels(self.env_config.FIELD_HEIGHT) // 2))
+            text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.field_width) // 2, 
+                                                 meters_to_pixels(self.env_config.field_height) // 2))
             self.screen_note.blit(win_text, text_rect)
         elif game_state == GameState.DRAW:
             win_text = self.font_large.render("Draw!", True, render_config.COLOR_TEXT)  # 灰色字体
-            text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.FIELD_WIDTH) // 2, 
-                                                 meters_to_pixels(self.env_config.FIELD_HEIGHT) // 2))
+            text_rect = win_text.get_rect(center=(meters_to_pixels(self.env_config.field_width) // 2, 
+                                                 meters_to_pixels(self.env_config.field_height) // 2))
             self.screen_note.blit(win_text, text_rect)
 
     def _draw_grid(self, grid_map):

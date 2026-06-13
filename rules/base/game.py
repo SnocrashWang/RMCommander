@@ -5,27 +5,22 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import List, Dict, Optional, Tuple, Any
 
-from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
-from utils.config.robot_config import RobotType, ROBOT_ID
-from utils.grid_map import world_to_grid
-from utils.utils import meters_to_pixels, calc_distance, opposite_team
+from utils.config.robot_config import ROBOT_ID
+from utils.utils import meters_to_pixels
 from visualization.renderer import Renderer
 
-from rules.base.config import env_config as BASE_ENV_CONFIG
 from rules.base.config.action_config import ActionBase
 from rules.base.config.observation_config import ObsBaseEnv, ObsBaseRobot, ObsBaseGame
-from rules.base.config.obstacle_config import OBSTACLE_CONFIGS
-from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION, BASE_ROBOT_CONFIGS
-from rules.base.curriculum import Curriculum
+from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION
+from rules.base.curriculum import CurriculumBase
 from rules.base.environment import Environment
 
 
 class Game(gym.Env):
-   
+
     metadata = {
         "render_modes": ["human", "rgb_array"],
-        "render_fps": BASE_ENV_CONFIG.FPS,
     }
     
     def __init__(
@@ -35,15 +30,16 @@ class Game(gym.Env):
         super().__init__()
 
         # 课程学习
-        self.curriculum = Curriculum()
-        obstacle_configs, robot_configs = self.curriculum.random_start(if_obstacles=True, if_robots=True)
+        self.curriculum = CurriculumBase()
+        env_config, obstacle_configs, robot_configs = self.curriculum.random_start(if_env=True, if_obstacles=True, if_robots=True)
         # 随机配置
+        self._env_config = env_config
         self._obstacle_configs = obstacle_configs
         self._robot_configs = robot_configs
 
         # 创建底层环境
-        self.env = Environment(self._obstacle_configs, self._robot_configs)
-        self.dt = 1 / BASE_ENV_CONFIG.FPS
+        self.env = Environment(self._env_config, self._obstacle_configs, self._robot_configs)
+        self.dt = 1 / env_config.fps
         
         # 渲染
         self._render_mode = render_mode
@@ -78,12 +74,12 @@ class Game(gym.Env):
         super().reset(seed=seed)
 
         # 重新课程随机
-        obstacle_configs, robot_configs = self.curriculum.random_start(if_obstacles=True, if_robots=True)
+        env_config, obstacle_configs, robot_configs = self.curriculum.random_start(if_env=True, if_obstacles=True, if_robots=True)
+        self._env_config = env_config
         self._obstacle_configs = obstacle_configs
         self._robot_configs = robot_configs
-
         # 重置底层环境
-        self.env.reset(self._obstacle_configs, self._robot_configs)
+        self.env.reset(self._env_config, self._obstacle_configs, self._robot_configs)
         
         # 渲染
         if self._render_mode:
@@ -144,7 +140,7 @@ class Game(gym.Env):
         """获取观察"""
         # 全局状态向量
         env_obs = ObsBaseEnv(
-            remaining_time_norm=self.env._remaining_time / BASE_ENV_CONFIG.GAME_TIME_LIMIT,
+            remaining_time_norm=self.env._remaining_time / self._env_config.game_time_limit,
         )
 
         # 机器人状态向量
@@ -171,14 +167,14 @@ class Game(gym.Env):
             if self._render_mode == "human":
                 pygame.display.init()
                 self._screen = pygame.display.set_mode(
-                    (meters_to_pixels(BASE_ENV_CONFIG.FIELD_WIDTH), meters_to_pixels(BASE_ENV_CONFIG.FIELD_HEIGHT))
+                    (meters_to_pixels(self._env_config.field_width), meters_to_pixels(self._env_config.field_height))
                 )
             elif self._render_mode == "rgb_array":
-                self._screen = pygame.Surface((meters_to_pixels(BASE_ENV_CONFIG.FIELD_WIDTH), meters_to_pixels(BASE_ENV_CONFIG.FIELD_HEIGHT)))
+                self._screen = pygame.Surface((meters_to_pixels(self._env_config.field_width), meters_to_pixels(self._env_config.field_height)))
             else:
                 raise ValueError(f"Invalid render mode: {self._render_mode}")
         if self._renderer is None:
-            self._renderer = Renderer(BASE_ENV_CONFIG)
+            self._renderer = Renderer(self._env_config)
 
     def set_render(self, control_state):
         self._renderer.control_state = control_state

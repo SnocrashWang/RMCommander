@@ -1,12 +1,15 @@
-from rules.rmul.config.env_config import FIELD_WIDTH, FIELD_HEIGHT
+from rules.rmul.config.env_config import EnvConfigRMUL
 from utils.utils import opposite_obstacle
+
+width = EnvConfigRMUL().field_width
+height = EnvConfigRMUL().field_height
 
 # 四周围墙
 walls = [
-    {"p1": (0.0, 0.0), "p2": (FIELD_WIDTH, 0.0), "thickness": 0.0},  # 上
-    {"p1": (0.0, FIELD_HEIGHT), "p2": (FIELD_WIDTH, FIELD_HEIGHT), "thickness": 0.0},  # 下
-    {"p1": (0.0, 0.0), "p2": (0.0, FIELD_HEIGHT), "thickness": 0.0},  # 左
-    {"p1": (FIELD_WIDTH, 0.0), "p2": (FIELD_WIDTH, FIELD_HEIGHT), "thickness": 0.0},  # 右
+    {"p1": (0.0, 0.0), "p2": (width, 0.0), "thickness": 0.0},  # 上
+    {"p1": (0.0, height), "p2": (width, height), "thickness": 0.0},  # 下
+    {"p1": (0.0, 0.0), "p2": (0.0, height), "thickness": 0.0},  # 左
+    {"p1": (width, 0.0), "p2": (width, height), "thickness": 0.0},  # 右
 ]
 
 # 红方障碍物
@@ -17,7 +20,7 @@ red_obstacles = [
 ]
 # 蓝方障碍物
 blue_obstacles = [
-    opposite_obstacle(o, (FIELD_WIDTH, FIELD_HEIGHT)) for o in red_obstacles
+    opposite_obstacle(o, (width, height)) for o in red_obstacles
 ]
 
 RMUL_OBSTACLES = walls + red_obstacles + blue_obstacles

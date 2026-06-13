@@ -10,7 +10,7 @@ from utils.observation import Observation
 from utils.robot import Robot
 from utils.utils import pos_real2norm
 
-from rules.base.config import env_config as BASE_ENV_CONFIG
+from rules.base.config.env_config import EnvConfigBase
 
 
 class ObsBaseEnv(Observation):
@@ -71,7 +71,7 @@ class ObsBaseRobot(Observation):
         return cls(
             position_norm=pos_real2norm(
                 robot.get_position(),
-                (BASE_ENV_CONFIG.FIELD_WIDTH, BASE_ENV_CONFIG.FIELD_HEIGHT),
+                EnvConfigBase.field_size(),
             ),
             level = robot.level,
             hp=min(1000, robot.hp),

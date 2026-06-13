@@ -13,7 +13,7 @@ from visualization.renderer import Renderer
 from rules.base.config.action_config import ActionBase
 from rules.base.config.observation_config import ObsBaseEnv, ObsBaseRobot, ObsBaseGame
 from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION
-from rules.base.curriculum import CurriculumBase
+from rules.base.curriculum import *
 from rules.base.environment import Environment
 
 
@@ -26,12 +26,22 @@ class Game(gym.Env):
     def __init__(
         self,
         render_mode: Optional[str] = None,
+        curriculum_list: List[CurriculumBase] = [CurriculumBase()]
     ):
         super().__init__()
 
         # 课程学习
-        self.curriculum = CurriculumBase()
-        env_config, obstacle_configs, robot_configs = self.curriculum.random_start(if_env=True, if_obstacles=True, if_robots=True)
+        self.curriculum_list = curriculum_list
+        self.curriculum_stage = 0
+        self.curriculum_random_env = False
+        self.curriculum_random_obstacles = False
+        self.curriculum_random_robots = False
+        self.set_curriculum(0)
+        env_config, obstacle_configs, robot_configs = self.curriculum_list[self.curriculum_stage].random_start(
+            if_env=self.curriculum_random_env,
+            if_obstacles=self.curriculum_random_obstacles,
+            if_robots=self.curriculum_random_robots
+        )
         # 随机配置
         self._env_config = env_config
         self._obstacle_configs = obstacle_configs
@@ -58,7 +68,13 @@ class Game(gym.Env):
         # 状态记录
         self._last_observation = self._get_obs()
         self._last_action = None
-    
+
+    def set_curriculum(self, stage: int = 0, random_env: bool = False, random_obstacles: bool = False, random_robots: bool = False):
+        self.curriculum_stage = stage
+        self.curriculum_random_env = random_env
+        self.curriculum_random_obstacles = random_obstacles
+        self.curriculum_random_robots = random_robots
+
     def _setup_action_space(self):
         self.action_space = spaces.Dict({
             ROBOT_ID[robot.team][robot.robot_type]: BASE_ROBOT_TYPE_ACTION[robot.robot_type].get_space()
@@ -74,7 +90,11 @@ class Game(gym.Env):
         super().reset(seed=seed)
 
         # 重新课程随机
-        env_config, obstacle_configs, robot_configs = self.curriculum.random_start(if_env=True, if_obstacles=True, if_robots=True)
+        env_config, obstacle_configs, robot_configs = self.curriculum_list[self.curriculum_stage].random_start(
+            if_env=self.curriculum_random_env,
+            if_obstacles=self.curriculum_random_obstacles,
+            if_robots=self.curriculum_random_robots
+        )
         self._env_config = env_config
         self._obstacle_configs = obstacle_configs
         self._robot_configs = robot_configs
@@ -97,22 +117,33 @@ class Game(gym.Env):
         
         return observation, info
     
-    def step(self, red_action: Dict[str, ActionBase], blue_action: Dict[str, ActionBase], control_steps: int = 1):
-        """执行一步动作"""
-        reward = 0
+    def step(
+            self,
+            red_action: Dict[str, ActionBase],
+            blue_action: Dict[str, ActionBase] = None,
+            control_steps: int = 1
+        ):
+        """
+        执行一步动作
+        Args:
+            red_asction: 红方行动
+            blue_action: 蓝方行动。None 则采用课程对应的自动脚本控制
+            control_steps: 步进的帧数
+        """
         render_images = []
         for _ in range(control_steps):
             # 记录帧开始时间
             self._frame_start_time = time.perf_counter()
 
             # 执行环境步进
+            if not blue_action:
+                blue_action = self.curriculum_list[self.curriculum_stage].get_enemy_action(self.env._remaining_time, self.env.robots)
             self.env.step(red_action, blue_action)
-        
+            # print(red_action)
+            # print(blue_action)
+
             # 获取观察
             observation = self._get_obs()
-            
-            # 计算奖励（以红队视角）
-            reward += self._get_reward(GameTeam.RED, red_action)
             
             # 判断是否结束
             terminated = self._is_terminated()
@@ -124,13 +155,17 @@ class Game(gym.Env):
 
             if terminated or truncated:
                 break
+
+        # 计算奖励（以红队视角）
+        reward = self.curriculum_list[self.curriculum_stage].reward(self.env.robots, red_action)
         
         # 信息
         info = {
             'game_state': self.env.game_state,
             'remaining_time': self.env._remaining_time,
-            'red_hp': {robot_id: robot.hp for robot_id, robot in self.env.robots.items() if robot.team == GameTeam.RED},
-            'blue_hp': {robot_id: robot.hp for robot_id, robot in self.env.robots.items() if robot.team == GameTeam.BLUE},
+            'red_hp': sum([robot.hp for robot in self.env.robots.values() if robot.team == GameTeam.RED]),
+            'blue_hp': sum([robot.hp for robot in self.env.robots.values() if robot.team == GameTeam.BLUE]),
+            'reward': reward,
             'render_images': render_images,
         }
         
@@ -149,9 +184,6 @@ class Game(gym.Env):
             robots_obs[robot_id] = ObsBaseRobot.from_robot(robot)
 
         return ObsBaseGame(env_obs, robots_obs)
-    
-    def _get_reward(self, team: GameTeam, action: Dict[str, ActionBase]) -> float:
-        return 0
 
     def _is_terminated(self) -> bool:
         """判断是否自然结束"""

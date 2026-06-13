@@ -228,13 +228,23 @@ class Robot:
     def has_buff(self, buff: Buff):
         return buff in self.buff_manager._buff_list
 
-    def set_target(self, target_pos):
+    def is_valid_target(self, target_pos: Tuple[float, float]):
+        try:
+            col, row = world_to_grid(target_pos)
+            return not self._grid_map.is_blocked(col, row)
+        except:
+            return False
+
+    def set_target(self, target_pos: Tuple[float, float]):
         """设置目标位置并计算路径"""
         # 如果目标位置与当前位置相同，则不再次计算路径
         if target_pos == self.target_pos:
             return
         else:
             self.target_pos = target_pos
+
+        if not self.is_valid_target(target_pos):
+            return
 
         # 如果网格地图为空
         if self._grid_map is None:

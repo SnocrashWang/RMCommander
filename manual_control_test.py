@@ -113,6 +113,7 @@ def main():
         # 更新环境
         game.set_render(control_state)
         obs, reward, terminated, truncated, info = game.step(red_action, blue_action)
+        # obs, reward, terminated, truncated, info = game.step(red_action)
         state = obs.to_array()
 
 

@@ -11,8 +11,8 @@ from utils.utils import meters_to_pixels
 from visualization.renderer import Renderer
 
 from rules.base.config.action_config import ActionBase
-from rules.base.config.observation_config import ObsBaseEnv, ObsBaseRobot, ObsBaseGame
-from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION
+from rules.base.config.observation_config import ObsBaseEnv, ObsBaseRobot, ObsBaseGame, BASE_ROBOT_TYPE_OBS
+from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION, BASE_ROBOT_CONFIGS
 from rules.base.curriculum import *
 from rules.base.environment import Environment
 
@@ -26,26 +26,30 @@ class Game(gym.Env):
     def __init__(
         self,
         render_mode: Optional[str] = None,
-        curriculum_list: List[CurriculumBase] = [CurriculumBase()]
+        curriculum_list: List[Dict[type, float]] = [{CurriculumBase: 1.0}],
+        robot_type_obs: Dict = BASE_ROBOT_TYPE_OBS,
     ):
         super().__init__()
+        self._robot_type_obs = robot_type_obs
 
         # 课程学习
-        self.curriculum_list = curriculum_list
-        self.curriculum_stage = 0
-        self.curriculum_random_env = False
-        self.curriculum_random_obstacles = False
-        self.curriculum_random_robots = False
+        self._curriculum_list = curriculum_list
+        self._curriculum = None
+        self._curriculum_random_env = False
+        self._curriculum_random_obstacles = False
+        self._curriculum_random_robots = False
         self.set_curriculum(0)
-        env_config, obstacle_configs, robot_configs = self.curriculum_list[self.curriculum_stage].random_start(
-            if_env=self.curriculum_random_env,
-            if_obstacles=self.curriculum_random_obstacles,
-            if_robots=self.curriculum_random_robots
+        env_config, obstacle_configs, robot_configs = self._curriculum.random_start(
+            if_env=self._curriculum_random_env,
+            if_obstacles=self._curriculum_random_obstacles,
+            if_robots=self._curriculum_random_robots
         )
         # 随机配置
         self._env_config = env_config
         self._obstacle_configs = obstacle_configs
         self._robot_configs = robot_configs
+        self.action_space = self.get_action_space(self._robot_configs)
+        self.observation_space = self.get_observation_space(self._robot_type_obs, self._robot_configs)
 
         # 创建底层环境
         self.env = Environment(self._env_config, self._obstacle_configs, self._robot_configs)
@@ -58,48 +62,54 @@ class Game(gym.Env):
         self._renderer = None
         if self._render_mode:
             self._init_render()
-        
-        # 定义动作空间
-        self._setup_action_space()
-        
-        # 定义观察空间
-        self._setup_observation_space()
 
         # 状态记录
         self._last_observation = self._get_obs()
         self._last_action = None
 
     def set_curriculum(self, stage: int = 0, random_env: bool = False, random_obstacles: bool = False, random_robots: bool = False):
-        self.curriculum_stage = stage
-        self.curriculum_random_env = random_env
-        self.curriculum_random_obstacles = random_obstacles
-        self.curriculum_random_robots = random_robots
+        self._curriculum = random.choices(
+            list(self._curriculum_list[stage].keys()),
+            weights=list(self._curriculum_list[stage].values())
+        )[0]()
+        self._curriculum_random_env = random_env
+        self._curriculum_random_obstacles = random_obstacles
+        self._curriculum_random_robots = random_robots
 
-    def _setup_action_space(self):
-        self.action_space = spaces.Dict({
-            ROBOT_ID[robot.team][robot.robot_type]: BASE_ROBOT_TYPE_ACTION[robot.robot_type].get_space()
-            for robot in self.env.robots.values()
+    @classmethod
+    def get_action_space(cls, robot_configs=BASE_ROBOT_CONFIGS):
+        return spaces.Dict({
+            ROBOT_ID[robot_config.team][robot_config.robot_type]: BASE_ROBOT_TYPE_ACTION[robot_config.robot_type].get_space()
+            for robot_config in robot_configs
         })
-    
-    def _setup_observation_space(self):
+
+    @classmethod
+    def get_observation_space(
+        cls,
+        robot_type_obs=BASE_ROBOT_TYPE_OBS,
+        robot_configs=BASE_ROBOT_CONFIGS,
+        team: GameTeam = GameTeam.RED,
+    ):
         """设置观察空间"""
-        self.observation_space = ObsBaseGame.get_space(self.env.robots.keys())
+        return ObsBaseGame.get_space(robot_configs, robot_type_obs, team)
     
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = {}):
         """重置环境"""
         super().reset(seed=seed)
 
         # 重新课程随机
-        env_config, obstacle_configs, robot_configs = self.curriculum_list[self.curriculum_stage].random_start(
-            if_env=self.curriculum_random_env,
-            if_obstacles=self.curriculum_random_obstacles,
-            if_robots=self.curriculum_random_robots
+        env_config, obstacle_configs, robot_configs = self._curriculum.random_start(
+            if_env=self._curriculum_random_env,
+            if_obstacles=self._curriculum_random_obstacles,
+            if_robots=self._curriculum_random_robots
         )
         self._env_config = env_config
         self._obstacle_configs = obstacle_configs
         self._robot_configs = robot_configs
         # 重置底层环境
         self.env.reset(self._env_config, self._obstacle_configs, self._robot_configs)
+        self.action_space = self.get_action_space(self._robot_configs)
+        self.observation_space = self.get_observation_space(self._robot_type_obs, self._robot_configs)
         
         # 渲染
         if self._render_mode:
@@ -137,7 +147,7 @@ class Game(gym.Env):
 
             # 执行环境步进
             if not blue_action:
-                blue_action = self.curriculum_list[self.curriculum_stage].get_enemy_action(self.env._remaining_time, self.env.robots)
+                blue_action = self._curriculum.get_enemy_action(self.env._remaining_time, self.env.robots)
             self.env.step(red_action, blue_action)
             # print(red_action)
             # print(blue_action)
@@ -157,7 +167,7 @@ class Game(gym.Env):
                 break
 
         # 计算奖励（以红队视角）
-        reward = self.curriculum_list[self.curriculum_stage].reward(self.env.robots, red_action)
+        reward = self._curriculum.reward(self.env.robots, red_action)
 
         # 信息
         info = {
@@ -181,9 +191,10 @@ class Game(gym.Env):
         # 机器人状态向量
         robots_obs = {}
         for robot_id, robot in self.env.robots.items():
-            robots_obs[robot_id] = ObsBaseRobot.from_robot(robot)
+            obs_cls = ObsBaseGame._get_storage_robot_obs_cls(self._robot_type_obs, robot.robot_type)
+            robots_obs[robot_id] = obs_cls.from_robot(robot)
 
-        return ObsBaseGame(env_obs, robots_obs)
+        return ObsBaseGame(env_obs, robots_obs, self._robot_type_obs)
 
     def _is_terminated(self) -> bool:
         """判断是否自然结束"""

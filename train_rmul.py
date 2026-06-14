@@ -198,7 +198,7 @@ def train(args):
 
     game = Game()
     agent = PPOAgent(
-        state_dim=game.observation_space.shape[0],
+        state_dim=Game.get_observation_space().shape[0],
         robot_type_action=RMUL_ROBOT_TYPE_ACTION,
         device=args.device,
         actor_lr=args.actor_lr,

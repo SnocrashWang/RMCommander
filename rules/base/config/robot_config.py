@@ -7,6 +7,7 @@ from utils.config.robot_config import RobotConfig, RobotType
 from rules.base.config.action_config import ActionBase
 
 
+# 不同机器人的动作类型
 BASE_ROBOT_TYPE_ACTION = {
     RobotType.STANDARD_3: ActionBase,
 }

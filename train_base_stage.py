@@ -389,13 +389,11 @@ def train(args):
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"ppo_agent_{time_tag}_stage_{args.stage}"
 
-    game = Game()
     agent = PPOAgent(
-        state_dim=game.observation_space.shape[0],
+        state_dim=Game.get_observation_space().shape[0],
         robot_type_action=BASE_ROBOT_TYPE_ACTION,
         device=args.device,
     )
-    game.close()
     if args.base_model:
         agent.load(args.base_model)
 

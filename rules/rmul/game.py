@@ -18,8 +18,8 @@ from visualization.renderer import Renderer
 
 from rules.rmul.config.env_config import EnvConfigRMUL
 from rules.rmul.config.action_config import ActionRMUL
-from rules.rmul.config.observation_config import ObsRMULEnv, ObsRMULRobot, ObsRMULGame
-from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION
+from rules.rmul.config.observation_config import ObsRMULEnv, ObsRMULRobot, ObsRMULGame, RMUL_ROBOT_TYPE_OBS
+from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION, RMUL_ROBOT_CONFIGS
 from rules.rmul.environment import EnvironmentRMUL
 
 
@@ -32,8 +32,10 @@ class GameRMUL(gym.Env):
     def __init__(
         self,
         render_mode: Optional[str] = None,
+        robot_type_obs: Dict = RMUL_ROBOT_TYPE_OBS,
     ):
         super().__init__()
+        self._robot_type_obs = robot_type_obs
 
         # 创建底层环境
         self.env = EnvironmentRMUL()
@@ -60,14 +62,27 @@ class GameRMUL(gym.Env):
         self._time_stats = defaultdict(list)
     
     def _setup_action_space(self):
-        self.action_space = spaces.Dict({
-            ROBOT_ID[robot.team][robot.robot_type]: RMUL_ROBOT_TYPE_ACTION[robot.robot_type].get_space()
-            for robot in self.env.robots.values()
-        })
+        self.action_space = self.get_action_space()
     
     def _setup_observation_space(self):
         """设置观察空间"""
-        self.observation_space = ObsRMULGame.get_space(self.env.robots.keys())
+        self.observation_space = self.get_observation_space(self._robot_type_obs)
+
+    @classmethod
+    def get_action_space(cls, robot_configs=RMUL_ROBOT_CONFIGS):
+        return spaces.Dict({
+            ROBOT_ID[robot_config.team][robot_config.robot_type]: RMUL_ROBOT_TYPE_ACTION[robot_config.robot_type].get_space()
+            for robot_config in robot_configs
+        })
+
+    @classmethod
+    def get_observation_space(
+        cls,
+        robot_type_obs=RMUL_ROBOT_TYPE_OBS,
+        robot_configs=RMUL_ROBOT_CONFIGS,
+        team: GameTeam = GameTeam.RED,
+    ):
+        return ObsRMULGame.get_space(robot_configs, robot_type_obs, team)
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = {}):
         """重置环境"""
@@ -162,9 +177,10 @@ class GameRMUL(gym.Env):
         # 机器人状态向量
         robots_env = {}
         for robot_id, robot in self.env.robots.items():
-            robots_env[robot_id] = ObsRMULRobot.from_robot(robot)
+            obs_cls = ObsRMULGame._get_storage_robot_obs_cls(self._robot_type_obs, robot.robot_type)
+            robots_env[robot_id] = obs_cls.from_robot(robot)
         
-        return ObsRMULGame(env_obs, robots_env)
+        return ObsRMULGame(env_obs, robots_env, self._robot_type_obs)
     
     def _get_reward(self, team: GameTeam, action: Dict[str, ActionRMUL]) -> float:
         """获取奖励"""

@@ -185,28 +185,30 @@ class CurriculumBaseBattle(CurriculumBase):
     def reward(self, robots: Dict[str, Robot], actions: Dict[str, ActionBase]):
         """计算红方奖励"""
         reward = 0
-        for id, action in actions.items:
+        for id, action in actions.items():
             robot_attacker = robots[id]
-            robot_target = robots[ROBOT_ID[opposite_team(robot_attacker)][RobotType(action.attack_target)]]
-
             # 奖励攻击目标
             if RobotType(action.attack_target) in list(BASE_ROBOT_TYPE_ACTION) + [RobotType.NONE]:
                 reward += 0.05
-                # 奖励攻击视野
-                if attack_sight_clear(
-                    robot_attacker.get_position(),
-                    robot_target.get_position(),
-                    robot_target.radius,
-                    self.obstacle_configs,
-                    robots,
-                ):
-                    reward += 0.1
-                else:
-                    reward -= 0.01
+
+                if action.attack_target != RobotType.NONE.value:
+                    robot_target = robots[ROBOT_ID[opposite_team(robot_attacker)][RobotType(action.attack_target)]]
+                    # 奖励攻击视野
+                    if attack_sight_clear(
+                        robot_attacker.get_position(),
+                        robot_target.get_position(),
+                        robot_target.radius,
+                        self.obstacle_configs,
+                        robots,
+                    ):
+                        reward += 0.1
+                    else:
+                        reward -= 0.02
 
             # 奖励自旋防御
+            robot_enemy = robots[ROBOT_ID[opposite_team(robot_attacker)][robot_attacker.robot_type]]
             if attack_sight_clear(
-                robot_target.get_position(),
+                robot_enemy.get_position(),
                 robot_attacker.get_position(),
                 robot_attacker.radius,
                 self.obstacle_configs,
@@ -232,17 +234,17 @@ class CurriculumBaseEasy(CurriculumBase):
 
     def reward(self, robots: Dict[str, Robot], actions: Dict[str, ActionBase]):
         reward = 0
-        for id, action in actions.items:
+        for id, action in actions.items():
             robot_attacker = robots[id]
-            robot_target = robots[ROBOT_ID[opposite_team(robot_attacker)][RobotType(action.attack_target)]]
+            robot_enemy = robots[ROBOT_ID[opposite_team(robot_attacker)][robot_attacker.robot_type]]
 
             # 血量奖励
-            reward += 0.001 * (robot_attacker.hp - robot_target.hp)
+            reward += 0.001 * (robot_attacker.hp - robot_enemy.hp)
 
             # 胜利奖励
             if not robot_attacker.is_alive:
                 reward -= 100
-            elif not robot_target.is_alive:
+            elif not robot_enemy.is_alive:
                 reward += 100
         return reward
 
@@ -290,3 +292,28 @@ class CurriculumBaseHard(CurriculumBaseMedium):
         super().__init__()
 
         self._enemy_controller = EnemyScriptControllerBase(auto_nav=True, attack_weight=[1, 0], spin_mode=1)
+
+
+CURRICULUM_STAGES_BASE = [
+    {
+        CurriculumBaseMovement: 0.7,
+        CurriculumBaseBattle: 0.2,
+        CurriculumBaseEasy: 0.1,
+    },
+    {
+        CurriculumBaseMovement: 0.2,
+        CurriculumBaseBattle: 0.7,
+        CurriculumBaseEasy: 0.1,
+    },
+    {
+        CurriculumBaseMovement: 0.2,
+        CurriculumBaseBattle: 0.2,
+        CurriculumBaseEasy: 0.6,
+    },
+    {
+        CurriculumBaseMovement: 0.1,
+        CurriculumBaseBattle: 0.1,
+        CurriculumBaseEasy: 0.2,
+        CurriculumBaseMedium: 0.6,
+    },
+]

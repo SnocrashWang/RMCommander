@@ -111,9 +111,8 @@ def train(args):
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"ppo_agent_parallel_{time_tag}"
 
-    game = Game()
     agent = PPOAgent(
-        state_dim=game.observation_space.shape[0],
+        state_dim=Game.get_observation_space().shape[0],
         robot_type_action=RMUL_ROBOT_TYPE_ACTION,
         device=args.device,
         actor_lr=args.actor_lr,
@@ -124,7 +123,6 @@ def train(args):
         eps=args.eps,
         batch_size=args.ppo_batch_size
     )
-    game.close()
 
     if args.base_model:
         agent.load(args.base_model)

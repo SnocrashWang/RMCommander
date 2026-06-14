@@ -3,13 +3,15 @@ from copy import deepcopy
 from collections import OrderedDict
 from typing import Dict
 from gymnasium import spaces
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from utils.config.robot_config import RobotType
 from utils.config.game_config import GameTeam
 from utils.observation import Observation
 from utils.robot import Robot
 from utils.utils import pos_real2norm
 
+from rules.base.config.observation_config import ObsBaseGame
 from rules.rmul.config.env_config import EnvConfigRMUL
 
 
@@ -92,67 +94,59 @@ class ObsRMULRobot(Observation):
             cooldown=min(1000, robot.cooldown)
         )
 
+
+RMUL_ROBOT_TYPE_OBS = {
+    "friend": {
+        RobotType.HERO: ObsRMULRobot,
+        RobotType.STANDARD_3: ObsRMULRobot,
+        RobotType.SENTRY: ObsRMULRobot,
+    },
+    "enemy": {
+        RobotType.HERO: ObsRMULRobot,
+        RobotType.STANDARD_3: ObsRMULRobot,
+        RobotType.SENTRY: ObsRMULRobot,
+    }
+}
+
+
 @dataclass
-class ObsRMULGame():
+class ObsRMULGame(ObsBaseGame):
     env_obs: ObsRMULEnv
     robots_obs: Dict[str, ObsRMULRobot]
+    robot_type_obs: Dict = field(default_factory=lambda: RMUL_ROBOT_TYPE_OBS)
 
     @classmethod
-    def get_dict_space(cls, robot_ids) -> spaces.Dict:
+    def get_dict_space(
+        cls,
+        robot_configs,
+        robot_type_obs=RMUL_ROBOT_TYPE_OBS,
+        team: GameTeam = GameTeam.RED,
+    ) -> spaces.Dict:
         return spaces.Dict(OrderedDict([
             ("env_obs", ObsRMULEnv.get_space()),
             ("robots_obs", spaces.Dict(OrderedDict([
-                (robot_id, ObsRMULRobot.get_space())
-                for robot_id in robot_ids
+                (
+                    cls._robot_config_id(robot_config),
+                    cls._get_robot_obs_cls(
+                        robot_type_obs,
+                        "friend" if robot_config.team == team else "enemy",
+                        robot_config.robot_type,
+                    ).get_space(),
+                )
+                for robot_config in cls._ordered_robot_configs(robot_configs, team)
             ]))),
         ]))
 
     @classmethod
-    def get_space(cls, robot_ids) -> spaces.Box:
-        low, high = cls._flatten_space_bounds(cls.get_dict_space(robot_ids))
+    def get_space(
+        cls,
+        robot_configs,
+        robot_type_obs=RMUL_ROBOT_TYPE_OBS,
+        team: GameTeam = GameTeam.RED,
+    ) -> spaces.Box:
+        low, high = cls._flatten_space_bounds(cls.get_dict_space(robot_configs, robot_type_obs, team))
         return spaces.Box(
             low=low,
             high=high,
             dtype=np.float32,
         )
-
-    @classmethod
-    def _flatten_space_bounds(cls, space):
-        low = []
-        high = []
-
-        if isinstance(space, spaces.Box):
-            low.extend(np.asarray(space.low, dtype=np.float32).reshape(-1))
-            high.extend(np.asarray(space.high, dtype=np.float32).reshape(-1))
-        elif isinstance(space, spaces.Discrete):
-            low.append(0)
-            high.append(space.n - 1)
-        elif isinstance(space, spaces.Dict):
-            for subspace in space.spaces.values():
-                sub_low, sub_high = cls._flatten_space_bounds(subspace)
-                low.extend(sub_low)
-                high.extend(sub_high)
-        else:
-            raise TypeError(f"Unsupported observation space: {space}")
-
-        return np.array(low, dtype=np.float32), np.array(high, dtype=np.float32)
-
-    def to_array(self, team: GameTeam = GameTeam.RED) -> np.ndarray:
-        """将所有的属性值转换为一个NumPy数组"""
-        red_robots_obs = {robot_id: deepcopy(robot_obs) for robot_id, robot_obs in self.robots_obs.items() if robot_id.startswith("RED")}
-        blue_robots_obs = {robot_id: deepcopy(robot_obs) for robot_id, robot_obs in self.robots_obs.items() if robot_id.startswith("BLUE")}
-        if team == GameTeam.RED:
-            # 先己方，后对方
-            robots_obs = {**red_robots_obs, **blue_robots_obs}
-        else:
-            # 调换红蓝方的坐标方向
-            for _, robot_obs in red_robots_obs.items():
-                robot_obs.position_norm *= -1
-            for _, robot_obs in blue_robots_obs.items():
-                robot_obs.position_norm *= -1
-            robots_obs = {**blue_robots_obs, **red_robots_obs}
-
-        return np.concatenate([
-            self.env_obs.to_array(),
-            *[robot_obs.to_array() for _, robot_obs in robots_obs.items()]
-        ])

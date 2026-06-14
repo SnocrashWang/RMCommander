@@ -112,22 +112,8 @@ def train_worker(
     control_frequency: int,
     curriculum_stage: int,
     deterministic: bool = False,
-    seed: int = None
 ):
-    if seed is not None:
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-
-    game = Game(
-        curriculum_list=[
-            CurriculumBaseMovement(),
-            # CurriculumBaseBattle(),
-            # CurriculumBaseEasy(),
-            # CurriculumBaseMedium(),
-            # CurriculumBaseHard(),
-        ]
-    )
+    game = Game(curriculum_list=CURRICULUM_STAGES_BASE)
     try:
         transition_dict, result = rollout(
             game,
@@ -160,7 +146,6 @@ def train_parallel(
                 control_frequency,
                 curriculum_stage,
                 deterministic,
-                random.randrange(2**31),
             )
             for _ in range(rollout_batch_size)
         ]
@@ -195,13 +180,7 @@ def eval_worker(
     control_frequency: int,
     curriculum_stage: int,
     deterministic_eval: bool,
-    seed: int = None
 ):
-    if seed is not None:
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-
     game = Game()
     try:
         _, result = rollout(
@@ -220,10 +199,10 @@ def eval_worker(
 def evaluate_parallel(
     agent: PPOAgent,
     num_workers: int,
-    rollout_batch_size: int,
+    eval_eposodes: int,
     control_frequency: int,
     curriculum_stage: int,
-    deterministic_eval: bool
+    deterministic_eval: bool,
 ):
     eval_result_list = []
     with ProcessPoolExecutor(max_workers=max(1, num_workers)) as executor:
@@ -235,7 +214,7 @@ def evaluate_parallel(
                 curriculum_stage,
                 deterministic_eval,
             )
-            for _ in range(rollout_batch_size)
+            for _ in range(eval_eposodes)
         ]
         for future in as_completed(futures):
             eval_result_list.append(future.result())
@@ -247,9 +226,14 @@ def main(args):
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"ppo_agent_{time_tag}"
 
-    game = Game()
+    # 设置随机数
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+
     agent = PPOAgent(
-        state_dim=game.observation_space.shape[0],
+        state_dim=Game.get_observation_space().shape[0],
         robot_type_action=ROBOT_TYPE_ACTION,
         device=args.device,
         actor_lr=args.actor_lr,
@@ -261,7 +245,6 @@ def main(args):
         eps=args.eps,
         batch_size=args.ppo_batch_size
     )
-    game.close()
 
     # 加载模型
     if args.base_model:
@@ -281,7 +264,7 @@ def main(args):
             args.rollout_batch_size,
             args.control_frequency,
             args.curriculum_stage,
-            deterministic=False
+            False,
         )
         
         train_result_info = ",\t".join([
@@ -302,7 +285,7 @@ def main(args):
                 args.eval_episodes,
                 args.control_frequency,
                 args.curriculum_stage,
-                args.deterministic_eval
+                args.deterministic_eval,
             )
             
             eval_result_info = ",\t".join([
@@ -333,12 +316,13 @@ def parse_args():
     # file_group.add_argument("--log-dir", type=str, default="logs", help="训练日志保存目录。")
 
     env_group = parser.add_argument_group('环境配置')
+    env_group.add_argument("--seed", type=int, default=42, help="随机数")
     env_group.add_argument("--control-frequency", type=int, default=2, help="控制频率，用于计算每个决策对应的仿真步数。")
     env_group.add_argument("--curriculum-stage", type=int, default=0, help="课程学习阶段")
 
     train_group = parser.add_argument_group('训练配置')
     train_group.add_argument("--episodes", type=int, default=100, help="训练总回合数。")
-    train_group.add_argument("--rollout-batch-size", type=int, default=4, help="每次 PPO 更新前收集的 rollout 数量。")
+    train_group.add_argument("--rollout-batch-size", type=int, default=20, help="每次 PPO 更新前收集的 rollout 数量。")
     train_group.add_argument("--num-workers", type=int, default=2, help="并行采样的工作进程数量。")
     train_group.add_argument("--save-interval", type=int, default=5, help="模型保存间隔，按训练回合数计算。")
     train_group.add_argument("--eval-interval", type=int, default=5, help="评估间隔，按训练回合数计算。")

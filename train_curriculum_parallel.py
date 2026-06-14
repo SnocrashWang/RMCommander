@@ -7,7 +7,7 @@ import argparse
 import statistics
 import numpy as np
 from tqdm import tqdm
-from typing import Dict, Tuple
+from typing import List, Dict, Tuple
 from datetime import datetime
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -20,8 +20,8 @@ from utils.buff import Buff
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
-    from rules.base.curriculum import *
     from rules.base.environment import ActionBase as Action
+    from rules.base.config.curriculum_config import CURRICULUM_LIST_BASE as CURRICULUM_LIST, CURRICULUM_EVAL_BASE as CURRICULUM_EVAL
     from rules.base.config.env_config import EnvConfigBase as EnvConfig
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
 elif CURRENT_GAME == GameType.RMUL:
@@ -73,7 +73,7 @@ def rollout(
     deterministic: bool = False,
     train: bool = False,
 ):
-    game.set_curriculum(curriculum_stage, random_env=True, random_obstacles=True, random_robots=True)
+    game.set_curriculum(curriculum_stage)
     obs, info = game.reset()
     state = obs.to_array(GameTeam.RED)
     transition_dict = {"states": [], "actions": [], "next_states": [], "rewards": [], "dones": []}
@@ -110,10 +110,13 @@ def rollout(
 def train_worker(
     agent: PPOAgent,
     control_frequency: int,
+    curriculum_list: List,
     curriculum_stage: int,
     deterministic: bool = False,
 ):
-    game = Game(curriculum_list=CURRICULUM_STAGES_BASE)
+    game = Game(
+        curriculum_list=curriculum_list
+    )
     try:
         transition_dict, result = rollout(
             game,
@@ -133,6 +136,7 @@ def train_parallel(
     num_workers: int,
     rollout_batch_size: int,
     control_frequency: int,
+    curriculum_list: List,
     curriculum_stage: int,
     deterministic: bool = False,
 ):
@@ -144,6 +148,7 @@ def train_parallel(
                 train_worker,
                 agent,
                 control_frequency,
+                curriculum_list,
                 curriculum_stage,
                 deterministic,
             )
@@ -178,16 +183,18 @@ def train_parallel(
 def eval_worker(
     agent: PPOAgent,
     control_frequency: int,
-    curriculum_stage: int,
+    curriculum: Dict,
     deterministic_eval: bool,
 ):
-    game = Game()
+    game = Game(
+        curriculum_list=[curriculum]
+    )
     try:
         _, result = rollout(
             game,
             agent,
             control_frequency,
-            curriculum_stage,
+            0,
             deterministic_eval,
             train=False,
         )
@@ -201,7 +208,7 @@ def evaluate_parallel(
     num_workers: int,
     eval_eposodes: int,
     control_frequency: int,
-    curriculum_stage: int,
+    curriculum,
     deterministic_eval: bool,
 ):
     eval_result_list = []
@@ -211,7 +218,7 @@ def evaluate_parallel(
                 eval_worker,
                 agent,
                 control_frequency,
-                curriculum_stage,
+                curriculum,
                 deterministic_eval,
             )
             for _ in range(eval_eposodes)
@@ -263,6 +270,7 @@ def main(args):
             args.num_workers,
             args.rollout_batch_size,
             args.control_frequency,
+            CURRICULUM_LIST,
             args.curriculum_stage,
             False,
         )
@@ -284,7 +292,7 @@ def main(args):
                 args.num_workers,
                 args.eval_episodes,
                 args.control_frequency,
-                args.curriculum_stage,
+                CURRICULUM_EVAL,
                 args.deterministic_eval,
             )
             
@@ -322,7 +330,7 @@ def parse_args():
 
     train_group = parser.add_argument_group('训练配置')
     train_group.add_argument("--episodes", type=int, default=100, help="训练总回合数。")
-    train_group.add_argument("--rollout-batch-size", type=int, default=20, help="每次 PPO 更新前收集的 rollout 数量。")
+    train_group.add_argument("--rollout-batch-size", type=int, default=10, help="每次 PPO 更新前收集的 rollout 数量。")
     train_group.add_argument("--num-workers", type=int, default=2, help="并行采样的工作进程数量。")
     train_group.add_argument("--save-interval", type=int, default=5, help="模型保存间隔，按训练回合数计算。")
     train_group.add_argument("--eval-interval", type=int, default=5, help="评估间隔，按训练回合数计算。")

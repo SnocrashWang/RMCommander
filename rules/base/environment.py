@@ -170,7 +170,13 @@ class Environment:
         if robot_attacker.last_attack_time_remain - self._remaining_time < 1 / robot_attacker.shoot_frequency:
             return False
         # 判断完整视野
-        if not attack_sight_clear(robot_attacker.get_position(), robot_target.get_position(), robot_target.radius, self.obstacles, self.robots.values()):
+        if not attack_sight_clear(
+            robot_attacker.get_position(),
+            robot_target.get_position(),
+            robot_target.radius,
+            self.obstacles,
+            self.robots
+        ):
             return False
         # 攻击
         if not robot_attacker.attack(robot_target):

@@ -71,8 +71,8 @@ class Robot:
 
         # 更新性能
         self.update_property()
-        self.hp : int = np.clip(hp, 0, self.max_hp) if hp else self.max_hp
-        self.heat : float = np.clip(heat, 0, self.max_heat) if heat else 0
+        self.hp : int = min(max(hp, 0), self.max_hp) if hp else self.max_hp
+        self.heat : float = min(max(heat, 0), self.max_heat) if heat else 0
         
         # 物理属性
         self.radius : float = radius

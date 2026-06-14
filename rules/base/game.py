@@ -26,19 +26,15 @@ class Game(gym.Env):
     def __init__(
         self,
         render_mode: Optional[str] = None,
-        curriculum_list: List[Dict[type, float]] = [{CurriculumBase: 1.0}],
+        curriculum_list: List[Dict[type, Tuple[float, Tuple[bool, bool, bool]]]] = [{CurriculumBase: 1.0}],
+        curriculum_stage: int = 0,
         robot_type_obs: Dict = BASE_ROBOT_TYPE_OBS,
     ):
         super().__init__()
-        self._robot_type_obs = robot_type_obs
 
         # 课程学习
         self._curriculum_list = curriculum_list
-        self._curriculum = None
-        self._curriculum_random_env = False
-        self._curriculum_random_obstacles = False
-        self._curriculum_random_robots = False
-        self.set_curriculum(0)
+        self.set_curriculum(curriculum_stage)
         env_config, obstacle_configs, robot_configs = self._curriculum.random_start(
             if_env=self._curriculum_random_env,
             if_obstacles=self._curriculum_random_obstacles,
@@ -48,6 +44,9 @@ class Game(gym.Env):
         self._env_config = env_config
         self._obstacle_configs = obstacle_configs
         self._robot_configs = robot_configs
+
+        # 动作空间和观测空间
+        self._robot_type_obs = robot_type_obs
         self.action_space = self.get_action_space(self._robot_configs)
         self.observation_space = self.get_observation_space(self._robot_type_obs, self._robot_configs)
 
@@ -67,11 +66,12 @@ class Game(gym.Env):
         self._last_observation = self._get_obs()
         self._last_action = None
 
-    def set_curriculum(self, stage: int = 0, random_env: bool = False, random_obstacles: bool = False, random_robots: bool = False):
+    def set_curriculum(self, curriculum_stage: int):
         self._curriculum = random.choices(
-            list(self._curriculum_list[stage].keys()),
-            weights=list(self._curriculum_list[stage].values())
+            list(self._curriculum_list[curriculum_stage].keys()),
+            weights=[v[0] for v in self._curriculum_list[curriculum_stage].values()]
         )[0]()
+        random_env, random_obstacles, random_robots = self._curriculum_list[curriculum_stage][type(self._curriculum)][1]
         self._curriculum_random_env = random_env
         self._curriculum_random_obstacles = random_obstacles
         self._curriculum_random_robots = random_robots
@@ -106,6 +106,7 @@ class Game(gym.Env):
         self._env_config = env_config
         self._obstacle_configs = obstacle_configs
         self._robot_configs = robot_configs
+
         # 重置底层环境
         self.env.reset(self._env_config, self._obstacle_configs, self._robot_configs)
         self.action_space = self.get_action_space(self._robot_configs)

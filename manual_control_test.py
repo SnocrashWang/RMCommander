@@ -13,6 +13,7 @@ from visualization.config import render_config
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
+    from rules.base.curriculum import *
     from rules.base.environment import ActionBase as Action
     from rules.base.config.env_config import EnvConfigBase as EnvConfig
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
@@ -29,7 +30,11 @@ np.set_printoptions(precision=4, floatmode='fixed')
 
 def main():
     # 创建环境
-    game = Game(render_mode="human")
+    game = Game(
+        render_mode="human",
+        curriculum_list=[{CurriculumBase: (1, (False, False, False))}],
+        curriculum_stage=0
+    )
     # obs, info = game.reset()
 
     robot_id_list = list(game.env.robots.keys())
@@ -112,8 +117,8 @@ def main():
 
         # 更新环境
         game.set_render(control_state)
-        obs, reward, terminated, truncated, info = game.step(red_action, blue_action)
-        # obs, reward, terminated, truncated, info = game.step(red_action)
+        # obs, reward, terminated, truncated, info = game.step(red_action, blue_action)
+        obs, reward, terminated, truncated, info = game.step(red_action)
         state = obs.to_array()
 
 

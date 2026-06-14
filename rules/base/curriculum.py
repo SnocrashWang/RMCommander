@@ -12,6 +12,7 @@ from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION, BASE_ROBOT_CO
 from utils.config.exp_prop_config import *
 from utils.config.game_config import GameTeam
 from utils.config.robot_config import RobotConfig, RobotType, ROBOT_ID
+from utils.obstacle import Obstacle
 from utils.robot import Robot
 from utils.utils import pos_norm2real, opposite_team, calc_distance, attack_sight_clear
 
@@ -192,7 +193,7 @@ class CurriculumBaseBattle(CurriculumBase):
                 reward += 0.05
 
                 if action.attack_target != RobotType.NONE.value:
-                    robot_target = robots[ROBOT_ID[opposite_team(robot_attacker)][RobotType(action.attack_target)]]
+                    robot_target = robots[ROBOT_ID[opposite_team(robot_attacker.team)][RobotType(action.attack_target)]]
                     # 奖励攻击视野
                     if attack_sight_clear(
                         robot_attacker.get_position(),
@@ -206,12 +207,12 @@ class CurriculumBaseBattle(CurriculumBase):
                         reward -= 0.02
 
             # 奖励自旋防御
-            robot_enemy = robots[ROBOT_ID[opposite_team(robot_attacker)][robot_attacker.robot_type]]
+            robot_enemy = robots[ROBOT_ID[opposite_team(robot_attacker.team)][robot_attacker.robot_type]]
             if attack_sight_clear(
                 robot_enemy.get_position(),
                 robot_attacker.get_position(),
                 robot_attacker.radius,
-                self.obstacle_configs,
+                [Obstacle(obstacle_config) for obstacle_config in self.obstacle_configs],
                 robots,
             ):
                 if action.spin == 1:
@@ -236,7 +237,7 @@ class CurriculumBaseEasy(CurriculumBase):
         reward = 0
         for id, action in actions.items():
             robot_attacker = robots[id]
-            robot_enemy = robots[ROBOT_ID[opposite_team(robot_attacker)][robot_attacker.robot_type]]
+            robot_enemy = robots[ROBOT_ID[opposite_team(robot_attacker.team)][robot_attacker.robot_type]]
 
             # 血量奖励
             reward += 0.001 * (robot_attacker.hp - robot_enemy.hp)
@@ -292,28 +293,3 @@ class CurriculumBaseHard(CurriculumBaseMedium):
         super().__init__()
 
         self._enemy_controller = EnemyScriptControllerBase(auto_nav=True, attack_weight=[1, 0], spin_mode=1)
-
-
-CURRICULUM_STAGES_BASE = [
-    {
-        CurriculumBaseMovement: 0.7,
-        CurriculumBaseBattle: 0.2,
-        CurriculumBaseEasy: 0.1,
-    },
-    {
-        CurriculumBaseMovement: 0.2,
-        CurriculumBaseBattle: 0.7,
-        CurriculumBaseEasy: 0.1,
-    },
-    {
-        CurriculumBaseMovement: 0.2,
-        CurriculumBaseBattle: 0.2,
-        CurriculumBaseEasy: 0.6,
-    },
-    {
-        CurriculumBaseMovement: 0.1,
-        CurriculumBaseBattle: 0.1,
-        CurriculumBaseEasy: 0.2,
-        CurriculumBaseMedium: 0.6,
-    },
-]

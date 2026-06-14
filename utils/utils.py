@@ -298,7 +298,7 @@ def attack_sight_clear(
     target_pos: Tuple[float, float],
     target_radius: float,
     obstacles: List[Obstacle],
-    robots: List,
+    robots: Dict,
     ignore_robot_blocked: bool = False, # 是否忽略被机器人遮挡
 ) -> bool:
     """
@@ -328,7 +328,7 @@ def attack_sight_clear(
     
     if ignore_robot_blocked:
         return True
-    robots = [robot for robot in robots if robot.get_position() != attacker_pos and robot.get_position() != target_pos]
+    robots = [robot for robot in robots.values() if robot.get_position() != attacker_pos and robot.get_position() != target_pos]
     
     # 4. 判断切线是否被机器人遮挡
     for tp in tangents:

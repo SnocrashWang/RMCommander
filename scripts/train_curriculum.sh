@@ -1,7 +1,6 @@
 PARAMS=(
     # --base-model ""
-    --model-dir "models/rmul"
-    --log-dir "logs"
+    --model-dir "models/base"
     --control-frequency 2
     --curriculum-stage 0
     --episodes 100

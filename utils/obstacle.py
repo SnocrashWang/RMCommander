@@ -2,7 +2,7 @@ import pymunk
 import math
 
 class Obstacle:
-    def __init__(self, obstacle_config, physics_engine: pymunk.Space):
+    def __init__(self, obstacle_config, physics_engine: pymunk.Space = None):
         # obstacle_config 需要包含: p1, p2, thickness
         self.p1 = obstacle_config["p1"]
         self.p2 = obstacle_config["p2"]
@@ -23,17 +23,17 @@ class Obstacle:
             (-half_length, half_thickness)    # 左上
         ]
 
-        # 创建物理体
-        self._body = pymunk.Body(body_type=pymunk.Body.STATIC)
-        self._body.position = self.center
-        # 设置旋转角度
-        self._body.angle = self.angle
-        
-        # 创建多边形形状
-        self._shape = pymunk.Poly(self._body, self.vertices)
-        self._shape.elasticity = 0.8
-        self._shape.friction = 0.5
-        self._shape.filter = pymunk.ShapeFilter(categories=0b1, mask=0b1)
-
         if physics_engine:
+            # 创建物理体
+            self._body = pymunk.Body(body_type=pymunk.Body.STATIC)
+            self._body.position = self.center
+            # 设置旋转角度
+            self._body.angle = self.angle
+            
+            # 创建多边形形状
+            self._shape = pymunk.Poly(self._body, self.vertices)
+            self._shape.elasticity = 0.8
+            self._shape.friction = 0.5
+            self._shape.filter = pymunk.ShapeFilter(categories=0b1, mask=0b1)
+
             physics_engine.add(self._body, self._shape)

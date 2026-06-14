@@ -26,7 +26,7 @@ class Game(gym.Env):
     def __init__(
         self,
         render_mode: Optional[str] = None,
-        curriculum_list: List[Dict[type, Tuple[float, Tuple[bool, bool, bool]]]] = [{CurriculumBase: 1.0}],
+        curriculum_list: List[Dict[type[CurriculumBase], Tuple[float, Tuple[bool, bool, bool]]]] = [{CurriculumBase: (1.0, (False, False, False))}],
         curriculum_stage: int = 0,
         robot_type_obs: Dict = BASE_ROBOT_TYPE_OBS,
     ):
@@ -53,7 +53,7 @@ class Game(gym.Env):
         # 创建底层环境
         self.env = Environment(self._env_config, self._obstacle_configs, self._robot_configs)
         self.dt = 1 / env_config.fps
-        
+
         # 渲染
         self._render_mode = render_mode
         self._screen = None
@@ -111,13 +111,13 @@ class Game(gym.Env):
         self.env.reset(self._env_config, self._obstacle_configs, self._robot_configs)
         self.action_space = self.get_action_space(self._robot_configs)
         self.observation_space = self.get_observation_space(self._robot_type_obs, self._robot_configs)
-        
+
         # 渲染
         if self._render_mode:
             render_image = self.render()
         else:
             render_image = None
-        
+
         # 获取初始观察
         observation = self._get_obs()
         self._last_observation = self._get_obs()
@@ -150,8 +150,6 @@ class Game(gym.Env):
             if not blue_action:
                 blue_action = self._curriculum.get_enemy_action(self.env._remaining_time, self.env.robots)
             self.env.step(red_action, blue_action)
-            # print(red_action)
-            # print(blue_action)
 
             # 获取观察
             observation = self._get_obs()

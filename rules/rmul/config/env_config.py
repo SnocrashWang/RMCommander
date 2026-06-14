@@ -15,7 +15,7 @@ class EnvConfigRMUL():
 
     # 游戏时间限制（秒）
     game_time_limit = 300
-    game_remaining_time : float = 60
+    game_remaining_time : float = 300
 
     # 占领目标进度
     occupation_target = 200

@@ -6,7 +6,7 @@ from typing import List, Dict
 
 from rules.base.config.action_config import ActionBase
 from rules.base.config.env_config import EnvConfigBase
-from rules.base.config.obstacle_config import OBSTACLE_CONFIGS
+from rules.base.config.obstacle_config import BASE_OBSTACLE_CONFIGS
 from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION, BASE_ROBOT_CONFIGS
 
 from utils.config.exp_prop_config import *
@@ -66,7 +66,7 @@ class EnemyScriptControllerBase():
 
     def _random_nav_target_norm(self):
         return np.random.uniform(-1, 1, 2)
-            
+
     def _random_attack_target(self):
         return random.choices(self.attack_target_list, self.attack_weight)[0].value
 
@@ -80,12 +80,11 @@ class EnemyScriptControllerBase():
 class CurriculumBase():
     """
     该课程作为课程基类，调用时仅用于测试
-    初始观测完全随机
     对手脚本随机移动、不攻击
     """
     def __init__(self):
         self.env_config = EnvConfigBase()
-        self.obstacle_configs = deepcopy(OBSTACLE_CONFIGS)
+        self.obstacle_configs = deepcopy(BASE_OBSTACLE_CONFIGS)
         self.robot_configs = deepcopy(BASE_ROBOT_CONFIGS)
 
         self._enemy_controller = EnemyScriptControllerBase()
@@ -105,7 +104,7 @@ class CurriculumBase():
         )
 
     def _random_obstacle_configs(self, std: float = 0.1):
-        for obstacle in deepcopy(OBSTACLE_CONFIGS):
+        for obstacle in deepcopy(BASE_OBSTACLE_CONFIGS):
             obstacle["p1"] = (obstacle["p1"][0] + random.gauss(0, std), obstacle["p1"][1] + random.gauss(0, std))
             obstacle["p2"] = (obstacle["p2"][0] + random.gauss(0, std), obstacle["p2"][1] + random.gauss(0, std))
             obstacle["thickness"] += random.gauss(0, std)
@@ -147,7 +146,6 @@ class CurriculumBase():
 class CurriculumBaseMovement(CurriculumBase):
     """
     该课程用于训练模型的基本移动能力，包括设置导航点、靠近敌人等
-    初始观测完全随机
     对手脚本随机移动、不攻击
     """
     def __init__(self):
@@ -177,7 +175,6 @@ class CurriculumBaseMovement(CurriculumBase):
 class CurriculumBaseBattle(CurriculumBase):
     """
     该课程用于训练模型的战斗能力，包括选择攻击目标、自旋防御等
-    初始观测完全随机
     对手脚本随机移动、少量攻击
     """
     def __init__(self):
@@ -199,7 +196,7 @@ class CurriculumBaseBattle(CurriculumBase):
                         robot_attacker.get_position(),
                         robot_target.get_position(),
                         robot_target.radius,
-                        self.obstacle_configs,
+                        [Obstacle(obstacle_config) for obstacle_config in self.obstacle_configs],
                         robots,
                     ):
                         reward += 0.1
@@ -225,7 +222,6 @@ class CurriculumBaseBattle(CurriculumBase):
 class CurriculumBaseEasy(CurriculumBase):
     """
     该课程用于训练模型的完整能力
-    初始观测完全随机
     对手脚本随机移动、少量攻击
     """
     def __init__(self):
@@ -253,7 +249,6 @@ class CurriculumBaseEasy(CurriculumBase):
 class CurriculumBaseMedium(CurriculumBaseEasy):
     """
     该课程用于训练模型的完整能力
-    初始观测完全随机
     对手脚本随机移动、少量攻击
     """
     def __init__(self):
@@ -283,11 +278,11 @@ class CurriculumBaseMedium(CurriculumBaseEasy):
                     enable_exp=False,
                 ))
 
+
 class CurriculumBaseHard(CurriculumBaseMedium):
     """
     该课程用于训练模型的完整能力
-    初始观测完全随机
-    对手脚本随机移动、少量攻击
+    对手脚本随机移动、全程攻击
     """
     def __init__(self):
         super().__init__()

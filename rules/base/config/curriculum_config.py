@@ -2,7 +2,7 @@ from rules.base.curriculum import *
 
 # 不同阶段的课程设计
 # 键值元组的元素分别代表 (ratio, (random_env, random_obstacles, random_robot))
-CURRICULUM_LIST_BASE = [
+BASE_CURRICULUM_LIST = [
     {
         CurriculumBaseMovement: (0.7, (True, True, True)),
         CurriculumBaseBattle: (0.2, (True, True, True)),
@@ -26,6 +26,6 @@ CURRICULUM_LIST_BASE = [
     },
 ]
 
-CURRICULUM_EVAL_BASE = {
+BASE_CURRICULUM_EVAL = {
     CurriculumBaseHard: (1.0, (False, True, False))
 }

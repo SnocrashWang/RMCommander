@@ -13,26 +13,25 @@ from visualization.config import render_config
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
-    from rules.base.curriculum import *
+    from rules.base.curriculum import CurriculumBase as Curriculum
     from rules.base.environment import ActionBase as Action
     from rules.base.config.env_config import EnvConfigBase as EnvConfig
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
 elif CURRENT_GAME == GameType.RMUL:
     from rules.rmul.game import GameRMUL as Game
+    from rules.rmul.curriculum import CurriculumRMULMedium as Curriculum
     from rules.rmul.environment import ActionRMUL as Action
     from rules.rmul.config.env_config import EnvConfigRMUL as EnvConfig
     from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
-# elif CURRENT_GAME == GameType.RMUC:
-    # from RMUC.game import GameRMUC as Game
-    # from RMUC.config.robot_config import RMUC_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
 
 np.set_printoptions(precision=4, floatmode='fixed')
+
 
 def main():
     # 创建环境
     game = Game(
         render_mode="human",
-        curriculum_list=[{CurriculumBase: (1, (False, False, False))}],
+        curriculum_list=[{Curriculum: (1, (False, False, False))}],
         curriculum_stage=0
     )
     # obs, info = game.reset()

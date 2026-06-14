@@ -5,7 +5,7 @@ PARAMS=(
     --curriculum-stage 0
     --episodes 100
     --rollout-batch-size 50
-    --num-workers 16
+    --num-workers 4
     --save-interval 10
     --eval-interval 10
     --eval-episodes 20

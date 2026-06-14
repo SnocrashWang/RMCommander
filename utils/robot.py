@@ -42,7 +42,7 @@ class Robot:
 
         # 规则性能
         self.level : int = np.clip(level, 1, 10) if level else 1
-        self.exp : int = 0
+        self.exp : int = LEVEL_NEED_EXP[self.level]
         self.chassis_property_type : CHASSIS_PROPERTY_TYPE = chassis_property_type
         self.gimbal_property_type : GIMBAL_PROPERTY_TYPE = gimbal_property_type
         self.enable_exp = enable_exp

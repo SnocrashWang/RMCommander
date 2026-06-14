@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from utils.config.robot_config import RobotType
 from utils.config.game_config import GameTeam
+from utils.config.robot_config import ROBOT_ID
 from utils.observation import Observation
 from utils.robot import Robot
 from utils.utils import pos_real2norm
@@ -126,7 +127,7 @@ class ObsRMULGame(ObsBaseGame):
             ("env_obs", ObsRMULEnv.get_space()),
             ("robots_obs", spaces.Dict(OrderedDict([
                 (
-                    cls._robot_config_id(robot_config),
+                    ROBOT_ID[robot_config.team][robot_config.robot_type],
                     cls._get_robot_obs_cls(
                         robot_type_obs,
                         "friend" if robot_config.team == team else "enemy",

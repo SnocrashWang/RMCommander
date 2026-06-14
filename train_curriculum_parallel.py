@@ -21,7 +21,7 @@ from utils.buff import Buff
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
     from rules.base.environment import ActionBase as Action
-    from rules.base.config.curriculum_config import CURRICULUM_LIST_BASE as CURRICULUM_LIST, CURRICULUM_EVAL_BASE as CURRICULUM_EVAL
+    from rules.base.config.curriculum_config import BASE_CURRICULUM_LIST as CURRICULUM_LIST, BASE_CURRICULUM_EVAL as CURRICULUM_EVAL
     from rules.base.config.env_config import EnvConfigBase as EnvConfig
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
 elif CURRENT_GAME == GameType.RMUL:

@@ -2,24 +2,20 @@ import pygame
 import time
 import numpy as np
 import gymnasium as gym
-from copy import deepcopy
 from gymnasium import spaces
-from dataclasses import dataclass
 from collections import defaultdict
 from typing import List, Dict, Optional, Tuple, Any
 
-from rules.base.game import Game
-from utils.config.exp_prop_config import LEVEL_NEED_EXP
 from utils.config.game_config import GameTeam, GameState
-from utils.config.robot_config import RobotType, ROBOT_ID
-from utils.grid_map import world_to_grid
-from utils.utils import meters_to_pixels, calc_distance, opposite_team, timer
+from utils.config.robot_config import ROBOT_ID
+from utils.utils import meters_to_pixels, timer
 from visualization.renderer import Renderer
 
 from rules.rmul.config.env_config import EnvConfigRMUL
 from rules.rmul.config.action_config import ActionRMUL
 from rules.rmul.config.observation_config import ObsRMULEnv, ObsRMULRobot, ObsRMULGame, RMUL_ROBOT_TYPE_OBS
 from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION, RMUL_ROBOT_CONFIGS
+from rules.rmul.curriculum import *
 from rules.rmul.environment import EnvironmentRMUL
 
 
@@ -32,15 +28,34 @@ class GameRMUL(gym.Env):
     def __init__(
         self,
         render_mode: Optional[str] = None,
+        curriculum_list: List[Dict[type[CurriculumRMUL], Tuple[float, Tuple[bool, bool, bool]]]] = [{CurriculumRMUL: (1.0, (False, False, False))}],
+        curriculum_stage: int = 0,
         robot_type_obs: Dict = RMUL_ROBOT_TYPE_OBS,
     ):
         super().__init__()
+
+        # 课程学习
+        self._curriculum_list = curriculum_list
+        self.set_curriculum(curriculum_stage)
+        env_config, obstacle_configs, robot_configs = self._curriculum.random_start(
+            if_env=self._curriculum_random_env,
+            if_obstacles=self._curriculum_random_obstacles,
+            if_robots=self._curriculum_random_robots
+        )
+        # 随机配置
+        self._env_config = env_config
+        self._obstacle_configs = obstacle_configs
+        self._robot_configs = robot_configs
+
+        # 动作空间和观测空间
         self._robot_type_obs = robot_type_obs
+        self.action_space = self.get_action_space(self._robot_configs)
+        self.observation_space = self.get_observation_space(self._robot_type_obs, self._robot_configs)
 
         # 创建底层环境
-        self.env = EnvironmentRMUL()
-        self.dt = 1 / EnvConfigRMUL.fps
-        
+        self.env = EnvironmentRMUL(self._env_config, self._obstacle_configs, self._robot_configs)
+        self.dt = 1 / env_config.fps
+
         # 渲染
         self._render_mode = render_mode
         self._screen = None
@@ -48,25 +63,22 @@ class GameRMUL(gym.Env):
         self._renderer = None
         if self._render_mode:
             self._init_render()
-        
-        # 定义动作空间
-        self._setup_action_space()
-        
-        # 定义观察空间
-        self._setup_observation_space()
 
         # 状态记录
         self._last_observation = self._get_obs()
         self._last_action = None
 
         self._time_stats = defaultdict(list)
-    
-    def _setup_action_space(self):
-        self.action_space = self.get_action_space()
-    
-    def _setup_observation_space(self):
-        """设置观察空间"""
-        self.observation_space = self.get_observation_space(self._robot_type_obs)
+
+    def set_curriculum(self, curriculum_stage: int):
+        self._curriculum = random.choices(
+            list(self._curriculum_list[curriculum_stage].keys()),
+            weights=[v[0] for v in self._curriculum_list[curriculum_stage].values()]
+        )[0]()
+        random_env, random_obstacles, random_robots = self._curriculum_list[curriculum_stage][type(self._curriculum)][1]
+        self._curriculum_random_env = random_env
+        self._curriculum_random_obstacles = random_obstacles
+        self._curriculum_random_robots = random_robots
 
     @classmethod
     def get_action_space(cls, robot_configs=RMUL_ROBOT_CONFIGS):
@@ -88,33 +100,44 @@ class GameRMUL(gym.Env):
         """重置环境"""
         super().reset(seed=seed)
         
+        # 重新课程随机
+        env_config, obstacle_configs, robot_configs = self._curriculum.random_start(
+            if_env=self._curriculum_random_env,
+            if_obstacles=self._curriculum_random_obstacles,
+            if_robots=self._curriculum_random_robots
+        )
+        self._env_config = env_config
+        self._obstacle_configs = obstacle_configs
+        self._robot_configs = robot_configs
+
         # 重置底层环境
-        self.env.reset()
-        
+        self.env.reset(self._env_config, self._obstacle_configs, self._robot_configs)
+        self.action_space = self.get_action_space(self._robot_configs)
+        self.observation_space = self.get_observation_space(self._robot_type_obs, self._robot_configs)
+
         # 渲染
         if self._render_mode:
             render_image = self.render()
         else:
             render_image = None
-        
+
         # 获取初始观察
         observation = self._get_obs()
         self._last_observation = self._get_obs()
         self._last_action = None
         info = {
             'render_images': [render_image],
-            'game_state': self.env.game_state,
-            'remaining_time': self.env._remaining_time,
-            'victory_progress': self.env._victory_progress,
-            'economics': self.env._economics,
-            'robots': deepcopy(self.env.robots),
         }
         
         return observation, info
 
-    def step(self, red_action: Dict[str, ActionRMUL], blue_action: Dict[str, ActionRMUL], control_steps: int = 1):
+    def step(
+            self,
+            red_action: Dict[str, ActionRMUL],
+            blue_action: Dict[str, ActionRMUL] = None,
+            control_steps: int = 1
+        ):
         """执行一步动作"""
-        reward = 0
         render_images = []
         for _ in range(control_steps):
             # 记录帧开始时间
@@ -122,16 +145,14 @@ class GameRMUL(gym.Env):
 
             # 执行环境步进
             with timer(self._time_stats, 'env_step'):
+                if not blue_action:
+                    blue_action = self._curriculum.get_enemy_action(self.env._remaining_time, self.env.robots)
                 self.env.step(red_action, blue_action)
-            
+
             # 获取观察
             with timer(self._time_stats, 'get_obs'):
                 observation = self._get_obs()
-            
-            # 计算奖励（以红队视角）
-            with timer(self._time_stats, 'get_reward'):
-                reward += self._get_reward(GameTeam.RED, red_action)
-            
+
             # 判断是否结束
             terminated = self._is_terminated()
             truncated = self._is_truncated()
@@ -143,16 +164,21 @@ class GameRMUL(gym.Env):
 
             if terminated or truncated:
                 break
-        
+
+        # 计算奖励（以红队视角）
+        with timer(self._time_stats, 'get_reward'):
+            reward = self._curriculum.reward(self.env.robots, red_action)
+
         # 信息
         with timer(self._time_stats, 'make_info'):
             info = {
-                'render_images': render_images,
                 'game_state': self.env.game_state,
                 'remaining_time': self.env._remaining_time,
-                'victory_progress': self.env._victory_progress,
-                'economics': self.env._economics,
-                'robots': deepcopy(self.env.robots),
+                'red_vic_prog': self.env._victory_progress[GameTeam.RED],
+                'blue_vic_prog': self.env._victory_progress[GameTeam.RED],
+                'red_eco': self.env._economics[GameTeam.RED],
+                'blue_eco': self.env._economics[GameTeam.BLUE],
+                'render_images': render_images,
             }
 
         # print("\n性能统计:")

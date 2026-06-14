@@ -14,16 +14,16 @@ from utils.utils import opposite_team
 
 from rules.rmul.config.action_config import ActionRMUL
 from rules.rmul.config.env_config import EnvConfigRMUL
-from rules.rmul.config.obstacle_config import RMUL_OBSTACLES
+from rules.rmul.config.obstacle_config import RMUL_OBSTACLE_CONFIGS
 from rules.rmul.config.robot_config import RMUL_ROBOT_CONFIGS
 from rules.rmul.config.zone_config import RMUL_ZONES
 
 
 class EnvironmentRMUL(Environment):
-    def __init__(self):
+    def __init__(self, env_config, obstacle_configs, robot_configs):
         # 环境设置
-        self.env_config = EnvConfigRMUL()
-        self.dt = 1 / self.env_config.fps
+        self.env_config = env_config
+        self.dt = 1 / env_config.fps
 
         # 创建物理引擎
         self._create_physics_engine()
@@ -35,14 +35,14 @@ class EnvironmentRMUL(Environment):
 
         # 创建障碍物
         self.obstacles = []
-        self._create_obstacles(RMUL_OBSTACLES)
+        self._create_obstacles(obstacle_configs)
 
         # 创建增益区
         self.zones = RMUL_ZONES
 
         # 创建机器人
         self.robots: Dict[str, Robot] = {}
-        self._create_robots(RMUL_ROBOT_CONFIGS)
+        self._create_robots(robot_configs)
         
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(self.env_config)
@@ -63,15 +63,20 @@ class EnvironmentRMUL(Environment):
             "blue_lag_140": False,
         }
 
-    def reset(self):
+    def reset(self, env_config, obstacle_configs, robot_configs):
         """重置环境"""
+        self.env_config = env_config
+
+        # 重新创建障碍物
+        self._create_obstacles(obstacle_configs)
+
         # 销毁现有机器人
         for robot in self.robots.values():
             robot.destroy_physics_body(self.physics_engine)
         self.robots.clear()
         
         # 创建新机器人
-        self._create_robots(RMUL_ROBOT_CONFIGS)
+        self._create_robots(robot_configs)
         
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(self.env_config)
@@ -229,52 +234,6 @@ class EnvironmentRMUL(Environment):
                     if robot_id in (self.zones["red_boot"].occupation_robots[GameTeam.RED] if team == GameTeam.RED else self.zones["blue_boot"].occupation_robots[GameTeam.BLUE]):
                         robot.ammo_allowed += robot.bullet.PURCHASE_NUM
                         self._economics[team] -= robot.bullet.PRICE * robot.bullet.PURCHASE_NUM
-
-
-    # # TODO: 奖励函数
-    # def _calculate_reward(self) -> float:
-    #     """计算奖励"""
-    #     reward = 0.0
-        
-    #     # 获取红方机器人
-    #     red_robot = self.get_robot("RED_3_STANDARD")
-    #     if red_robot is None:
-    #         return reward
-        
-    #     # # 存活奖励
-    #     # if red_robot.is_alive:
-    #     #     reward += 0.1
-        
-    #     # 中心区域距离奖励
-    #     robot_pos = red_robot.get_position()
-    #     distance = math.sqrt((robot_pos[0] - env_config.FIELD_WIDTH / 2) ** 2 + (robot_pos[1] - env_config.FIELD_HEIGHT / 2) ** 2)
-    #     reward_distance = 10 * (1 - distance / env_config.FIELD_WIDTH)
-    #     reward += reward_distance
-    #     print(f"中心区域距离奖励: {reward_distance}")
-        
-    #     # 中心区域占领奖励
-    #     if self.robots_in_zone[GameTeam.RED]:
-    #         reward_zone = 0.2
-    #     else:
-    #         reward_zone = -0.2
-    #     reward += reward_zone
-    #     print(f"中心区域占领奖励: {reward_zone}")        
-        
-    #     # 击杀奖励
-    #     blue_robots = [self.get_robot(f"BLUE_{i}") for i in [3, 4, 5, 7]]
-    #     for robot in blue_robots:
-    #         if robot is not None and not robot.is_alive:
-    #             reward_kill = 1.0
-    #             reward += reward_kill
-    #             print(f"击杀奖励: {reward_kill}")
-        
-    #     # 胜利奖励
-    #     if self.game_state_manager.state.value == 2:  # 红方胜利
-    #         reward_win = 10.0
-    #         reward += reward_win
-    #         print(f"胜利奖励: {reward_win}")
-        
-    #     return reward
 
     def get_top_bar_info(self) -> Dict[str, Any]:
         """获取渲染顶部信息"""

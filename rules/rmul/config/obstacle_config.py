@@ -23,4 +23,4 @@ blue_obstacles = [
     opposite_obstacle(o, (width, height)) for o in red_obstacles
 ]
 
-RMUL_OBSTACLES = walls + red_obstacles + blue_obstacles
+RMUL_OBSTACLE_CONFIGS = walls + red_obstacles + blue_obstacles

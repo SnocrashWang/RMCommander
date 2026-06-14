@@ -39,7 +39,7 @@ class Zone():
         # 计算红蓝方所有机器人对此增益点的占领情况
         self.occupation_robots = {GameTeam.RED: [], GameTeam.BLUE: []}
         for robot in robots.values():
-            if point_in_polygon(robot.get_position(), self.vertices):
+            if robot.is_alive and point_in_polygon(robot.get_position(), self.vertices):
                 self.occupation_robots[robot.team].append(robot.id)
         # 当前双方占领情况
         cur_occupation_team = {

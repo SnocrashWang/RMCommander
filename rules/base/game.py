@@ -158,7 +158,7 @@ class Game(gym.Env):
 
         # 计算奖励（以红队视角）
         reward = self.curriculum_list[self.curriculum_stage].reward(self.env.robots, red_action)
-        
+
         # 信息
         info = {
             'game_state': self.env.game_state,

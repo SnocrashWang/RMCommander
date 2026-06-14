@@ -10,6 +10,7 @@ from tqdm import tqdm
 from typing import Dict, Tuple
 from datetime import datetime
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from config import CURRENT_GAME
 from agents.ppo_agent import PPOAgent
@@ -51,7 +52,7 @@ def statistical_analysis(data):
         first_value = values[0]
         # 特殊枚举类统计
         if isinstance(first_value, GameState):
-            enum_counts = {}
+            enum_counts = {"BLUE_TEAM_WIN": 0, "DRAW": 0, "RED_TEAM_WIN": 0}
             for v in values:
                 if isinstance(v, GameState):
                     enum_counts[v.name] = enum_counts.get(v.name, 0) + 1
@@ -60,8 +61,7 @@ def statistical_analysis(data):
             result[f"{field}_cnt"] = sorted_counts
         # 数值类型统计（int或float）
         elif isinstance(first_value, (int, float)):
-            result[f"{field}_mean"] = statistics.mean(values)
-
+            result[f"{field}_mean"] = np.mean(values)
     return result
 
 
@@ -103,116 +103,225 @@ def rollout(
         if done:
             break
 
+    info["reward"] = total_reward / steps
     return transition_dict, info
 
 
-def evaluate(
-    game: Game,
+def train_worker(
     agent: PPOAgent,
-    episodes: int,
+    control_frequency: int,
+    curriculum_stage: int,
+    deterministic: bool = False,
+    seed: int = None
+):
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+    game = Game(
+        curriculum_list=[
+            CurriculumBaseMovement(),
+            # CurriculumBaseBattle(),
+            # CurriculumBaseEasy(),
+            # CurriculumBaseMedium(),
+            # CurriculumBaseHard(),
+        ]
+    )
+    try:
+        transition_dict, result = rollout(
+            game,
+            agent,
+            control_frequency,
+            curriculum_stage,
+            deterministic,
+            train=True,
+        )
+        return transition_dict, result
+    finally:
+        game.close()
+
+
+def train_parallel(
+    agent: PPOAgent,
+    num_workers: int,
+    rollout_batch_size: int,
+    control_frequency: int,
+    curriculum_stage: int,
+    deterministic: bool = False,
+):
+    transition_list = []
+    result_list = []
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        futures = [
+            executor.submit(
+                train_worker,
+                agent,
+                control_frequency,
+                curriculum_stage,
+                deterministic,
+                random.randrange(2**31),
+            )
+            for _ in range(rollout_batch_size)
+        ]
+
+        batch_bar = tqdm(
+            total=len(futures),
+            desc=f"rollouts",
+            position=1,
+            leave=False,
+            dynamic_ncols=True,
+        )
+        with batch_bar:
+            for future in as_completed(futures):
+                try:
+                    transition_dict, result = future.result()
+                    if transition_dict["states"]:
+                        transition_list.append(transition_dict)
+                    result_list.append(result)
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+                finally:
+                    batch_bar.update(1)
+
+    if transition_list:
+        agent.update_multi_rollout(transition_list)
+    return result_list
+
+
+def eval_worker(
+    agent: PPOAgent,
+    control_frequency: int,
+    curriculum_stage: int,
+    deterministic_eval: bool,
+    seed: int = None
+):
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+    game = Game()
+    try:
+        _, result = rollout(
+            game,
+            agent,
+            control_frequency,
+            curriculum_stage,
+            deterministic_eval,
+            train=False,
+        )
+        return result
+    finally:
+        game.close()
+
+
+def evaluate_parallel(
+    agent: PPOAgent,
+    num_workers: int,
+    rollout_batch_size: int,
     control_frequency: int,
     curriculum_stage: int,
     deterministic_eval: bool
 ):
-    results = []
-    for _ in range(episodes):
-        _, result = rollout(
-            game,
-            agent,
-            control_frequency=control_frequency,
-            curriculum_stage=curriculum_stage,
-            deterministic=deterministic_eval,
-            train=False,
-        )
-        results.append(result)
-    return statistical_analysis(results)
+    eval_result_list = []
+    with ProcessPoolExecutor(max_workers=max(1, num_workers)) as executor:
+        futures = [
+            executor.submit(
+                eval_worker,
+                agent,
+                control_frequency,
+                curriculum_stage,
+                deterministic_eval,
+            )
+            for _ in range(rollout_batch_size)
+        ]
+        for future in as_completed(futures):
+            eval_result_list.append(future.result())
+    return eval_result_list
 
 
-def train(args):
+def main(args):
     os.makedirs(args.model_dir, exist_ok=True)
-    os.makedirs(args.log_dir, exist_ok=True)
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"ppo_agent_{time_tag}"
 
-    game = Game(curriculum_list=[CurriculumBaseMovement()])
+    game = Game()
     agent = PPOAgent(
         state_dim=game.observation_space.shape[0],
         robot_type_action=ROBOT_TYPE_ACTION,
         device=args.device,
         actor_lr=args.actor_lr,
         critic_lr=args.critic_lr,
+        alpha=args.alpha,
         gamma=args.gamma,
         lmbda=args.lmbda,
         epochs=args.epochs,
         eps=args.eps,
         batch_size=args.ppo_batch_size
     )
+    game.close()
+
+    # 加载模型
     if args.base_model:
         agent.load(args.base_model)
 
-    history = []
-    for episode in tqdm(range(1, args.episodes + 1), dynamic_ncols=True):
-        transition_dict, result = rollout(
-            game,
+    episode_bar = tqdm(
+        range(1, args.episodes + 1),
+        desc="episodes",
+        position=0,
+        dynamic_ncols=True,
+    )
+    for episode in episode_bar:
+        # 并行训练
+        train_result_list = train_parallel(
             agent,
-            control_frequency=args.control_frequency,
-            curriculum_stage=args.curriculum_stage,
-            deterministic=False,
-            train=True,
+            args.num_workers,
+            args.rollout_batch_size,
+            args.control_frequency,
+            args.curriculum_stage,
+            deterministic=False
         )
-        if transition_dict["states"]:
-            agent.update(transition_dict)
-        history.append({"episode": episode, **result})
+        
+        train_result_info = ",\t".join([
+            f"{k}={v:.3f}" if isinstance(v, (int, float)) else f"{k}={v}" 
+            for k, v in statistical_analysis(train_result_list).items()
+        ])
+        tqdm.write(
+            "[TRAIN]\t"
+            f"episode={episode}\t"
+            f"{train_result_info}"
+        )
 
-        if (args.base_model and episode == 1) or episode % args.eval_interval == 0:
-            eval_result = evaluate(
-                game,
+        # 并行评测
+        if (args.base_model and episode == 1) or episode % args.eval_interval == 0 or episode == args.episodes:
+            eval_result_list = evaluate_parallel(
                 agent,
+                args.num_workers,
                 args.eval_episodes,
                 args.control_frequency,
                 args.curriculum_stage,
                 args.deterministic_eval
             )
+            
             eval_result_info = ",\t".join([
                 f"{k}={v:.3f}" if isinstance(v, (int, float)) else f"{k}={v}" 
-                for k, v in eval_result.items()
+                for k, v in statistical_analysis(eval_result_list).items()
             ])
             tqdm.write(
                 "[EVAL]\t"
                 f"episode={episode}\t"
                 f"{eval_result_info}"
             )
-            history.append({"episode": episode, "eval": eval_result})
 
+        # 保存模型
         if args.save_interval > 0 and episode % args.save_interval == 0:
             checkpoint_path = os.path.join(args.model_dir, f"{run_name}_episode_{episode}.pt")
             agent.save(checkpoint_path)
 
     model_path = os.path.join(args.model_dir, f"{run_name}.pt")
-    log_path = os.path.join(args.log_dir, f"rmul_{time_tag}.json")
     agent.save(model_path)
-    with open(log_path, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "args": vars(args),
-                "model_path": model_path,
-                "history": history,
-            },
-            f,
-            indent=2,
-            ensure_ascii=False,
-        )
-
-    final_eval = evaluate(
-        game,
-        agent,
-        args.eval_episodes,
-        args.control_frequency,
-        args.curriculum_stage,
-        args.deterministic_eval
-    )
-    game.close()
-    print(json.dumps({"model_path": model_path, "log_path": log_path, "final_eval": final_eval}, indent=2))
 
 
 def parse_args():
@@ -220,24 +329,27 @@ def parse_args():
 
     file_group = parser.add_argument_group('文件配置')
     file_group.add_argument("--base-model", type=str, default=None, help="基础模型路径；不指定时从头训练。")
-    file_group.add_argument("--model-dir", type=str, default="models/rmul", help="模型保存目录。")
-    file_group.add_argument("--log-dir", type=str, default="logs", help="训练日志保存目录。")
+    file_group.add_argument("--model-dir", type=str, default="models/base", help="模型保存目录。")
+    # file_group.add_argument("--log-dir", type=str, default="logs", help="训练日志保存目录。")
 
     env_group = parser.add_argument_group('环境配置')
-    env_group.add_argument("--control-frequency", type=float, default=2, help="控制频率，用于计算每个决策对应的仿真步数。")
+    env_group.add_argument("--control-frequency", type=int, default=2, help="控制频率，用于计算每个决策对应的仿真步数。")
     env_group.add_argument("--curriculum-stage", type=int, default=0, help="课程学习阶段")
 
     train_group = parser.add_argument_group('训练配置')
-    train_group.add_argument("--episodes", type=int, default=1000, help="训练总回合数。")
-    train_group.add_argument("--save-interval", type=int, default=100, help="模型保存间隔，按训练回合数计算。")
-    train_group.add_argument("--eval-interval", type=int, default=100, help="评估间隔，按训练回合数计算。")
-    train_group.add_argument("--eval-episodes", type=int, default=20, help="每次评估运行的回合数。")
+    train_group.add_argument("--episodes", type=int, default=100, help="训练总回合数。")
+    train_group.add_argument("--rollout-batch-size", type=int, default=4, help="每次 PPO 更新前收集的 rollout 数量。")
+    train_group.add_argument("--num-workers", type=int, default=2, help="并行采样的工作进程数量。")
+    train_group.add_argument("--save-interval", type=int, default=5, help="模型保存间隔，按训练回合数计算。")
+    train_group.add_argument("--eval-interval", type=int, default=5, help="评估间隔，按训练回合数计算。")
+    train_group.add_argument("--eval-episodes", type=int, default=10, help="每次评估运行的回合数。")
     train_group.add_argument("--deterministic-eval", action="store_true", help="启用确定性策略评估。")
 
     agent_group = parser.add_argument_group('PPO配置')
     agent_group.add_argument("--device", type=str, default=None, help="训练设备，例如 cpu、cuda 或 cuda:0；不指定时自动选择。")
     agent_group.add_argument("--actor-lr", type=float, default=5e-5, help="Actor 网络学习率。")
     agent_group.add_argument("--critic-lr", type=float, default=5e-4, help="Critic 网络学习率。")
+    agent_group.add_argument("--alpha", type=float, default=0.05, help="交叉熵损失系数。")
     agent_group.add_argument("--gamma", type=float, default=0.98, help="奖励折扣因子。")
     agent_group.add_argument("--lmbda", type=float, default=0.95, help="GAE 优势估计的 lambda 参数。")
     agent_group.add_argument("--epochs", type=int, default=4, help="每批采样数据上的 PPO 训练轮数。")
@@ -250,4 +362,4 @@ def parse_args():
 if __name__ == "__main__":
     torch.set_num_threads(1)
     args = parse_args()
-    train(args)
+    main(args)

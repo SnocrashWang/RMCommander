@@ -28,7 +28,7 @@ class RobotPolicyHead(nn.Module):
                     nn.ELU(),
                     nn.Linear(64, action_dim),
                 )
-                self.box_log_stds[name] = nn.Parameter(torch.full((action_dim,), np.log(0.05)))
+                self.box_log_stds[name] = nn.Parameter(torch.full((action_dim,), np.log(0.1)))
             elif isinstance(space, spaces.Discrete):
                 self.discrete_heads[name] = nn.Sequential(
                     nn.Linear(128, 64),
@@ -111,6 +111,7 @@ class PPOAgent:
         state_dim: int,
         actor_lr=5e-5,
         critic_lr=5e-4,
+        alpha=0.01,
         gamma=0.98,
         lmbda=0.95,
         epochs=4,
@@ -123,8 +124,9 @@ class PPOAgent:
         if not robot_type_action:
             raise ValueError("PPOAgent 需要 robot_type_action，例如 RMUL_ROBOT_TYPE_ACTION 或 BASE_ROBOT_TYPE_ACTION")
 
-        self.gamma = gamma
-        self.lmbda = lmbda
+        self.alpha = alpha          # 交叉熵损失系数
+        self.gamma = gamma          # 奖励折扣引子
+        self.lmbda = lmbda          # 广义优势估计系数
         self.epochs = epochs
         self.eps = eps
         self.batch_size = batch_size
@@ -202,7 +204,7 @@ class PPOAgent:
             ratio = torch.exp(log_probs - old_log_probs)
             surr1 = ratio * advantage
             surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * advantage
-            actor_loss = torch.mean(-torch.min(surr1, surr2) - 0.01 * entropy)
+            actor_loss = torch.mean(-torch.min(surr1, surr2) - self.alpha * entropy)
             critic_loss = torch.mean(F.mse_loss(self.critic(states), td_target))
 
             self.actor_optimizer.zero_grad()
@@ -264,7 +266,7 @@ class PPOAgent:
                 ratio = torch.exp(log_probs - batch_old_log_probs)
                 surr1 = ratio * batch_advantage
                 surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * batch_advantage
-                actor_loss = -torch.min(surr1, surr2).mean() - 0.01 * entropy.mean()
+                actor_loss = -torch.min(surr1, surr2).mean() - self.alpha * entropy.mean()
                 critic_loss = F.mse_loss(self.critic(batch_states), batch_td_target.detach())
 
                 self.actor_optimizer.zero_grad()

@@ -11,9 +11,9 @@ from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION, BASE_ROBOT_CO
 
 from utils.config.exp_prop_config import *
 from utils.config.game_config import GameTeam
-from utils.config.robot_config import RobotConfig, RobotType
+from utils.config.robot_config import RobotConfig, RobotType, ROBOT_ID
 from utils.robot import Robot
-from utils.utils import pos_norm2real, opposite_team, calc_distance
+from utils.utils import pos_norm2real, opposite_team, calc_distance, attack_sight_clear
 
 
 class EnemyScriptControllerBase():
@@ -22,7 +22,7 @@ class EnemyScriptControllerBase():
             self,
             auto_nav: bool = False,
             attack_weight: List[int] = [0, 1],
-            spin: int = 0
+            spin_mode: int = 0
         ):
         """
         Args:
@@ -32,17 +32,15 @@ class EnemyScriptControllerBase():
         """
         self.auto_nav = auto_nav
         self.attack_weight = attack_weight
-        self.spin = spin
+        self.spin_mode = spin_mode
+
+        self.attack_target_list = list(BASE_ROBOT_TYPE_ACTION) + [RobotType.NONE]
+        assert len(self.attack_weight) == len(self.attack_target_list), \
+            f"attack_weight({self.attack_weight}) must has the same length as self.attack_target_list({self.attack_target_list})"
 
         self.switch_time_interval = (1, 10)         # 动作切换时间
         self.next_switch_time = math.inf
-
-        self.attack_target_list = list(BASE_ROBOT_TYPE_ACTION) + [RobotType.NONE]
-        assert len(attack_weight) == len(self.attack_target_list), \
-            f"attack_weight({attack_weight}) must has the same length as self.attack_target_list({self.attack_target_list})"
-
-        self.nav_target = self._random_nav_target_norm()
-        self.attack_target = self._random_attack_target()
+        self.update()
 
     def take_action(self, time: float, robots: Dict[str, Robot]):
         actions = {}
@@ -63,6 +61,7 @@ class EnemyScriptControllerBase():
     def update(self):
         self.nav_target = self._random_nav_target_norm()
         self.attack_target = self._random_attack_target()
+        self.spin = self._random_spin()
 
     def _random_nav_target_norm(self):
         return np.random.uniform(-1, 1, 2)
@@ -70,8 +69,19 @@ class EnemyScriptControllerBase():
     def _random_attack_target(self):
         return random.choices(self.attack_target_list, self.attack_weight)[0].value
 
+    def _random_spin(self):
+        if self.spin_mode == 2:
+            return random.choice([0, 1])
+        else:
+            return self.spin_mode
+
 
 class CurriculumBase():
+    """
+    该课程作为课程基类，调用时仅用于测试
+    初始观测完全随机
+    对手脚本随机移动、不攻击
+    """
     def __init__(self):
         self.env_config = EnvConfigBase()
         self.obstacle_configs = deepcopy(OBSTACLE_CONFIGS)
@@ -90,7 +100,7 @@ class CurriculumBase():
 
     def _random_env_config(self):
         self.env_config = EnvConfigBase(
-            game_remaining_time=random.uniform(1, EnvConfigBase().game_time_limit)
+            game_remaining_time=random.uniform(30, EnvConfigBase().game_time_limit)
         )
 
     def _random_obstacle_configs(self, std: float = 0.1):
@@ -103,7 +113,7 @@ class CurriculumBase():
         self.robot_configs = []
         for team in GameTeam:
             for robot_type in BASE_ROBOT_TYPE_ACTION:
-                init_pos = pos_norm2real(np.random.uniform(-1, 1, 2), EnvConfigBase.field_size())
+                init_pos = pos_norm2real(np.random.uniform(-0.9, 0.9, 2), EnvConfigBase.field_size())       # 为了防止被随机围墙挤到地图外，此处随机初始化位置范围为 [-0.9, 0.9]
                 chassis_property_type = random.choice([CHASSIS_PROPERTY_TYPE.POWER, CHASSIS_PROPERTY_TYPE.HP])
                 gimbal_property_type = random.choice([GIMBAL_PROPERTY_TYPE.HEAT, GIMBAL_PROPERTY_TYPE.COOLDOWN])
                 max_hp = CHASSIS_PROPERTY_STANDARD[chassis_property_type][1]["HP"]
@@ -116,7 +126,7 @@ class CurriculumBase():
                     gimbal_property_type=gimbal_property_type,
                     max_ammo=200,
                     ammo_allowed=200,
-                    hp=random.randint(50, max_hp),
+                    hp=random.randint(int(0.1 * max_hp), max_hp),
                     heat=random.uniform(0, max_heat),
                     enable_exp=False,
                 ))
@@ -152,17 +162,14 @@ class CurriculumBaseMovement(CurriculumBase):
                 reward += 0.01
                 continue
 
-            # 合法导航点只给很小奖励，非法点仍然明显惩罚。
-            # 否则模型可以靠每步输出任意合法点获得很高回报，却完全不接敌。
+            # 鼓励导航点合法
             navigation_target = pos_norm2real(action.navigation_target_norm, EnvConfigBase.field_size())
-            reward += 0.05 if robots[id].is_valid_target(navigation_target) else -1.0
+            reward += 0.05 if robots[id].is_valid_target(navigation_target) else -0.1
 
             # 鼓励导航点接近蓝方坐标
             blue_robot_pos_list = [robot.get_position() for robot in robots.values() if robot.team == opposite_team(robots[id].team)]
             if any(x < 1 for x in [calc_distance(navigation_target, pos) for pos in blue_robot_pos_list]):
-                reward += 0.05
-            else:
-                reward -= 0.02
+                reward += 1.0
         return reward
 
 
@@ -179,5 +186,107 @@ class CurriculumBaseBattle(CurriculumBase):
         """计算红方奖励"""
         reward = 0
         for id, action in actions.items:
-            pass
+            robot_attacker = robots[id]
+            robot_target = robots[ROBOT_ID[opposite_team(robot_attacker)][RobotType(action.attack_target)]]
+
+            # 奖励攻击目标
+            if RobotType(action.attack_target) in list(BASE_ROBOT_TYPE_ACTION) + [RobotType.NONE]:
+                reward += 0.05
+                # 奖励攻击视野
+                if attack_sight_clear(
+                    robot_attacker.get_position(),
+                    robot_target.get_position(),
+                    robot_target.radius,
+                    self.obstacle_configs,
+                    robots,
+                ):
+                    reward += 0.1
+                else:
+                    reward -= 0.01
+
+            # 奖励自旋防御
+            if attack_sight_clear(
+                robot_target.get_position(),
+                robot_attacker.get_position(),
+                robot_attacker.radius,
+                self.obstacle_configs,
+                robots,
+            ):
+                if action.spin == 1:
+                    reward += 0.1
+                else:
+                    reward -= 0.1
         return reward
+
+
+class CurriculumBaseEasy(CurriculumBase):
+    """
+    该课程用于训练模型的完整能力
+    初始观测完全随机
+    对手脚本随机移动、少量攻击
+    """
+    def __init__(self):
+        super().__init__()
+
+        self._enemy_controller = EnemyScriptControllerBase(auto_nav=True, attack_weight=[1, 9], spin_mode=0)
+
+    def reward(self, robots: Dict[str, Robot], actions: Dict[str, ActionBase]):
+        reward = 0
+        for id, action in actions.items:
+            robot_attacker = robots[id]
+            robot_target = robots[ROBOT_ID[opposite_team(robot_attacker)][RobotType(action.attack_target)]]
+
+            # 血量奖励
+            reward += 0.001 * (robot_attacker.hp - robot_target.hp)
+
+            # 胜利奖励
+            if not robot_attacker.is_alive:
+                reward -= 100
+            elif not robot_target.is_alive:
+                reward += 100
+        return reward
+
+
+class CurriculumBaseMedium(CurriculumBaseEasy):
+    """
+    该课程用于训练模型的完整能力
+    初始观测完全随机
+    对手脚本随机移动、少量攻击
+    """
+    def __init__(self):
+        super().__init__()
+
+        self._enemy_controller = EnemyScriptControllerBase(auto_nav=True, attack_weight=[1, 1], spin_mode=2)
+
+    def _random_robot_configs(self):
+        self.robot_configs = []
+        for team in GameTeam:
+            for robot_type in BASE_ROBOT_TYPE_ACTION:
+                init_pos = pos_norm2real(np.random.uniform(-0.9, 0.9, 2), EnvConfigBase.field_size())       # 为了防止被随机围墙挤到地图外，此处随机初始化位置范围为 [-0.9, 0.9]
+                chassis_property_type = random.choice([CHASSIS_PROPERTY_TYPE.POWER, CHASSIS_PROPERTY_TYPE.HP])
+                gimbal_property_type = random.choice([GIMBAL_PROPERTY_TYPE.HEAT, GIMBAL_PROPERTY_TYPE.COOLDOWN])
+                max_hp = CHASSIS_PROPERTY_STANDARD[chassis_property_type][1]["HP"]
+                max_heat = GIMBAL_PROPERTY_17[gimbal_property_type][1]["HEAT"]
+                self.robot_configs.append(RobotConfig(
+                    team=team,
+                    robot_type=robot_type,
+                    init_pos=init_pos,
+                    chassis_property_type=chassis_property_type,
+                    gimbal_property_type=gimbal_property_type,
+                    max_ammo=200,
+                    ammo_allowed=200,
+                    hp=random.randint(int(0.8 * max_hp), max_hp),
+                    heat=random.uniform(0, max_heat),
+                    enable_exp=False,
+                ))
+
+class CurriculumBaseHard(CurriculumBaseMedium):
+    """
+    该课程用于训练模型的完整能力
+    初始观测完全随机
+    对手脚本随机移动、少量攻击
+    """
+    def __init__(self):
+        super().__init__()
+
+        self._enemy_controller = EnemyScriptControllerBase(auto_nav=True, attack_weight=[1, 0], spin_mode=1)

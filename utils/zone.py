@@ -54,10 +54,13 @@ class Zone():
         else:
             # 如果之前红方已占领
             if self.occupation_team[GameTeam.RED]:
-                self.occupation_team[GameTeam.RED] = cur_occupation_team[GameTeam.RED]
-            # 如果之前蓝方已占领
+                # 如果当前红方未占领，将占领情况更新为当前实际占领情况，否则不变
+                if not cur_occupation_team[GameTeam.RED]:
+                    self.occupation_team = cur_occupation_team
+            # 如果之前蓝方已占领，同理
             elif self.occupation_team[GameTeam.BLUE]:
-                self.occupation_team[GameTeam.BLUE] = cur_occupation_team[GameTeam.BLUE]
+                if not cur_occupation_team[GameTeam.BLUE]:
+                    self.occupation_team = cur_occupation_team
             # 之前双方均未占领
             else:
                 # 如果恰巧此时同时占领，随机选择一方成功占领

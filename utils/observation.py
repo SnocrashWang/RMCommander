@@ -4,6 +4,26 @@ from typing import Dict
 from gymnasium import spaces
 
 
+def linear_norm(x, x_min, x_max):
+    """norm [min, max] to [-1, 1]"""
+    x_clip = min(max(x, x_min), x_max)
+    return (x_clip - x_min) / (x_max - x_min) * 2 - 1
+
+def sqrt_norm(x, index, x_min, x_max):
+    """norm sqrt(x) to [-1, 1]"""
+    def sqrt(x):
+        return x ** index
+    x_clip = min(max(x, x_min), x_max)
+    return (sqrt(x_clip) - sqrt(x_min)) / (sqrt(x_max) - sqrt(x_min)) * 2 - 1
+
+def reverse_sqrt_norm(x, index, x_min, x_max):
+    """reverse grads from sqrt_norm()"""
+    def reverse_sqrt(x):
+        return -(x_max - x) ** index
+    x_clip = min(max(x, x_min), x_max)
+    return (reverse_sqrt(x_clip) - reverse_sqrt(x_min)) / (reverse_sqrt(x_max) - reverse_sqrt(x_min)) * 2 - 1
+
+
 class Observation(ABC):
     """Observation abstract base class."""
 
@@ -159,3 +179,6 @@ if __name__ == "__main__":
     print(robot_obs1)
     print(robot_obs1.__dict__)
     print(robot_obs1.to_array())
+
+    print(linear_norm(150, 0, 200))
+    print(sqrt_norm(160, 0.5, 0, 600))

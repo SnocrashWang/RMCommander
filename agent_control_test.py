@@ -16,13 +16,14 @@ from utils.utils import calc_distance
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
+    from rules.base.curriculum import *
     from rules.base.environment import ActionBase as Action
-    from rules.base.config import env_config
+    from rules.base.config.env_config import EnvConfigBase as EnvConfig
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
 elif CURRENT_GAME == GameType.RMUL:
     from rules.rmul.game import GameRMUL as Game
     from rules.rmul.environment import ActionRMUL as Action
-    from rules.rmul.config import env_config
+    from rules.rmul.config.env_config import EnvConfigRMUL as EnvConfig
     from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION
 # elif CURRENT_GAME == GameType.RMUC:
 #     from RMUC.environment import EnvironmentRMUC, Action
@@ -63,7 +64,10 @@ def agent_control(
         render_mode = "human"
 
     # 创建环境和渲染器
-    game = Game(render_mode=render_mode)
+    game = Game(
+        render_mode=render_mode,
+        curriculum_list=[{CurriculumBaseMovement: (1.0, (False, False, False))}]
+    )
     obs, info = game.reset()
     
     # 如果保存视频，初始化视频写入器
@@ -93,7 +97,7 @@ def agent_control(
         print("未找到模型文件，使用随机权重")
 
     show_grid = False  # 控制是否显示可移动栅格
-    control_steps = int(game.metadata['render_fps'] // control_frequency)
+    control_steps = int(EnvConfig.fps // control_frequency)
 
     running = True
     while running:
@@ -104,12 +108,14 @@ def agent_control(
         blue_action = agent.take_action(obs.to_array(GameTeam.BLUE), GameTeam.BLUE, deterministic=deterministic)
         # blue_action = {"BLUE_3_STANDARD": mirror_navigation_target_actions(red_action)["RED_3_STANDARD"]}
         # blue_action = {"BLUE_3_STANDARD": Action(attack_target=3, spin=1)}
-        print(obs.to_array(GameTeam.RED))
+        # print(obs.to_array(GameTeam.RED))
         print(red_action)
         # print(blue_action)
 
         # 更新环境
-        obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
+        # obs, reward, terminated, truncated, info = game.step(red_action, blue_action, control_steps)
+        obs, reward, terminated, truncated, info = game.step(red_action, None, control_steps)
+        print(reward)
         running = not terminated and not truncated
 
         # 如果保存视频，保存当前帧

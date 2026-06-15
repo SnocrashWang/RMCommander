@@ -272,11 +272,11 @@ class Renderer:
             # 红队进度条
             victory_progress_red = top_bar_info['victory_progress'][GameTeam.RED]
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (victory_progress_red / self.env_config.occupation_target))
+            progress_width = int(bar_width * (victory_progress_red / self.env_config.victory_target))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.RED],
                             (10, 10, progress_width, bar_height))
             red_progress_text = self.font_medium.render(
-                f"Team RED: {int(victory_progress_red):>3d} / {self.env_config.occupation_target:>3d}",
+                f"Team RED: {int(victory_progress_red):>3d} / {self.env_config.victory_target:>3d}",
                 True, render_config.COLOR_TEXT
             )
             self.screen_note.blit(red_progress_text, (bar_width - red_progress_text.get_width(), red_progress_text.get_height() // 2))
@@ -284,11 +284,11 @@ class Renderer:
             # 蓝队进度条
             victory_progress_blue = top_bar_info['victory_progress'][GameTeam.BLUE]
             pygame.draw.rect(self.screen_note, render_config.COLOR_PROGRESS_BAR_BG, (self.screen_width - bar_width - 10, 10, bar_width, bar_height))
-            progress_width = int(bar_width * (victory_progress_blue / self.env_config.occupation_target))
+            progress_width = int(bar_width * (victory_progress_blue / self.env_config.victory_target))
             pygame.draw.rect(self.screen_note, render_config.TEAM_COLORS[GameTeam.BLUE], 
                             (self.screen_width - bar_width - 10 + (bar_width - progress_width), 10, progress_width, bar_height))
             blue_progress_text = self.font_medium.render(
-                f"Team BLUE: {int(victory_progress_blue):>3d} / {self.env_config.occupation_target:>3d}",
+                f"Team BLUE: {int(victory_progress_blue):>3d} / {self.env_config.victory_target:>3d}",
                 True, render_config.COLOR_TEXT
             )
             self.screen_note.blit(blue_progress_text, (self.screen_width - bar_width, blue_progress_text.get_height() // 2))

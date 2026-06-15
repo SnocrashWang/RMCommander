@@ -6,26 +6,26 @@ BASE_CURRICULUM_LIST = [
     {
         CurriculumBaseMovement: (0.7, (True, True, True)),
         CurriculumBaseBattle: (0.2, (True, True, True)),
-        CurriculumBaseEasy: (0.1, (True, True, False)),
+        CurriculumBaseEasy: (0.1, (True, True, True)),
     },
     {
         CurriculumBaseMovement: (0.2, (True, True, True)),
         CurriculumBaseBattle: (0.7, (True, True, True)),
-        CurriculumBaseEasy: (0.1, (True, True, False)),
+        CurriculumBaseEasy: (0.1, (True, True, True)),
     },
     {
         CurriculumBaseMovement: (0.2, (True, True, True)),
         CurriculumBaseBattle: (0.2, (True, True, True)),
-        CurriculumBaseEasy: (0.6, (True, True, False)),
+        CurriculumBaseEasy: (0.6, (True, True, True)),
     },
     {
         CurriculumBaseMovement: (0.1, (True, True, True)),
         CurriculumBaseBattle: (0.1, (True, True, True)),
-        CurriculumBaseEasy: (0.2, (True, True, False)),
+        CurriculumBaseEasy: (0.2, (True, True, True)),
         CurriculumBaseMedium: (0.6, (True, True, True)),
     },
 ]
 
 BASE_CURRICULUM_EVAL = {
-    CurriculumBaseHard: (1.0, (False, True, False))
+    CurriculumBaseMedium: (1.0, (False, True, False))
 }

@@ -135,10 +135,10 @@ class CurriculumRMUL():
     def _random_env_config(self):
         self.env_config = EnvConfigRMUL(
             game_remaining_time=random.uniform(30, EnvConfigRMUL().game_time_limit),
-            occupation_progress_red=random.randint(0, EnvConfigRMUL().occupation_target - 20),
-            occupation_progress_blue=random.randint(0, EnvConfigRMUL().occupation_target - 20),
-            economics_red=random.randint(0, 300),
-            economics_blue=random.randint(0, 300)
+            victory_progress_red=random.randint(0, EnvConfigRMUL().victory_target - 20),
+            victory_progress_blue=random.randint(0, EnvConfigRMUL().victory_target - 20),
+            economics_red=random.randint(0, 400),
+            economics_blue=random.randint(0, 400)
         )
 
     def _random_obstacle_configs(self, std: float = 0.1):

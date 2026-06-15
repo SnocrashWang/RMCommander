@@ -184,7 +184,7 @@ class Game(gym.Env):
         """获取观察"""
         # 全局状态向量
         env_obs = ObsBaseEnv(
-            remaining_time_norm=self.env._remaining_time / self._env_config.game_time_limit,
+            remaining_time_norm=(self.env._remaining_time / self._env_config.game_time_limit) * 2 - 1,
         )
 
         # 机器人状态向量

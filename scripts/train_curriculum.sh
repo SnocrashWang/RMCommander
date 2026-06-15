@@ -11,9 +11,9 @@ PARAMS=(
     --eval-episodes 20
     # --deterministic-eval
     --device "cuda:0"
-    --actor-lr 5e-5
+    --actor-lr 1e-4
     --critic-lr 5e-4
-    --alpha 0.05
+    --alpha 0.02
     --gamma 0.98
     --lmbda 0.95
     --epochs 4

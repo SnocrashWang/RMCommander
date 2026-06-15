@@ -18,9 +18,9 @@ class EnvConfigRMUL():
     game_remaining_time : float = 300
 
     # 占领目标进度
-    occupation_target = 200
-    occupation_progress_red : float = 0
-    occupation_progress_blue : float = 0
+    victory_target = 200
+    victory_progress_red : float = 0
+    victory_progress_blue : float = 0
 
     # 初始经济
     economics_red : int = 0

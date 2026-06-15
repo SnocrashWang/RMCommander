@@ -43,12 +43,11 @@ class RobotPolicyHead(nn.Module):
         for name, space in self.action_schema.items():
             if isinstance(space, spaces.Box):
                 raw_mean = self.box_heads[name](features)
-                mean = self._scale_box_mean(raw_mean, space)
                 std = torch.exp(self.box_log_stds[name])
                 outputs[name] = {
                     "type": "box",
                     "space": space,
-                    "mean": mean,
+                    "raw_mean": raw_mean,
                     "std": std,
                 }
             elif isinstance(space, spaces.Discrete):
@@ -61,10 +60,10 @@ class RobotPolicyHead(nn.Module):
         return outputs
 
     @staticmethod
-    def _scale_box_mean(raw_mean, space: spaces.Box):
-        low = torch.as_tensor(space.low.reshape(-1), dtype=raw_mean.dtype, device=raw_mean.device)
-        high = torch.as_tensor(space.high.reshape(-1), dtype=raw_mean.dtype, device=raw_mean.device)
-        return (torch.tanh(raw_mean) + 1) * (high - low) / 2 + low
+    def _squash_box_value(raw_value, space: spaces.Box):
+        low = torch.as_tensor(space.low.reshape(-1), dtype=raw_value.dtype, device=raw_value.device)
+        high = torch.as_tensor(space.high.reshape(-1), dtype=raw_value.dtype, device=raw_value.device)
+        return (torch.tanh(raw_value) + 1) * (high - low) / 2 + low
 
 
 class PolicyNet(nn.Module):
@@ -161,8 +160,12 @@ class PPOAgent:
             action_values = {}
             for name, output in policy_outputs.items():
                 if output["type"] == "box":
-                    value = output["mean"] if deterministic else Normal(output["mean"], output["std"]).sample()
-                    value = self._clamp_box_value(value, output["space"])
+                    raw_value = (
+                        output["raw_mean"]
+                        if deterministic
+                        else Normal(output["raw_mean"], output["std"]).sample()
+                    )
+                    value = RobotPolicyHead._squash_box_value(raw_value, output["space"])
                     if team == GameTeam.BLUE and name == "navigation_target_norm":
                         value = value * -1
                     action_values[name] = value.reshape(output["space"].shape).cpu().numpy()
@@ -296,9 +299,14 @@ class PPOAgent:
                 if isinstance(space, spaces.Box):
                     field_dim = int(np.prod(space.shape))
                     value = actions[:, field_offset:field_offset + field_dim]
-                    dist = Normal(output["mean"], output["std"])
-                    log_probs = log_probs + dist.log_prob(value).sum(dim=-1)
-                    entropy = entropy + dist.entropy().sum(dim=-1)
+                    field_log_prob, field_entropy = self._squashed_normal_stats(
+                        value,
+                        output["raw_mean"],
+                        output["std"],
+                        space,
+                    )
+                    log_probs = log_probs + field_log_prob
+                    entropy = entropy + field_entropy
                     field_offset += field_dim
                 elif isinstance(space, spaces.Discrete):
                     value = actions[:, field_offset].long()
@@ -308,6 +316,36 @@ class PPOAgent:
                     field_offset += 1
 
         return log_probs.unsqueeze(-1), entropy.unsqueeze(-1)
+
+    @staticmethod
+    def _squashed_normal_stats(value, raw_mean, std, space: spaces.Box):
+        low = torch.as_tensor(space.low.reshape(-1), dtype=value.dtype, device=value.device)
+        high = torch.as_tensor(space.high.reshape(-1), dtype=value.dtype, device=value.device)
+        scale = (high - low) / 2
+        midpoint = (high + low) / 2
+
+        normalized_value = (value - midpoint) / scale
+        eps = torch.finfo(value.dtype).eps
+        normalized_value = normalized_value.clamp(min=-1 + eps, max=1 - eps)
+        raw_value = torch.atanh(normalized_value)
+
+        base_dist = Normal(raw_mean, std)
+        # log(1 - tanh(x)^2), written in a numerically stable form.
+        log_tanh_jacobian = 2 * (np.log(2.0) - raw_value - F.softplus(-2 * raw_value))
+        log_scale_jacobian = torch.log(scale)
+        log_prob = base_dist.log_prob(raw_value) - log_tanh_jacobian - log_scale_jacobian
+
+        entropy_raw_value = base_dist.rsample()
+        entropy_log_tanh_jacobian = 2 * (
+            np.log(2.0) - entropy_raw_value - F.softplus(-2 * entropy_raw_value)
+        )
+        entropy_log_prob = (
+            base_dist.log_prob(entropy_raw_value)
+            - entropy_log_tanh_jacobian
+            - log_scale_jacobian
+        )
+        entropy = -entropy_log_prob
+        return log_prob.sum(dim=-1), entropy.sum(dim=-1)
 
     @property
     def action_dim(self):
@@ -323,12 +361,6 @@ class PPOAgent:
             else:
                 raise TypeError(f"Unsupported action space: {space}")
         return dim
-
-    @staticmethod
-    def _clamp_box_value(value, space: spaces.Box):
-        low = torch.as_tensor(space.low.reshape(-1), dtype=value.dtype, device=value.device)
-        high = torch.as_tensor(space.high.reshape(-1), dtype=value.dtype, device=value.device)
-        return torch.max(torch.min(value.reshape(-1), high), low)
 
     def save(self, path: str):
         torch.save({

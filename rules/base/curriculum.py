@@ -167,8 +167,8 @@ class CurriculumBaseMovement(CurriculumBase):
 
             # 鼓励导航点接近蓝方坐标
             blue_robot_pos_list = [robot.get_position() for robot in robots.values() if robot.team == opposite_team(robots[id].team)]
-            if any(x < 1 for x in [calc_distance(navigation_target, pos) for pos in blue_robot_pos_list]):
-                reward += 1.0
+            min_dist = min([calc_distance(navigation_target, pos) for pos in blue_robot_pos_list])
+            reward += min(1, math.exp(-(min_dist - 1)))
         return reward
 
 
@@ -245,24 +245,13 @@ class CurriculumBaseEasy(CurriculumBase):
                 reward += 100
         return reward
 
-
-class CurriculumBaseMedium(CurriculumBaseEasy):
-    """
-    该课程用于训练模型的完整能力
-    对手脚本随机移动、少量攻击
-    """
-    def __init__(self):
-        super().__init__()
-
-        self._enemy_controller = EnemyScriptControllerBase(auto_nav=True, attack_weight=[1, 1], spin_mode=2)
-
     def _random_robot_configs(self):
         self.robot_configs = []
         for team in GameTeam:
             for robot_type in BASE_ROBOT_TYPE_ACTION:
                 init_pos = pos_norm2real(np.random.uniform(-0.9, 0.9, 2), EnvConfigBase.field_size())       # 为了防止被随机围墙挤到地图外，此处随机初始化位置范围为 [-0.9, 0.9]
-                chassis_property_type = random.choice([CHASSIS_PROPERTY_TYPE.POWER, CHASSIS_PROPERTY_TYPE.HP])
-                gimbal_property_type = random.choice([GIMBAL_PROPERTY_TYPE.HEAT, GIMBAL_PROPERTY_TYPE.COOLDOWN])
+                chassis_property_type = CHASSIS_PROPERTY_TYPE.POWER
+                gimbal_property_type = GIMBAL_PROPERTY_TYPE.COOLDOWN
                 max_hp = CHASSIS_PROPERTY_STANDARD[chassis_property_type][1]["HP"]
                 max_heat = GIMBAL_PROPERTY_17[gimbal_property_type][1]["HEAT"]
                 self.robot_configs.append(RobotConfig(
@@ -279,7 +268,18 @@ class CurriculumBaseMedium(CurriculumBaseEasy):
                 ))
 
 
-class CurriculumBaseHard(CurriculumBaseMedium):
+class CurriculumBaseMedium(CurriculumBaseEasy):
+    """
+    该课程用于训练模型的完整能力
+    对手脚本随机移动、少量攻击
+    """
+    def __init__(self):
+        super().__init__()
+
+        self._enemy_controller = EnemyScriptControllerBase(auto_nav=True, attack_weight=[1, 1], spin_mode=2)
+
+
+class CurriculumBaseHard(CurriculumBaseEasy):
     """
     该课程用于训练模型的完整能力
     对手脚本随机移动、全程攻击

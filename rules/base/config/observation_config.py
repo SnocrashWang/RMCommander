@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from utils.config.robot_config import RobotType
 from utils.config.game_config import GameTeam
 from utils.config.robot_config import ROBOT_ID
-from utils.observation import Observation
+from utils.observation import Observation, linear_norm, sqrt_norm, reverse_sqrt_norm
 from utils.robot import Robot
 from utils.utils import pos_real2norm
 
@@ -18,7 +18,7 @@ from rules.base.config.env_config import EnvConfigBase
 class ObsBaseEnv(Observation):
     _schema = {
         "remaining_time_norm": spaces.Box(
-            low=0.0,
+            low=-1.0,
             high=1.0,
             dtype=np.float32
         ),
@@ -31,40 +31,25 @@ class ObsBaseRobot(Observation):
             high=np.array([1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         ),
-        "level": spaces.Box(
-            low=0,
-            high=10,
-            dtype=int
+        "hp_norm": spaces.Box(
+            low=-1.0,
+            high=1.0,
+            dtype=np.float32
         ),
-        "hp": spaces.Box(
-            low=0,
-            high=1000,
-            dtype=int
+        "power_norm": spaces.Box(
+            low=-1.0,
+            high=1.0,
+            dtype=np.float32
         ),
-        "max_hp": spaces.Box(
-            low=0,
-            high=1000,
-            dtype=int
+        "heat_norm": spaces.Box(
+            low=-1.0,
+            high=1.0,
+            dtype=np.float32
         ),
-        "power": spaces.Box(
-            low=0,
-            high=1000,
-            dtype=int
-        ),
-        "heat": spaces.Box(
-            low=0,
-            high=1000,
-            dtype=int
-        ),
-        "max_heat": spaces.Box(
-            low=0,
-            high=1000,
-            dtype=int
-        ),
-        "cooldown": spaces.Box(
-            low=0,
-            high=1000,
-            dtype=int
+        "cooldown_norm": spaces.Box(
+            low=-1.0,
+            high=1.0,
+            dtype=np.float32
         ),
     }
 
@@ -75,13 +60,10 @@ class ObsBaseRobot(Observation):
                 robot.get_position(),
                 EnvConfigBase.field_size(),
             ),
-            level = robot.level,
-            hp=min(1000, robot.hp),
-            max_hp=min(1000, robot.max_hp),
-            power=min(1000, robot.power),
-            heat=min(1000, robot.heat),
-            max_heat=min(1000, robot.heat),
-            cooldown=min(1000, robot.cooldown)
+            hp_norm=linear_norm(robot.hp, 0, 200),
+            power_norm=linear_norm(robot.power, 45, 60),
+            heat_norm=sqrt_norm(robot.heat, 0.5, 0, 200),
+            cooldown_norm=linear_norm(robot.cooldown, 10, 40),
         )
 
 

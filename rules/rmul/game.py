@@ -8,6 +8,7 @@ from typing import List, Dict, Optional, Tuple, Any
 
 from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import ROBOT_ID
+from utils.observation import linear_norm
 from utils.utils import meters_to_pixels, timer
 from visualization.renderer import Renderer
 
@@ -190,14 +191,16 @@ class GameRMUL(gym.Env):
         # self._time_stats.clear()
 
         return observation, reward, terminated, truncated, info
-    
+
     def _get_obs(self) -> ObsRMULGame:
         """获取观察"""
         # 全局状态向量
         env_obs = ObsRMULEnv(
-            remaining_time_norm=self.env._remaining_time / EnvConfigRMUL.game_time_limit,
-            victory_progress_red_norm=self.env._victory_progress[GameTeam.RED] / EnvConfigRMUL.occupation_target,
-            victory_progress_blue_norm=self.env._victory_progress[GameTeam.BLUE] / EnvConfigRMUL.occupation_target,
+            remaining_time_norm=(self.env._remaining_time / EnvConfigRMUL.game_time_limit) * 2 - 1,
+            victory_progress_red_norm=(self.env._victory_progress[GameTeam.RED] / EnvConfigRMUL.victory_target) * 2 - 1,
+            victory_progress_blue_norm=(self.env._victory_progress[GameTeam.BLUE] / EnvConfigRMUL.victory_target) * 2 - 1,
+            economics_red_norm=linear_norm(self.env._economics[GameTeam.RED], 0, 400),
+            economics_blue_norm=linear_norm(self.env._economics[GameTeam.BLUE], 0, 400),
         )
 
         # 机器人状态向量
@@ -207,19 +210,15 @@ class GameRMUL(gym.Env):
             robots_env[robot_id] = obs_cls.from_robot(robot)
         
         return ObsRMULGame(env_obs, robots_env, self._robot_type_obs)
-    
-    def _get_reward(self, team: GameTeam, action: Dict[str, ActionRMUL]) -> float:
-        """获取奖励"""
-        return 0
 
     def _is_terminated(self) -> bool:
         """判断是否自然结束"""
         return self.env._remaining_time <= 0
-    
+
     def _is_truncated(self) -> bool:
         """判断是否被截断"""
         return self.env.game_state in [GameState.RED_TEAM_WIN, GameState.BLUE_TEAM_WIN, GameState.DRAW]
-    
+
     def _init_render(self):
         if self._screen is None:
             pygame.init()

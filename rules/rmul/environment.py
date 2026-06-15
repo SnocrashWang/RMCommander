@@ -43,7 +43,7 @@ class EnvironmentRMUL(Environment):
         # 创建机器人
         self.robots: Dict[str, Robot] = {}
         self._create_robots(robot_configs)
-        
+
         # 为每个机器人创建网格地图
         self._init_robot_grid_maps(self.env_config)
 
@@ -53,8 +53,8 @@ class EnvironmentRMUL(Environment):
             GameTeam.BLUE: self.env_config.economics_blue,
         }                                                               # 经济
         self._victory_progress = {
-            GameTeam.RED: self.env_config.occupation_progress_red,
-            GameTeam.BLUE: self.env_config.occupation_progress_red,
+            GameTeam.RED: self.env_config.victory_progress_red,
+            GameTeam.BLUE: self.env_config.victory_progress_red,
         }    # 胜利进度
         self._laggard_bonus_taken = {                                   # 落后奖励
             "red_lag_70": False,
@@ -151,7 +151,7 @@ class EnvironmentRMUL(Environment):
         # 检查胜利条件
         red_progress = self._victory_progress[GameTeam.RED]
         blue_progress = self._victory_progress[GameTeam.BLUE]
-        target = self.env_config.occupation_target
+        target = self.env_config.victory_target
 
         # 结算落后奖励
         if blue_progress - red_progress >= 70 and not self._laggard_bonus_taken["red_lag_70"]:

@@ -13,7 +13,7 @@ from visualization.config import render_config
 
 if CURRENT_GAME == GameType.BASE:
     from rules.base.game import Game
-    from rules.base.curriculum import CurriculumBase as Curriculum
+    from rules.base.curriculum import CurriculumBasePeek as Curriculum
     from rules.base.environment import ActionBase as Action
     from rules.base.config.env_config import EnvConfigBase as EnvConfig
     from rules.base.config.robot_config import BASE_ROBOT_TYPE_ACTION as ROBOT_TYPE_ACTION

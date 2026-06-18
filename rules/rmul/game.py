@@ -168,7 +168,7 @@ class GameRMUL(gym.Env):
 
         # 计算奖励（以红队视角）
         with timer(self._time_stats, 'get_reward'):
-            reward = self._curriculum.reward(self.env.robots, red_action)
+            reward = self._curriculum.reward(self.env.game_state, self.env.robots, red_action)
 
         # 信息
         with timer(self._time_stats, 'make_info'):

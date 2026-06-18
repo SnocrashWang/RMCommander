@@ -231,7 +231,7 @@ def evaluate_parallel(
 def main(args):
     os.makedirs(args.model_dir, exist_ok=True)
     time_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"ppo_agent_{time_tag}"
+    run_name = f"ppo_agent_{time_tag}_stage_{args.curriculum_stage}"
 
     # 设置随机数
     if args.seed is not None:

@@ -166,7 +166,7 @@ class Game(gym.Env):
                 break
 
         # 计算奖励（以红队视角）
-        reward = self._curriculum.reward(self.env.robots, red_action)
+        reward = self._curriculum.reward(self.env.game_state, self.env.robots, red_action)
 
         # 信息
         info = {

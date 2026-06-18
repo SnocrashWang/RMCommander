@@ -66,7 +66,7 @@ def agent_control(
     # 创建环境和渲染器
     game = Game(
         render_mode=render_mode,
-        curriculum_list=[{CurriculumBaseMovement: (1.0, (False, False, False))}]
+        curriculum_list=[{CurriculumBasePeek: (1.0, (False, False, False))}]
     )
     obs, info = game.reset()
     
@@ -78,7 +78,7 @@ def agent_control(
         height, width = frame.shape[:2]
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         video_path = os.path.join(video_path, model_file.replace('\\', '/').split("/")[-1].split('.')[0] + ".mp4")
-        video_writer = cv2.VideoWriter(video_path, fourcc, game.metadata['render_fps'], (width, height))
+        video_writer = cv2.VideoWriter(video_path, fourcc, EnvConfig.fps, (width, height))
         print(f"视频将保存到: {video_path}")
     
     # 创建PPO agent
@@ -109,6 +109,7 @@ def agent_control(
         # blue_action = {"BLUE_3_STANDARD": mirror_navigation_target_actions(red_action)["RED_3_STANDARD"]}
         # blue_action = {"BLUE_3_STANDARD": Action(attack_target=3, spin=1)}
         # print(obs.to_array(GameTeam.RED))
+        # red_action["RED_3_STANDARD"].attack_target = RobotType.NONE.value
         print(red_action)
         # print(blue_action)
 

@@ -11,7 +11,7 @@ from rules.rmul.config.robot_config import RMUL_ROBOT_TYPE_ACTION, RMUL_ROBOT_CO
 from rules.rmul.config.zone_config import RMUL_ZONES
 
 from utils.config.exp_prop_config import *
-from utils.config.game_config import GameTeam
+from utils.config.game_config import GameTeam, GameState
 from utils.config.robot_config import RobotConfig, RobotType, ROBOT_ID
 from utils.obstacle import Obstacle
 from utils.robot import Robot
@@ -200,7 +200,7 @@ class CurriculumRMUL():
         """
         return self._enemy_controller.take_action(time, robots)
 
-    def reward(self, robots: Dict[str, Robot], actions: Dict[str, ActionRMUL]):
+    def reward(self, game_state: GameState, robots: Dict[str, Robot], actions: Dict[str, ActionRMUL]):
         return 0
 
 

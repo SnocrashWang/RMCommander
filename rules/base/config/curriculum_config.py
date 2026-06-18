@@ -24,8 +24,22 @@ BASE_CURRICULUM_LIST = [
         CurriculumBaseEasy: (0.2, (True, True, True)),
         CurriculumBaseMedium: (0.6, (True, True, True)),
     },
+    {
+        CurriculumBaseEasy: (0.5, (True, True, True)),
+        CurriculumBaseMedium: (0.3, (True, True, True)),
+        CurriculumBaseHard: (0.2, (True, True, True)),
+    },
+    {
+        CurriculumBaseEasy: (0.1, (True, True, True)),
+        CurriculumBaseMedium: (0.3, (True, True, True)),
+        CurriculumBaseHard: (0.6, (True, True, True)),
+    },
+    {
+        CurriculumBaseMedium: (0.1, (True, True, True)),
+        CurriculumBaseHard: (0.9, (True, True, True)),
+    },
 ]
 
 BASE_CURRICULUM_EVAL = {
-    CurriculumBaseMedium: (1.0, (False, True, False))
+    CurriculumBaseHard: (1.0, (False, True, False))
 }
